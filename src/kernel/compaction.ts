@@ -4,6 +4,8 @@ import {
   compact,
   convertToLlm,
   DEFAULT_COMPACTION_SETTINGS,
+  estimateContextTokens,
+  estimateTokens,
   prepareCompaction,
   type AgentMessage,
   type CompactionPreparation,
@@ -41,6 +43,45 @@ export function shouldScheduleCompaction(
   if (contextWindow <= 0 || usedTokens < contextWindow * AUTO_THRESHOLD) return false
   if (deferredAtTokens === undefined) return true
   return usedTokens >= deferredAtTokens + contextWindow * RESCHEDULE_GAP
+}
+
+/** 每次调用模型前使用估算值兜底，避免下一轮请求先撞上上下文上限。 */
+export function shouldCompactBeforeModelCall(
+  messagesTokens: number,
+  fixedTokens: number,
+  contextWindow: number,
+): boolean {
+  if (contextWindow <= 0) return false
+  return messagesTokens + fixedTokens >= contextWindow * AUTO_THRESHOLD
+}
+
+/**
+ * 供应商 usage 已经包含系统提示词和工具定义，不能再把固定部分重复相加。
+ * 压缩后的保留消息仍带着压缩前 usage，此时改用逐条估算，避免立即重复压缩。
+ */
+export function estimateModelCallContextTokens(
+  messages: AgentMessage[],
+  fixedTokens: number,
+): number {
+  const lastCompaction = messages.findLast(
+    (message): message is Extract<AgentMessage, { role: 'compactionSummary' }> =>
+      message.role === 'compactionSummary',
+  )
+  if (lastCompaction) {
+    const hasFreshUsage = messages.some(
+      (message) =>
+        message.role === 'assistant' &&
+        message.timestamp >= lastCompaction.timestamp &&
+        message.stopReason !== 'aborted' &&
+        message.stopReason !== 'error' &&
+        message.usage.totalTokens > 0,
+    )
+    if (!hasFreshUsage) {
+      return fixedTokens + messages.reduce((sum, message) => sum + estimateTokens(message), 0)
+    }
+  }
+  const estimated = estimateContextTokens(messages)
+  return estimated.usageTokens > 0 ? estimated.tokens : fixedTokens + estimated.tokens
 }
 
 /** Agent 默认转换器会丢掉 compactionSummary，续接时必须换成 harness 的转换器。 */

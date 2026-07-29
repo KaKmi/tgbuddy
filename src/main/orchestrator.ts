@@ -11,7 +11,7 @@
  *   - 专家绑定（阶段 7.5）
  */
 
-import { Agent } from '@earendil-works/pi-agent-core'
+import { Agent, type AgentMessage } from '@earendil-works/pi-agent-core'
 import type { SendInput } from '../shared/ipc.ts'
 import type { StreamFrame, StreamPayload } from '../shared/types/event.ts'
 import { toKernelMessages } from '../shared/types/message.ts'
@@ -106,41 +106,67 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
     // ── ④ 构建 Agent ───────────────────────────────────────────
     // 每次 run 新建一个实例，历史从 store 载入。
     // 状态在我们手里，Agent 只是个无状态的执行器——这正是 pi 的心智模型。
+    const systemPrompt = buildSystemPrompt(workspaceDir, meta.permissionMode ?? 'auto')
+    const tools = [
+      ...buildBuiltinTools(workspaceDir),
+      buildAskUserTool({
+        requestAnswers: (questions, signal) =>
+          askUser.requestAnswers(
+            sessionId,
+            questions,
+            (request) => emit({ channel: 'host', event: { type: 'ask_user_request', request } }),
+            signal,
+          ),
+      }),
+      ...buildPlanModeTools({
+        getMode: () => permission.getMode(sessionId),
+        setMode: (mode) => {
+          permission.setMode(sessionId, mode)
+          store.updateMeta(sessionId, { permissionMode: mode })
+        },
+        onModeChanged: (mode, source) =>
+          emit({ channel: 'host', event: { type: 'mode_changed', mode, source } }),
+        requestApproval: (planText, signal) =>
+          plan.requestApproval(sessionId, planText, (request) =>
+            emit({ channel: 'host', event: { type: 'plan_request', request } }),
+          signal),
+      }),
+    ]
+    let compactedContext: AgentMessage[] | undefined
+    let sourceMessageCount = 0
+    const effectiveMessages = (messages: AgentMessage[]): AgentMessage[] =>
+      compactedContext
+        ? [...compactedContext, ...messages.slice(sourceMessageCount)]
+        : messages
+
     const agent = new Agent({
       initialState: {
-        systemPrompt: buildSystemPrompt(workspaceDir, meta.permissionMode ?? 'auto'),
+        systemPrompt,
         model,
-        tools: [
-          ...buildBuiltinTools(workspaceDir),
-          buildAskUserTool({
-            requestAnswers: (questions, signal) =>
-              askUser.requestAnswers(
-                sessionId,
-                questions,
-                (request) => emit({ channel: 'host', event: { type: 'ask_user_request', request } }),
-                signal,
-              ),
-          }),
-          ...buildPlanModeTools({
-            getMode: () => permission.getMode(sessionId),
-            setMode: (mode) => {
-              permission.setMode(sessionId, mode)
-              store.updateMeta(sessionId, { permissionMode: mode })
-            },
-            onModeChanged: (mode, source) =>
-              emit({ channel: 'host', event: { type: 'mode_changed', mode, source } }),
-            requestApproval: (planText, signal) =>
-              plan.requestApproval(sessionId, planText, (request) =>
-                emit({ channel: 'host', event: { type: 'plan_request', request } }),
-              signal),
-          }),
-        ],
+        tools,
         messages: toKernelMessages(store.getMessages(sessionId)),
       },
       streamFn: models.streamSimple.bind(models),
       // 不依赖 process.env —— GUI 启动的 Electron 读不到 shell 环境变量
       getApiKey: async () => channel.apiKey,
       convertToLlm: convertStoredMessagesToLlm,
+      transformContext: async (messages, signal) => {
+        const current = effectiveMessages(messages)
+        const next = await compaction.compactBeforeModelCall({
+          sessionId,
+          messages: current,
+          systemPrompt,
+          tools,
+          contextWindow: model.contextWindow,
+          sendFrame,
+          signal,
+        })
+        if (compactedContext || next !== current) {
+          compactedContext = next
+          sourceMessageCount = messages.length
+        }
+        return next
+      },
       // ★ 权限拦截点。这个钩子是 await 的，所以能真的挂起 agent loop
       //   等一次 IPC 往返到渲染进程弹窗（阶段 1 实测确认过）
       beforeToolCall: permission.createBeforeToolCall(sessionId, (request) => {
@@ -168,8 +194,9 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
       }
 
       if (event.type === 'turn_end' && event.usage) {
+        const contextMessages = effectiveMessages(agent.state.messages)
         const contextUsage = buildContextUsage({
-          messages: agent.state.messages,
+          messages: contextMessages,
           systemPrompt: agent.state.systemPrompt,
           tools: agent.state.tools,
           contextWindow: model.contextWindow,

@@ -35,11 +35,11 @@ export interface EstimatedContextUsageInput {
   now?: number
 }
 
-function estimateTextTokens(text: string): number {
+export function estimateTextTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
-function estimateToolTokens(tools: ContextToolDefinition[]): number {
+export function estimateToolTokens(tools: ContextToolDefinition[]): number {
   let chars = 0
   for (const tool of tools) {
     chars += JSON.stringify({
