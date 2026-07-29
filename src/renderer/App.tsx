@@ -179,7 +179,7 @@ export function App() {
                 />
               ))}
 
-              {/* 系统标记：模式变更、重试、压缩…… 统一视觉语言 */}
+              {/* 系统标记：重试、压缩、专家切换等时间线事件 */}
               {markers.map((m) => (
                 <SystemMarker
                   key={m.id}

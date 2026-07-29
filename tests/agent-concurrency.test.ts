@@ -3,6 +3,7 @@ import {
   acceptRunFrame,
   indexPendingRequests,
   mergePendingRequests,
+  updateSessionMode,
 } from '../src/renderer/atoms/agent.ts'
 
 interface TestRequest {
@@ -42,5 +43,17 @@ describe('Agent 并发状态', () => {
 
     expect(snapshot.get('session-1')?.map((item) => item.requestId)).toEqual(['req-2'])
     expect(snapshot.has('session-2')).toBe(false)
+  })
+
+  test('模式事件只更新对应会话的 Chip 状态', () => {
+    const sessions = [
+      { id: 'session-1', title: '一', createdAt: 1, updatedAt: 1, permissionMode: 'auto' as const },
+      { id: 'session-2', title: '二', createdAt: 1, updatedAt: 1, permissionMode: 'auto' as const },
+    ]
+
+    const updated = updateSessionMode(sessions, 'session-1', 'plan')
+
+    expect(updated[0]?.permissionMode).toBe('plan')
+    expect(updated[1]?.permissionMode).toBe('auto')
   })
 })

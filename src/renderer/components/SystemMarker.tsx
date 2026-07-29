@@ -1,7 +1,7 @@
 /**
  * 系统标记 —— 对话流里那些「不是对话内容、但用户需要知道」的事件。
  *
- * 切换专家、进入计划模式、上下文压缩、重试 —— 共用这一套视觉语言。
+ * 切换专家、上下文压缩、重试 —— 共用这一套视觉语言。
  * 规格逐项对齐交互原型（docs/06-设计决策.md 决定 2.5）。
  *
  * ## 为什么长这样
@@ -11,7 +11,7 @@
  *
  * 字形徽标而不是彩色图标 —— 避免和工具卡片的状态色抢注意力。
  *
- * 有细节的（压缩、切换专家）可展开，纯事实的（模式变更、重试）不可展开。
+ * 有细节的（压缩、切换专家）可展开，纯事实的（重试）不可展开。
  */
 
 import { cn } from '../lib/utils.ts'
@@ -79,7 +79,6 @@ export function SystemMarker({ glyph, color, text, detail, toggleLabel }: System
 /** 各类标记的字形与配色，取自原型 */
 export const MARKER_STYLE = {
   expert_changed: { glyph: '⇄', color: '#b0a2e0' },
-  mode_changed: { glyph: '⊞', color: '#9dbfe0' },
   retry: { glyph: '↻', color: '#e0a33e' },
   compaction: { glyph: '⇲', color: '#8fc6a5' },
   session_resumed: { glyph: '◇', color: '#9dbfe0' },

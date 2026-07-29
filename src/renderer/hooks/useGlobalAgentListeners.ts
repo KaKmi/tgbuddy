@@ -24,7 +24,9 @@ import {
   pendingPermissionsAtom,
   pendingPlansAtom,
   pendingAskUserAtom,
+  sessionsAtom,
   streamStatesAtom,
+  updateSessionMode,
   type LocalEvent,
   type Marker,
 } from '../atoms/agent.ts'
@@ -193,13 +195,9 @@ export function useGlobalAgentListeners(): void {
         }
 
         case 'mode_changed': {
-          const label = { plan: '计划模式', auto: '默认权限', bypass: '完全访问' }[event.mode]
-          const by = event.source === 'tool' ? '（由助手切换）' : ''
-          pushMarker(store, sessionId, {
-            id: `mode-${Date.now()}`,
-            kind: 'mode_changed',
-            text: `已切换到「${label}」${by}`,
-          })
+          // 当前模式已经由输入框上方的 ModeChip 持续展示，
+          // 不再往对话时间线插入重复的切换提示。
+          store.set(sessionsAtom, (sessions) => updateSessionMode(sessions, sessionId, event.mode))
           break
         }
 

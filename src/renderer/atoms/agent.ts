@@ -59,6 +59,16 @@ export const emptyStreamState = (): StreamState => ({
 export const sessionsAtom = atom<SessionMeta[]>([])
 export const currentSessionIdAtom = atom<string | null>(null)
 
+export function updateSessionMode(
+  sessions: SessionMeta[],
+  sessionId: string,
+  mode: NonNullable<SessionMeta['permissionMode']>,
+): SessionMeta[] {
+  return sessions.map((session) =>
+    session.id === sessionId ? { ...session, permissionMode: mode } : session,
+  )
+}
+
 /** sessionId → 已落盘的历史消息 */
 export const messagesBySessionAtom = atom<Map<string, SessionMessage[]>>(new Map())
 
@@ -85,7 +95,7 @@ export const currentPlansAtom = atom((get) => {
 })
 
 /**
- * 对话流里的系统标记（切专家、模式变更、压缩、重试）。
+ * 对话流里的系统标记（切专家、压缩、重试）。模式由输入区的 Chip 持续展示。
  * 这些不落盘 —— 它们是本次会话期间的运行时事件，刷新后消失是可接受的。
  * TODO(阶段 6): 压缩标记要落盘，因为它对应 JSONL 里真实的 compaction entry。
  */
