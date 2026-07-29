@@ -12,6 +12,7 @@
 
 import type { StopReason, Usage } from '@earendil-works/pi-ai'
 import type { SessionMessage, ToolDetails } from './message.ts'
+import type { ContextUsage } from './context.ts'
 
 // ── 内核事件 ──────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ export type HostEvent =
   | { type: 'permission_request'; request: PermissionRequest }
   | { type: 'permission_resolved'; requestId: string; allowed: boolean }
   | { type: 'mode_changed'; mode: 'plan' | 'auto' | 'bypass'; source: 'user' | 'tool' }
+  | { type: 'context_usage'; usage: ContextUsage }
   | { type: 'plan_request'; request: PlanRequest }
   | { type: 'plan_resolved'; requestId: string; approved: boolean }
   | { type: 'ask_user_request'; request: AskUserRequest }

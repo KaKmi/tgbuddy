@@ -69,6 +69,16 @@ export function updateSessionMode(
   )
 }
 
+export function updateSessionContextUsage(
+  sessions: SessionMeta[],
+  sessionId: string,
+  contextUsage: NonNullable<SessionMeta['contextUsage']>,
+): SessionMeta[] {
+  return sessions.map((session) =>
+    session.id === sessionId ? { ...session, contextUsage } : session,
+  )
+}
+
 /** sessionId → 已落盘的历史消息 */
 export const messagesBySessionAtom = atom<Map<string, SessionMessage[]>>(new Map())
 
@@ -246,7 +256,7 @@ export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEven
       return event.usage
         ? {
             ...prev,
-            inputTokens: event.usage.input + event.usage.cacheRead,
+            inputTokens: event.usage.totalTokens,
             outputTokens: event.usage.output,
             costUsd: event.usage.cost.total,
           }

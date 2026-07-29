@@ -14,6 +14,7 @@
 import type { StreamFrame } from './types/event.ts'
 import type { SessionMessage } from './types/message.ts'
 import type { Channel } from './types/channel.ts'
+import type { ContextUsage } from './types/context.ts'
 import type {
   AskUserRequest,
   AskUserResponse,
@@ -97,6 +98,9 @@ export interface SessionMeta {
   lastActivity?: string
   /** 产物数量，用于「N 个产物」。阶段 4 有了工具才会非零 */
   artifactCount?: number
+
+  /** 最近一次模型调用后的上下文占用，供侧边栏和输入区直接展示 */
+  contextUsage?: ContextUsage
 
   /** 从别的会话派生而来 —— 扁平引用，不成树（见 docs/06 决定 5） */
   originRef?: { sessionId: string; messageId: string }

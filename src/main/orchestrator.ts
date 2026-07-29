@@ -17,6 +17,7 @@ import type { StreamFrame, StreamPayload } from '../shared/types/event.ts'
 import { toKernelMessages } from '../shared/types/message.ts'
 import { buildModels } from '../kernel/models.ts'
 import { eventFromPi } from '../kernel/normalize.ts'
+import { buildContextUsage } from '../kernel/context-usage.ts'
 import { DATA_DIR, listChannels } from './channel-store.ts'
 import * as permission from './permission-service.ts'
 import * as store from './session-store.ts'
@@ -157,6 +158,18 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
       //   比如 write → 「正在写 reports/q2-risk.md」
       if (event.type === 'tool_start') {
         store.updateMeta(sessionId, { lastActivity: `正在执行 ${event.toolName}…` })
+      }
+
+      if (event.type === 'turn_end' && event.usage) {
+        const contextUsage = buildContextUsage({
+          messages: agent.state.messages,
+          systemPrompt: agent.state.systemPrompt,
+          tools: agent.state.tools,
+          contextWindow: model.contextWindow,
+          usage: event.usage,
+        })
+        store.updateMeta(sessionId, { contextUsage })
+        emit({ channel: 'host', event: { type: 'context_usage', usage: contextUsage } })
       }
 
       emit({ channel: 'agent', event })

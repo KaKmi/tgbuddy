@@ -27,6 +27,7 @@ import {
   sessionsAtom,
   streamStatesAtom,
   updateSessionMode,
+  updateSessionContextUsage,
   type LocalEvent,
   type Marker,
 } from '../atoms/agent.ts'
@@ -198,6 +199,13 @@ export function useGlobalAgentListeners(): void {
           // 当前模式已经由输入框上方的 ModeChip 持续展示，
           // 不再往对话时间线插入重复的切换提示。
           store.set(sessionsAtom, (sessions) => updateSessionMode(sessions, sessionId, event.mode))
+          break
+        }
+
+        case 'context_usage': {
+          store.set(sessionsAtom, (sessions) =>
+            updateSessionContextUsage(sessions, sessionId, event.usage),
+          )
           break
         }
 

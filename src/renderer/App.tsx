@@ -26,6 +26,7 @@ import { PermissionBanner } from './components/PermissionBanner.tsx'
 import { ToolCard } from './components/ToolCard.tsx'
 import { PlanApproval } from './components/PlanApproval.tsx'
 import { AskUserCard } from './components/AskUserCard.tsx'
+import { ContextUsagePanel } from './components/ContextUsagePanel.tsx'
 import { MARKER_STYLE, SystemMarker } from './components/SystemMarker.tsx'
 import type { PermissionMode } from '../shared/types/permission.ts'
 import {
@@ -221,6 +222,9 @@ export function App() {
           {currentId && (
             <div className="mx-auto mb-2 flex max-w-3xl items-center gap-1.5">
               <ModeChip sessionId={currentId} mode={mode} />
+              {currentSession?.contextUsage && (
+                <ContextUsagePanel usage={currentSession.contextUsage} />
+              )}
             </div>
           )}
           <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border bg-card p-1.5">
@@ -255,11 +259,6 @@ export function App() {
               </button>
             )}
           </div>
-          {(stream.inputTokens || stream.costUsd) && (
-            <p className="mx-auto mt-2 max-w-3xl text-right text-xs text-muted-foreground">
-              in {stream.inputTokens} · out {stream.outputTokens} · ${stream.costUsd?.toFixed(6)}
-            </p>
-          )}
         </div>
       </main>
 
