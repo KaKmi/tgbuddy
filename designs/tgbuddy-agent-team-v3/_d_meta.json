@@ -1,0 +1,23 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "TgBuddy Agent Team v3": {
+      "versions": [
+        {
+          "path": "TgBuddy Agent Team v3.html",
+          "createdAt": "2026-07-29T17:37:46.440Z",
+          "status": "needs-review",
+          "subtitle": "Agent Team 任务、成员、授权与失败重派工作台",
+          "viewport": {
+            "width": 1500,
+            "height": 900
+          }
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-07-29T17:37:46.441Z",
+  "updatedAt": "2026-07-29T17:37:46.441Z"
+}
