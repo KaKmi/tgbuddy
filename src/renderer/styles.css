@@ -1,0 +1,187 @@
+/*
+ * streamdown 自带的样式（代码块动画）。
+ * ⚠️ CSS 规范要求 @import 必须在所有其它语句之前（@charset 除外），
+ *    放到 @tailwind 后面 postcss 会直接报错。
+ */
+@import 'streamdown/styles.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * ═══════════════════════════════════════════════════════════════
+ * 颜色系统 —— shadcn 的标准契约，不是可选项
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * 这套变量是 shadcn 生态的**公共接口**：streamdown、AI Elements、
+ * 任何 shadcn 组件都直接用 `bg-background` / `border-border` /
+ * `text-muted-foreground` 这些语义类。
+ *
+ * 不定义的后果不是"没主题"，是**样式错乱**：
+ * `border border-border` 里 `border` 生效（1px）但 `border-border` 是
+ * 不存在的类，于是边框取 Tailwind 默认的浅灰 —— 深色背景上一圈白边。
+ *
+ * 值用 HSL 三元组、不带 hsl() 包裹，这样 Tailwind 能做 `/<alpha-value>`
+ * 透明度运算（见 tailwind.config.js）。
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --content-area: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+
+    --radius: 0.5rem; /* 8px —— 原型里出现 32 次，是主导圆角 */
+  }
+
+  /*
+   * 深色 —— 值直接取自交互原型（tgbuddy-mockup/）。
+   *
+   * 原型的配色是一套**四级灰阶递进**，很克制：
+   *   #0e0e0f 侧边栏 → #141415 对话区 → #17171a 卡片 → #1b1b1e 悬浮层
+   * 每级只差一点点亮度，靠层次而不是边框区分区域。
+   *
+   * ★ `--background`（侧边栏）和 `--content-area`（对话区）刻意不同，
+   *   这是三栏布局拉开层次的主要手段。
+   */
+  .dark {
+    --background: 240 3% 6%; /* #0e0e0f 侧边栏 */
+    --content-area: 240 2% 8%; /* #141415 对话区 */
+    --foreground: 240 4% 95%; /* #f2f2f3 */
+
+    --muted: 240 6% 10%; /* #17171a */
+    --muted-foreground: 240 4% 56%; /* #8a8a92 次要文字 */
+
+    /*
+     * 原型里边框是 `rgba(255,255,255,.055)` 叠在 #141415 上，
+     * 折算成实色约 #212122。这里存实色而不是白色+透明度 ——
+     * 因为下面有全局 `* { border-color: hsl(var(--border)) }`，
+     * 存白色会让所有边框变成实心白。
+     */
+    --border: 240 2% 13%;
+    --input: 240 5% 11%;
+    --ring: 212 49% 66%;
+
+    --primary: 240 4% 96%; /* #f4f4f5 主按钮=近白 */
+    --primary-foreground: 240 6% 10%;
+    --secondary: 240 6% 10%;
+    --secondary-foreground: 240 4% 95%;
+    --accent: 240 5% 11%; /* #1b1b1e hover/选中 */
+    --accent-foreground: 240 4% 95%;
+    --destructive: 4 51% 57%; /* #c9635b */
+    --destructive-foreground: 0 0% 98%;
+
+    --card: 240 6% 10%; /* #17171a */
+    --card-foreground: 240 4% 95%;
+    --popover: 240 5% 11%; /* #1b1b1e 弹出层比卡片再亮一档 */
+    --popover-foreground: 240 4% 95%;
+  }
+}
+
+/*
+ * 状态色 —— 四态工具卡片、连接状态、风险等级共用同一套语义。
+ * 同样取自原型，亮暗一致（它们本来就是为深色设计的）。
+ */
+@layer base {
+  :root {
+    --status-pending: 37 73% 56%; /* #e0a33e 琥珀：等待授权 */
+    --status-running: 212 49% 66%; /* #7fa7d4 蓝：执行中 */
+    --status-success: 140 33% 67%; /* #8fc6a5 绿：成功 */
+    --status-error: 4 51% 57%; /* #c9635b 红：失败 */
+    --status-skill: 254 53% 76%; /* #b0a2e0 紫：技能 */
+    --code-bg: 216 14% 14%; /* #1e2228 代码块，亮暗一致 */
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden; /* 桌面应用，整窗不滚动，滚动交给内部容器 */
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════════
+ * 滚动条
+ * ═══════════════════════════════════════════════════════════════
+ *
+ * Windows 上 Chromium 的默认滚动条是 17px 宽的浅灰实心块，
+ * 放在这套深色 UI 里非常刺眼，而且占掉的宽度会让右侧内容偏移。
+ *
+ * 做法：细、无轨道底色、滑块用前景色的低透明度 —— 平时几乎看不见，
+ * 需要时又能抓住。hover 时才提亮，符合"安静的东西不抢注意力"。
+ */
+* {
+  scrollbar-width: thin; /* Firefox / 标准属性 */
+  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.22);
+  border-radius: 9999px;
+  /* 用透明边框把滑块"收窄"到 6px，同时保留 10px 的可点击热区 */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.45);
+}
+
+/* 两条滚动条交汇的直角，默认会画一个浅色方块 */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/*
+ * 代码块内部的横向滚动条要更淡 —— 它叠在 --code-bg 上，
+ * 用同一个前景色会显得过重。
+ */
+pre::-webkit-scrollbar-thumb,
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.15);
+}
