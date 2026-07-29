@@ -29,6 +29,7 @@
  */
 
 import type { Message as PiMessage } from '@earendil-works/pi-ai'
+import type { AgentMessage } from '@earendil-works/pi-agent-core'
 
 /** 当前内核标识，写进会话文件头 */
 export const KERNEL_ID = 'pi@0.82' as const
@@ -88,7 +89,16 @@ export interface NoticeMessage extends EnvelopeBase {
   display: boolean
 }
 
-export type SessionMessage = KernelMessage | NoticeMessage
+/** 压缩边界。摘要进入模型上下文，原始消息仍保留在 JSONL 中。 */
+export interface CompactionMessage extends EnvelopeBase {
+  kind: 'compaction'
+  summary: string
+  compactedCount: number
+  tokensBefore: number
+  firstKeptEntryId: string
+}
+
+export type SessionMessage = KernelMessage | NoticeMessage | CompactionMessage
 
 // ── 便利函数 ──────────────────────────────────────────────────────
 
@@ -97,16 +107,30 @@ export type SessionMessage = KernelMessage | NoticeMessage
  *
  * 唯一的转换点，而且是单向的、无信息损失风险的。
  */
-export function toKernelMessages(messages: SessionMessage[]): PiMessage[] {
-  return messages.map((m) =>
-    m.kind === 'kernel'
-      ? m.message
-      : ({ role: 'user', content: [{ type: 'text', text: m.text }], timestamp: m.createdAt } satisfies PiMessage),
-  )
+export function toKernelMessages(messages: SessionMessage[]): AgentMessage[] {
+  return messages.map((m) => {
+    if (m.kind === 'kernel') return m.message
+    if (m.kind === 'compaction') {
+      return {
+        role: 'compactionSummary',
+        summary: m.summary,
+        tokensBefore: m.tokensBefore,
+        timestamp: m.createdAt,
+      } satisfies AgentMessage
+    }
+    return {
+      role: 'user',
+      content: [{ type: 'text', text: m.text }],
+      timestamp: m.createdAt,
+    } satisfies PiMessage
+  })
 }
 
 /** 取一条消息的角色，UI 分发用 */
-export function roleOf(m: SessionMessage): 'user' | 'assistant' | 'tool_result' | 'notice' {
+export function roleOf(
+  m: SessionMessage,
+): 'user' | 'assistant' | 'tool_result' | 'notice' | 'compaction' {
   if (m.kind === 'notice') return 'notice'
+  if (m.kind === 'compaction') return 'compaction'
   return m.message.role === 'toolResult' ? 'tool_result' : m.message.role
 }

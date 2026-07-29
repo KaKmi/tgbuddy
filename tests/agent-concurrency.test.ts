@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import {
   acceptRunFrame,
+  applyAgentEvent,
+  applyCompactionState,
+  emptyStreamState,
   indexPendingRequests,
   mergePendingRequests,
   updateSessionMode,
@@ -55,5 +58,16 @@ describe('Agent 并发状态', () => {
 
     expect(updated[0]?.permissionMode).toBe('plan')
     expect(updated[1]?.permissionMode).toBe('auto')
+  })
+
+  test('run_start 不会抹掉自动压缩倒计时', () => {
+    const scheduled = applyCompactionState(emptyStreamState(), {
+      type: 'scheduled',
+      deadlineAt: 123,
+    })
+    const running = applyAgentEvent(scheduled, { type: 'run_start' })
+
+    expect(running.running).toBe(true)
+    expect(running.compaction?.status).toBe('scheduled')
   })
 })

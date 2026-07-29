@@ -5,7 +5,7 @@
  * 因此合计使用供应商数据，分类沿用 pi 压缩模块的保守字符估算法，再把误差归入对话消息。
  */
 
-import { estimateContextTokens } from '@earendil-works/pi-agent-core'
+import { estimateContextTokens, estimateTokens } from '@earendil-works/pi-agent-core'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import type { Usage } from '@earendil-works/pi-ai'
 import type { ContextUsage, ContextUsageBreakdown } from '../shared/types/context.ts'
@@ -22,6 +22,16 @@ export interface ContextUsageInput {
   tools: ContextToolDefinition[]
   contextWindow: number
   usage: Usage
+  now?: number
+}
+
+export interface EstimatedContextUsageInput {
+  messages: AgentMessage[]
+  systemPrompt: string
+  tools: ContextToolDefinition[]
+  contextWindow: number
+  outputTokens?: number
+  costUsd?: number
   now?: number
 }
 
@@ -91,5 +101,55 @@ export function buildContextUsage(input: ContextUsageInput): ContextUsage {
     outputTokens: input.usage.output,
     costUsd: input.usage.cost.total,
     updatedAt: input.now ?? Date.now(),
+  }
+}
+
+export function buildEstimatedContextUsage(input: EstimatedContextUsageInput): ContextUsage {
+  const systemPrompt = estimateTextTokens(input.systemPrompt)
+  const tools = estimateToolTokens(input.tools)
+  const messages = estimateContextTokens(input.messages).tokens
+  const usedTokens = systemPrompt + tools + messages
+  const contextWindow = Math.max(0, input.contextWindow)
+
+  return {
+    usedTokens,
+    contextWindow,
+    percent:
+      contextWindow > 0 ? Math.round((usedTokens / contextWindow) * 1_000) / 10 : 0,
+    breakdown: { systemPrompt, tools, messages, skills: 0, mcp: 0 },
+    outputTokens: input.outputTokens ?? 0,
+    costUsd: input.costUsd ?? 0,
+    updatedAt: input.now ?? Date.now(),
+  }
+}
+
+export function buildPostCompactionUsage(
+  messages: AgentMessage[],
+  previous: ContextUsage | undefined,
+  contextWindow: number,
+  outputTokens = 0,
+  costUsd = 0,
+): ContextUsage {
+  // 保留消息里的 assistant.usage 仍指向压缩前的请求，不能用于压缩后的即时统计。
+  const messagesTokens = messages.reduce((sum, message) => sum + estimateTokens(message), 0)
+  const stable = previous?.breakdown ?? {
+    systemPrompt: 0,
+    tools: 0,
+    messages: 0,
+    skills: 0,
+    mcp: 0,
+  }
+  const usedTokens =
+    stable.systemPrompt + stable.tools + stable.skills + stable.mcp + messagesTokens
+
+  return {
+    usedTokens,
+    contextWindow,
+    percent:
+      contextWindow > 0 ? Math.round((usedTokens / contextWindow) * 1_000) / 10 : 0,
+    breakdown: { ...stable, messages: messagesTokens },
+    outputTokens,
+    costUsd,
+    updatedAt: Date.now(),
   }
 }

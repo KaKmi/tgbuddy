@@ -14,6 +14,7 @@
     "build:renderer": "vite build",
     "build": "bun run build:main && bun run build:preload && bun run build:renderer",
     "probe": "bun run scripts/probe.ts",
+    "probe:compaction": "bun run scripts/probe-compaction.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

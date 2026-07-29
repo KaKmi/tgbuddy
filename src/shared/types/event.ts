@@ -74,8 +74,11 @@ export type HostEvent =
   /** 一次运行结束时统一清掉可能残留的授权和计划卡片 */
   | { type: 'pending_requests_cleared' }
   | { type: 'expert_changed'; expertId: string; expertName: string }
-  | { type: 'compaction_start' }
-  | { type: 'compaction_end'; summary: string; compactedCount: number }
+  | { type: 'compaction_scheduled'; deadlineAt: number }
+  | { type: 'compaction_queued' }
+  | { type: 'compaction_start'; compactedCount: number }
+  | { type: 'compaction_end'; summary: string; compactedCount: number; usage: ContextUsage }
+  | { type: 'compaction_cancelled' }
   | { type: 'retry'; attempt: number; maxAttempts: number; reason: string }
   | { type: 'title_updated'; title: string }
   /** 宿主侧错误（渠道配置、文件读写、MCP 连接失败等） */

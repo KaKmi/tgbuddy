@@ -18,6 +18,8 @@ const api: TgBuddyAPI = {
     create: (input) => ipcRenderer.invoke(IPC.SESSION_CREATE, input),
     delete: (id) => ipcRenderer.invoke(IPC.SESSION_DELETE, id),
     messages: (id) => ipcRenderer.invoke(IPC.SESSION_MESSAGES, id),
+    compactedMessages: (id, compactionId) =>
+      ipcRenderer.invoke(IPC.SESSION_COMPACTED_MESSAGES, id, compactionId),
     updateMeta: (id, patch) => ipcRenderer.invoke(IPC.SESSION_UPDATE_META, id, patch),
   },
   agent: {
@@ -41,6 +43,11 @@ const api: TgBuddyAPI = {
   askUser: {
     respond: (res) => ipcRenderer.invoke(IPC.ASK_USER_RESPOND, res),
     pending: () => ipcRenderer.invoke(IPC.ASK_USER_PENDING),
+  },
+  compaction: {
+    start: (sessionId) => ipcRenderer.invoke(IPC.COMPACTION_START, sessionId),
+    defer: (sessionId) => ipcRenderer.invoke(IPC.COMPACTION_DEFER, sessionId),
+    cancel: (sessionId) => ipcRenderer.invoke(IPC.COMPACTION_CANCEL, sessionId),
   },
   channel: {
     list: () => ipcRenderer.invoke(IPC.CHANNEL_LIST),

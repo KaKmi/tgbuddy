@@ -16,9 +16,10 @@ import { randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SessionMeta } from '../shared/ipc.ts'
-import { KERNEL_ID, type SessionMessage } from '../shared/types/message.ts'
+import { KERNEL_ID, type CompactionMessage, type SessionMessage } from '../shared/types/message.ts'
 import {
   SESSION_FORMAT_VERSION,
+  type CompactionSourceEntry,
   type SessionEntry,
   type SessionHeader,
   type SessionLine,
@@ -155,52 +156,39 @@ export function getMessages(id: string): SessionMessage[] {
  * 每行独立解析，避免一行损坏导致整个会话无法恢复。
  */
 function replayJsonl(id: string): SessionMessage[] {
-  const path = jsonlPath(id)
-  if (!existsSync(path)) return []
+  return replaySessionEntries(readEntries(id))
+}
 
-  let raw: string
-  try {
-    raw = readFileSync(path, 'utf-8')
-  } catch (e) {
-    console.error(`[session] 读取失败：${path}`, e)
-    return []
+export function replaySessionEntries(entries: SessionEntry[]): SessionMessage[] {
+  let lastCompaction: Extract<SessionEntry, { type: 'compaction' }> | undefined
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i]!
+    if (entry.type === 'compaction') {
+      lastCompaction = entry
+      break
+    }
   }
-
   const messages: SessionMessage[] = []
   /** truncate 标记：记录被软删除的起点，重放到最后再统一裁剪 */
   const truncateFrom: string[] = []
-  let badLines = 0
 
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue
+  let reachedKeptBoundary = !lastCompaction
+  if (lastCompaction) messages.push(toCompactionMessage(lastCompaction))
 
-    let parsed: SessionLine
-    try {
-      parsed = JSON.parse(line) as SessionLine
-    } catch {
-      badLines++
-      continue
-    }
-
-    if (parsed.type === 'session') continue // header
-
-    switch (parsed.type) {
+  for (const entry of entries) {
+    switch (entry.type) {
       case 'message':
-        messages.push(parsed.message)
+        if (lastCompaction && !reachedKeptBoundary) {
+          reachedKeptBoundary = entry.id === lastCompaction.firstKeptEntryId
+        }
+        if (reachedKeptBoundary) messages.push(entry.message)
         break
       case 'truncate':
-        truncateFrom.push(parsed.fromId)
+        truncateFrom.push(entry.fromId)
         break
-      // model_change / compaction / custom 不产生消息。
-      // TODO(阶段 6): compaction 要在这里改写重放结果 ——
-      //   遇到 compaction 时丢弃 firstKeptEntryId 之前的消息、插入 summary
       default:
         break
     }
-  }
-
-  if (badLines > 0) {
-    console.warn(`[session] ${id}.jsonl 有 ${badLines} 行损坏，已跳过`)
   }
 
   // 应用软删除：从最早的截断点起，后面的全部失效
@@ -214,6 +202,100 @@ function replayJsonl(id: string): SessionMessage[] {
   }
 
   return messages
+}
+
+function replayRawMessages(entries: SessionEntry[]): SessionMessage[] {
+  const messages = entries
+    .filter((entry): entry is Extract<SessionEntry, { type: 'message' }> => entry.type === 'message')
+    .map((entry) => entry.message)
+  const truncateFrom = entries
+    .filter((entry): entry is Extract<SessionEntry, { type: 'truncate' }> => entry.type === 'truncate')
+    .map((entry) => entry.fromId)
+  let cut = messages.length
+  for (const fromId of truncateFrom) {
+    const index = messages.findIndex((message) => message.id === fromId)
+    if (index !== -1 && index < cut) cut = index
+  }
+  return messages.slice(0, cut)
+}
+
+function readEntries(id: string): SessionEntry[] {
+  const path = jsonlPath(id)
+  if (!existsSync(path)) return []
+
+  let raw: string
+  try {
+    raw = readFileSync(path, 'utf-8')
+  } catch (e) {
+    console.error(`[session] 读取失败：${path}`, e)
+    return []
+  }
+
+  const entries: SessionEntry[] = []
+  let badLines = 0
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      const parsed = JSON.parse(line) as SessionLine
+      if (parsed.type !== 'session') entries.push(parsed)
+    } catch {
+      badLines++
+    }
+  }
+
+  if (badLines > 0) console.warn(`[session] ${id}.jsonl 有 ${badLines} 行损坏，已跳过`)
+  return entries
+}
+
+function toCompactionMessage(
+  entry: Extract<SessionEntry, { type: 'compaction' }>,
+): CompactionMessage {
+  return {
+    kind: 'compaction',
+    id: entry.id,
+    createdAt: entry.timestamp,
+    summary: entry.summary,
+    compactedCount: entry.compactedCount ?? 0,
+    tokensBefore: entry.tokensBefore,
+    firstKeptEntryId: entry.firstKeptEntryId,
+  }
+}
+
+export function getCompactionSourceEntries(id: string): CompactionSourceEntry[] {
+  return getMessages(id).map((message) => {
+    if (message.kind === 'compaction') {
+      return {
+        type: 'compaction',
+        id: message.id,
+        timestamp: message.createdAt,
+        summary: message.summary,
+        firstKeptEntryId: message.firstKeptEntryId,
+        tokensBefore: message.tokensBefore,
+        compactedCount: message.compactedCount,
+      } satisfies CompactionSourceEntry
+    }
+    return {
+      type: 'message',
+      id: message.id,
+      timestamp: message.createdAt,
+      message,
+    } satisfies CompactionSourceEntry
+  })
+}
+
+/** 读取某次压缩隐藏掉的原始消息，供摘要分隔线按需展开。 */
+export function getCompactedMessages(id: string, compactionId: string): SessionMessage[] {
+  const entries = readEntries(id)
+  const compactionIndex = entries.findIndex(
+    (entry) => entry.type === 'compaction' && entry.id === compactionId,
+  )
+  if (compactionIndex === -1) return []
+  const compaction = entries[compactionIndex]!
+  if (compaction.type !== 'compaction') return []
+
+  const before = replayRawMessages(entries.slice(0, compactionIndex))
+  const boundaryIndex = before.findIndex((message) => message.id === compaction.firstKeptEntryId)
+  return boundaryIndex === -1 ? before : before.slice(0, boundaryIndex)
 }
 
 /**
@@ -236,7 +318,8 @@ export function countArtifacts(id: string): number {
   //    从**调用参数**推导反而更稳：不依赖任何工具的 details 形状。
   const callPaths = new Map<string, string>()
 
-  for (const m of getMessages(id)) {
+  const messages = replayRawMessages(readEntries(id))
+  for (const m of messages) {
     if (m.kind !== 'kernel' || m.message.role !== 'assistant') continue
     for (const block of m.message.content) {
       if (block.type !== 'toolCall' || !PRODUCING.has(block.name)) continue
@@ -247,7 +330,7 @@ export function countArtifacts(id: string): number {
 
   // ② 再看哪些调用真的成功了 —— 报错的不算产物
   const produced = new Set<string>()
-  for (const m of getMessages(id)) {
+  for (const m of messages) {
     if (m.kind !== 'kernel' || m.message.role !== 'toolResult') continue
     if (m.message.isError) continue
     const path = callPaths.get(m.message.toolCallId)
@@ -272,6 +355,28 @@ export function appendMessage(id: string, message: SessionMessage): void {
   if (cached) cached.push(message)
 
   updateMeta(id, {})
+}
+
+export function appendCompaction(
+  id: string,
+  result: { summary: string; firstKeptEntryId: string; tokensBefore: number },
+): CompactionMessage {
+  const rawMessages = replayRawMessages(readEntries(id))
+  const boundaryIndex = rawMessages.findIndex((message) => message.id === result.firstKeptEntryId)
+  const compactedCount = boundaryIndex === -1 ? rawMessages.length : boundaryIndex
+  const entry: Extract<SessionEntry, { type: 'compaction' }> = {
+    type: 'compaction',
+    id: newId(),
+    timestamp: Date.now(),
+    summary: result.summary,
+    firstKeptEntryId: result.firstKeptEntryId,
+    tokensBefore: result.tokensBefore,
+    compactedCount,
+  }
+  appendEntry(id, entry)
+  cache.delete(id)
+  updateMeta(id, {})
+  return toCompactionMessage(entry)
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   currentMarkersAtom,
   type ToolActivity,
   messagesBySessionAtom,
+  queuedPromptsAtom,
   sessionsAtom,
 } from './atoms/agent.ts'
 import { roleOf, type SessionMessage } from '../shared/types/message.ts'
@@ -27,6 +28,8 @@ import { ToolCard } from './components/ToolCard.tsx'
 import { PlanApproval } from './components/PlanApproval.tsx'
 import { AskUserCard } from './components/AskUserCard.tsx'
 import { ContextUsagePanel } from './components/ContextUsagePanel.tsx'
+import { CompactionDivider } from './components/CompactionDivider.tsx'
+import { CompactionStatus } from './components/CompactionStatus.tsx'
 import { MARKER_STYLE, SystemMarker } from './components/SystemMarker.tsx'
 import type { PermissionMode } from '../shared/types/permission.ts'
 import {
@@ -41,6 +44,7 @@ export function App() {
   const [sessions, setSessions] = useAtom(sessionsAtom)
   const [currentId, setCurrentId] = useAtom(currentSessionIdAtom)
   const setMessagesMap = useSetAtom(messagesBySessionAtom)
+  const [queuedPrompts, setQueuedPrompts] = useAtom(queuedPromptsAtom)
   const messages = useAtomValue(currentMessagesAtom)
   const stream = useAtomValue(currentStreamAtom)
   const permissions = useAtomValue(currentPermissionsAtom)
@@ -50,6 +54,7 @@ export function App() {
   const currentSession = sessions.find((x) => x.id === currentId)
   const mode: PermissionMode = currentSession?.permissionMode ?? 'auto'
   const [input, setInput] = useState('')
+  const queuedPrompt = currentId ? queuedPrompts.get(currentId) : undefined
 
   // 工具调用 ↔ 结果的配对索引，整段历史只建一次
   const toolResults = useMemo(() => buildToolResultMap(messages), [messages])
@@ -85,8 +90,12 @@ export function App() {
 
   async function send() {
     const text = input.trim()
-    if (!text || !currentId || stream.running) return
+    if (!text || !currentId || stream.running || queuedPrompt) return
     setInput('')
+    if (stream.compaction) {
+      setQueuedPrompts((current) => new Map(current).set(currentId, text))
+      return
+    }
     await window.tgbuddy.agent.send({ sessionId: currentId, text })
   }
 
@@ -159,7 +168,13 @@ export function App() {
           ) : (
             <ConversationContent className="mx-auto w-full max-w-3xl gap-4 px-6 py-6">
               {messages.map((m) => (
-                <MessageView key={m.id} message={m} toolResults={toolResults} liveToolIds={liveToolIds} />
+                <MessageView
+                  key={m.id}
+                  sessionId={currentId}
+                  message={m}
+                  toolResults={toolResults}
+                  liveToolIds={liveToolIds}
+                />
               ))}
 
               {/* 流式中的内容 */}
@@ -169,6 +184,10 @@ export function App() {
                 </pre>
               )}
               {stream.text && <Response streaming>{stream.text}</Response>}
+
+              {currentId && stream.compaction && (
+                <CompactionStatus sessionId={currentId} state={stream.compaction} />
+              )}
 
               {stream.toolActivities.map((t) => (
                 <ToolCard
@@ -223,7 +242,11 @@ export function App() {
             <div className="mx-auto mb-2 flex max-w-3xl items-center gap-1.5">
               <ModeChip sessionId={currentId} mode={mode} />
               {currentSession?.contextUsage && (
-                <ContextUsagePanel usage={currentSession.contextUsage} />
+                <ContextUsagePanel
+                  sessionId={currentId}
+                  usage={currentSession.contextUsage}
+                  disabled={stream.running || Boolean(stream.compaction)}
+                />
               )}
             </div>
           )}
@@ -252,13 +275,18 @@ export function App() {
             ) : (
               <button
                 onClick={() => void send()}
-                disabled={!currentId || !input.trim()}
+                disabled={!currentId || !input.trim() || Boolean(queuedPrompt)}
                 className="shrink-0 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
               >
-                发送
+                {stream.compaction ? '排队' : '发送'}
               </button>
             )}
           </div>
+          {queuedPrompt && (
+            <p className="mx-auto mt-2 max-w-3xl text-right text-[11px] text-muted-foreground">
+              已排队，压缩完成后自动发送
+            </p>
+          )}
         </div>
       </main>
 
@@ -403,10 +431,12 @@ export function buildToolResultMap(messages: SessionMessage[]): ToolResultMap {
 }
 
 function MessageView({
+  sessionId,
   message,
   toolResults,
   liveToolIds,
 }: {
+  sessionId: string
   message: SessionMessage
   toolResults: ToolResultMap
   liveToolIds: Set<string>
@@ -417,6 +447,10 @@ function MessageView({
         {(message as { text: string }).text}
       </div>
     )
+  }
+
+  if (message.kind === 'compaction') {
+    return <CompactionDivider sessionId={sessionId} message={message} />
   }
 
   if (message.kind !== 'kernel') return null

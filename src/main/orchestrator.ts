@@ -18,6 +18,7 @@ import { toKernelMessages } from '../shared/types/message.ts'
 import { buildModels } from '../kernel/models.ts'
 import { eventFromPi } from '../kernel/normalize.ts'
 import { buildContextUsage } from '../kernel/context-usage.ts'
+import { convertStoredMessagesToLlm } from '../kernel/compaction.ts'
 import { DATA_DIR, listChannels } from './channel-store.ts'
 import * as permission from './permission-service.ts'
 import * as store from './session-store.ts'
@@ -27,6 +28,7 @@ import { buildBuiltinTools } from './tools/index.ts'
 import { buildAskUserTool } from './tools/ask-user.ts'
 import { buildPlanModeTools } from './tools/plan-mode.ts'
 import { configureSandbox } from './tools/sandbox.ts'
+import * as compaction from './compaction-service.ts'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -56,6 +58,10 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
   // ── ① 入口检查 + 抢占槽位（第一个 await 之前）──────────────────
   if (activeRuns.has(sessionId)) {
     emitHostError(sessionId, 0, '上一条消息仍在处理中，请稍候', sendFrame)
+    return
+  }
+  if (compaction.isCompacting(sessionId)) {
+    emitHostError(sessionId, 0, '正在压缩历史消息，请稍候', sendFrame)
     return
   }
   // 严格递增，避免 Date.now() 在同一毫秒内重复导致旧流无法识别。
@@ -134,6 +140,7 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
       streamFn: models.streamSimple.bind(models),
       // 不依赖 process.env —— GUI 启动的 Electron 读不到 shell 环境变量
       getApiKey: async () => channel.apiKey,
+      convertToLlm: convertStoredMessagesToLlm,
       // ★ 权限拦截点。这个钩子是 await 的，所以能真的挂起 agent loop
       //   等一次 IPC 往返到渲染进程弹窗（阶段 1 实测确认过）
       beforeToolCall: permission.createBeforeToolCall(sessionId, (request) => {
@@ -170,6 +177,13 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
         })
         store.updateMeta(sessionId, { contextUsage })
         emit({ channel: 'host', event: { type: 'context_usage', usage: contextUsage } })
+        compaction.scheduleIfNeeded(
+          sessionId,
+          contextUsage.usedTokens,
+          contextUsage.contextWindow,
+          sendFrame,
+          () => isRunning(sessionId),
+        )
       }
 
       emit({ channel: 'agent', event })
@@ -202,6 +216,7 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
     askUser.clearSession(sessionId)
     emit({ channel: 'host', event: { type: 'pending_requests_cleared' } })
     releaseRun() // ③ 兜底释放
+    compaction.runQueued(sessionId, sendFrame)
   }
 }
 

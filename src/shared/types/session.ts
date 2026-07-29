@@ -24,7 +24,7 @@
 import type { SessionMessage } from './message.ts'
 
 /** 存储格式版本。改了 entry 结构就 +1，并在读取端写迁移 */
-export const SESSION_FORMAT_VERSION = 1
+export const SESSION_FORMAT_VERSION = 2
 
 /** JSONL 首行，不参与消息重放 */
 export interface SessionHeader {
@@ -49,6 +49,8 @@ export type SessionEntry =
       summary: string
       firstKeptEntryId: string
       tokensBefore: number
+      /** v1 预留结构没有这个字段，读取旧会话时按 0 处理 */
+      compactedCount?: number
     })
   /** 应用状态，**不进 LLM 上下文** */
   | (EntryBase & { type: 'custom'; key: string; value: unknown })
@@ -57,3 +59,6 @@ export type SessionEntry =
 
 /** JSONL 里的一行 */
 export type SessionLine = SessionHeader | SessionEntry
+
+/** 交给 kernel 压缩适配器的线性历史。只暴露压缩算法需要的字段。 */
+export type CompactionSourceEntry = Extract<SessionEntry, { type: 'message' | 'compaction' }>

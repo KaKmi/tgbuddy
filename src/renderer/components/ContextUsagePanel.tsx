@@ -26,7 +26,15 @@ export function formatTokens(tokens: number): string {
   return `${(tokens / 1_000_000).toFixed(2)}M`
 }
 
-export function ContextUsagePanel({ usage }: { usage: ContextUsage }) {
+export function ContextUsagePanel({
+  sessionId,
+  usage,
+  disabled,
+}: {
+  sessionId: string
+  usage: ContextUsage
+  disabled: boolean
+}) {
   const [open, setOpen] = useState(false)
   const rows = buildContextRows(usage)
   const safePercent = Math.max(0, Math.min(usage.percent, 100))
@@ -117,18 +125,21 @@ export function ContextUsagePanel({ usage }: { usage: ContextUsage }) {
                 />
               </div>
               <p className="text-[11.5px] leading-[1.65] text-[#75757e]">
-                阶段 6 接入后将在 85% 自动压缩，并支持手动压缩对话消息。
+                到 85% 自动压缩，触发前 3 秒可以选择「稍后」；也可随时手动压缩。
               </p>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled
-                  title="上下文压缩将在阶段 6 接入"
-                  className="rounded-lg bg-white/[.08] px-[13px] py-[7px] text-[12.5px] text-[#ececf0] opacity-40"
+                  onClick={() => {
+                    void window.tgbuddy.compaction.start(sessionId)
+                    setOpen(false)
+                  }}
+                  disabled={disabled}
+                  className="rounded-lg bg-white/[.08] px-[13px] py-[7px] text-[12.5px] text-[#ececf0] hover:bg-white/[.14] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   立即压缩对话消息
                 </button>
-                <span className="text-[11px] text-[#75757e]">阶段 6 开放</span>
+                {disabled && <span className="text-[11px] text-[#75757e]">任务或压缩进行中</span>}
               </div>
             </div>
 

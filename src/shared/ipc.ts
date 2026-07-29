@@ -33,6 +33,7 @@ export const IPC = {
   SESSION_CREATE: 'session:create',
   SESSION_DELETE: 'session:delete',
   SESSION_MESSAGES: 'session:messages',
+  SESSION_COMPACTED_MESSAGES: 'session:compacted-messages',
   SESSION_UPDATE_META: 'session:update-meta',
 
   // Agent 运行
@@ -50,6 +51,11 @@ export const IPC = {
   PLAN_RESPOND: 'plan:respond',
   PLAN_PENDING: 'plan:pending',
   MODE_SET: 'mode:set',
+
+  // 上下文压缩
+  COMPACTION_START: 'compaction:start',
+  COMPACTION_DEFER: 'compaction:defer',
+  COMPACTION_CANCEL: 'compaction:cancel',
 
   // 用户问答
   ASK_USER_RESPOND: 'ask-user:respond',
@@ -126,6 +132,7 @@ export interface TgBuddyAPI {
     create(input: { title?: string; channelId?: string; modelId?: string }): Promise<SessionMeta>
     delete(id: string): Promise<void>
     messages(id: string): Promise<SessionMessage[]>
+    compactedMessages(id: string, compactionId: string): Promise<SessionMessage[]>
     updateMeta(id: string, patch: Partial<SessionMeta>): Promise<void>
   }
   agent: {
@@ -147,6 +154,11 @@ export interface TgBuddyAPI {
   askUser: {
     respond(res: AskUserResponse): Promise<void>
     pending(): Promise<AskUserRequest[]>
+  }
+  compaction: {
+    start(sessionId: string): Promise<void>
+    defer(sessionId: string): Promise<void>
+    cancel(sessionId: string): Promise<void>
   }
   channel: {
     list(): Promise<Channel[]>

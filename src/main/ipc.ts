@@ -15,6 +15,7 @@ import * as orchestrator from './orchestrator.ts'
 import * as permission from './permission-service.ts'
 import * as plan from './plan-service.ts'
 import * as askUser from './ask-user-service.ts'
+import * as compaction from './compaction-service.ts'
 import * as store from './session-store.ts'
 
 export function registerIpc(getWindow: () => BrowserWindow | null): void {
@@ -44,12 +45,17 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   )
 
   ipcMain.handle(IPC.SESSION_DELETE, (_e, id: string): void => {
+    compaction.clearSession(id)
     store.deleteSession(id)
     // 会话级规则跟着会话一起走，project/global 的留着 —— 那是用户攒的资产
     permission.expireSessionRules(id)
   })
 
   ipcMain.handle(IPC.SESSION_MESSAGES, (_e, id: string) => store.getMessages(id))
+
+  ipcMain.handle(IPC.SESSION_COMPACTED_MESSAGES, (_e, id: string, compactionId: string) =>
+    store.getCompactedMessages(id, compactionId),
+  )
 
   ipcMain.handle(IPC.SESSION_UPDATE_META, (_e, id: string, patch: Partial<SessionMeta>): void =>
     store.updateMeta(id, patch),
@@ -94,6 +100,16 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     store.updateMeta(sessionId, { permissionMode: mode })
     // source='user' —— UI 据此区分是用户点的还是模型自己切的
     pushHost({ type: 'mode_changed', mode, source: 'user' }, sessionId)
+  })
+
+  ipcMain.handle(IPC.COMPACTION_START, (_e, sessionId: string): void => {
+    void compaction.start(sessionId, sendFrame, () => orchestrator.isRunning(sessionId))
+  })
+  ipcMain.handle(IPC.COMPACTION_DEFER, (_e, sessionId: string): void => {
+    compaction.defer(sessionId, sendFrame)
+  })
+  ipcMain.handle(IPC.COMPACTION_CANCEL, (_e, sessionId: string): void => {
+    compaction.cancel(sessionId, sendFrame)
   })
 
   // ── 渠道 ────────────────────────────────────────────────────────

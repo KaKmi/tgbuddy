@@ -43,6 +43,11 @@ export interface StreamState {
   inputTokens?: number
   outputTokens?: number
   costUsd?: number
+  compaction?: {
+    status: 'scheduled' | 'queued' | 'running'
+    deadlineAt?: number
+    compactedCount?: number
+  }
   /** 内核错误，要显示给用户 —— 不显示的话认证失败看起来就是"模型不说话" */
   error?: string
 }
@@ -79,11 +84,33 @@ export function updateSessionContextUsage(
   )
 }
 
+export function applyCompactionState(
+  prev: StreamState,
+  event:
+    | { type: 'scheduled'; deadlineAt: number }
+    | { type: 'queued' }
+    | { type: 'running'; compactedCount: number }
+    | { type: 'clear' },
+): StreamState {
+  if (event.type === 'clear') return { ...prev, compaction: undefined }
+  if (event.type === 'scheduled') {
+    return { ...prev, compaction: { status: 'scheduled', deadlineAt: event.deadlineAt } }
+  }
+  if (event.type === 'queued') return { ...prev, compaction: { status: 'queued' } }
+  return {
+    ...prev,
+    compaction: { status: 'running', compactedCount: event.compactedCount },
+  }
+}
+
 /** sessionId → 已落盘的历史消息 */
 export const messagesBySessionAtom = atom<Map<string, SessionMessage[]>>(new Map())
 
 /** sessionId → 当前流式状态 */
 export const streamStatesAtom = atom<Map<string, StreamState>>(new Map())
+
+/** 压缩期间排队的一条用户消息。每个会话独立，切换页面不会丢。 */
+export const queuedPromptsAtom = atom<Map<string, string>>(new Map())
 
 /**
  * sessionId → 待授权请求队列。
@@ -200,7 +227,8 @@ export type LocalEvent = { type: 'tool_running'; toolCallId: string }
 export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEvent): StreamState {
   switch (event.type) {
     case 'run_start':
-      return { ...emptyStreamState(), running: true }
+      // 自动压缩的 3 秒提示可能与下一次发送重叠，不能被 run_start 静默抹掉。
+      return { ...emptyStreamState(), running: true, compaction: prev.compaction }
 
     case 'text_delta':
       return { ...prev, text: prev.text + event.delta, error: undefined }

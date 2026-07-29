@@ -71,8 +71,9 @@ export function buildModels(channels: Channel[]): MutableModels {
             name: `${channel.name} API Key`,
             // 我们自己管凭据（加密存在配置文件里），不走 pi 的凭据存储，
             // 也不依赖环境变量——GUI 启动的 Electron 拿不到 shell 的环境变量。
-            // 真正的 key 在每次请求时通过 options.apiKey 传入，优先级高于这里。
-            resolve: async () => ({ auth: {} }),
+            // 压缩摘要直接调用 Models.completeSimple，不经过 Agent.getApiKey，
+            // 所以 provider 自身也必须能解析到同一个 key。
+            resolve: async () => ({ auth: { apiKey: channel.apiKey }, source: 'TgBuddy 渠道配置' }),
           },
         },
         models: channel.models.map((m) => toPiModel(channel, m)),

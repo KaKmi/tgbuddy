@@ -15,6 +15,7 @@ import { useEffect } from 'react'
 import { useStore } from 'jotai'
 import {
   acceptRunFrame,
+  applyCompactionState,
   applyAgentEvent,
   emptyStreamState,
   indexPendingRequests,
@@ -24,6 +25,7 @@ import {
   pendingPermissionsAtom,
   pendingPlansAtom,
   pendingAskUserAtom,
+  queuedPromptsAtom,
   sessionsAtom,
   streamStatesAtom,
   updateSessionMode,
@@ -42,6 +44,24 @@ function pushMarker(
   const map = new Map(store.get(markersAtom))
   map.set(sessionId, [...(map.get(sessionId) ?? []), marker])
   store.set(markersAtom, map)
+}
+
+function flushQueuedPrompt(store: ReturnType<typeof useStore>, sessionId: string): void {
+  const queued = new Map(store.get(queuedPromptsAtom))
+  const text = queued.get(sessionId)
+  if (!text) return
+  queued.delete(sessionId)
+  store.set(queuedPromptsAtom, queued)
+  void window.tgbuddy.agent.send({ sessionId, text })
+}
+
+async function refreshMessagesAndFlush(
+  store: ReturnType<typeof useStore>,
+  sessionId: string,
+): Promise<void> {
+  const messages = await window.tgbuddy.session.messages(sessionId)
+  store.set(messagesBySessionAtom, (current) => new Map(current).set(sessionId, messages))
+  flushQueuedPrompt(store, sessionId)
 }
 
 /**
@@ -209,6 +229,57 @@ export function useGlobalAgentListeners(): void {
           break
         }
 
+        case 'compaction_scheduled': {
+          const states = new Map(store.get(streamStatesAtom))
+          const prev = states.get(sessionId) ?? emptyStreamState()
+          states.set(
+            sessionId,
+            applyCompactionState(prev, { type: 'scheduled', deadlineAt: event.deadlineAt }),
+          )
+          store.set(streamStatesAtom, states)
+          break
+        }
+
+        case 'compaction_queued': {
+          const states = new Map(store.get(streamStatesAtom))
+          const prev = states.get(sessionId) ?? emptyStreamState()
+          states.set(sessionId, applyCompactionState(prev, { type: 'queued' }))
+          store.set(streamStatesAtom, states)
+          break
+        }
+
+        case 'compaction_start': {
+          const states = new Map(store.get(streamStatesAtom))
+          const prev = states.get(sessionId) ?? emptyStreamState()
+          states.set(
+            sessionId,
+            applyCompactionState(prev, { type: 'running', compactedCount: event.compactedCount }),
+          )
+          store.set(streamStatesAtom, states)
+          break
+        }
+
+        case 'compaction_end': {
+          const states = new Map(store.get(streamStatesAtom))
+          const prev = states.get(sessionId) ?? emptyStreamState()
+          states.set(sessionId, applyCompactionState(prev, { type: 'clear' }))
+          store.set(streamStatesAtom, states)
+          store.set(sessionsAtom, (sessions) =>
+            updateSessionContextUsage(sessions, sessionId, event.usage),
+          )
+          void refreshMessagesAndFlush(store, sessionId)
+          break
+        }
+
+        case 'compaction_cancelled': {
+          const states = new Map(store.get(streamStatesAtom))
+          const prev = states.get(sessionId) ?? emptyStreamState()
+          states.set(sessionId, applyCompactionState(prev, { type: 'clear' }))
+          store.set(streamStatesAtom, states)
+          flushQueuedPrompt(store, sessionId)
+          break
+        }
+
         case 'retry': {
           pushMarker(store, sessionId, {
             id: `retry-${Date.now()}`,
@@ -226,7 +297,6 @@ export function useGlobalAgentListeners(): void {
           break
         }
 
-        // TODO(阶段 6): compaction_start / compaction_end
         // TODO(阶段 7.5): expert_changed  ／ TODO: title_updated
         default:
           break
