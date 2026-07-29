@@ -23,6 +23,7 @@ import {
   messagesBySessionAtom,
   pendingPermissionsAtom,
   pendingPlansAtom,
+  pendingAskUserAtom,
   streamStatesAtom,
   type LocalEvent,
   type Marker,
@@ -154,6 +155,26 @@ export function useGlobalAgentListeners(): void {
           break
         }
 
+        case 'ask_user_request': {
+          pendingRevision++
+          store.set(
+            pendingAskUserAtom,
+            mergePendingRequests(store.get(pendingAskUserAtom), [event.request]),
+          )
+          break
+        }
+
+        case 'ask_user_resolved': {
+          pendingRevision++
+          const map = new Map(store.get(pendingAskUserAtom))
+          for (const [sid, list] of map) {
+            const next = list.filter((request) => request.requestId !== event.requestId)
+            if (next.length !== list.length) map.set(sid, next)
+          }
+          store.set(pendingAskUserAtom, map)
+          break
+        }
+
         case 'pending_requests_cleared': {
           pendingRevision++
           const permissions = new Map(store.get(pendingPermissionsAtom))
@@ -164,6 +185,10 @@ export function useGlobalAgentListeners(): void {
           const plans = new Map(store.get(pendingPlansAtom))
           plans.delete(sessionId)
           store.set(pendingPlansAtom, plans)
+
+          const questions = new Map(store.get(pendingAskUserAtom))
+          questions.delete(sessionId)
+          store.set(pendingAskUserAtom, questions)
           break
         }
 
@@ -207,15 +232,17 @@ export function useGlobalAgentListeners(): void {
     const restorePendingRequests = async (): Promise<void> => {
       while (!disposed) {
         const revision = pendingRevision
-        const [permissions, plans] = await Promise.all([
+        const [permissions, plans, questions] = await Promise.all([
           window.tgbuddy.permission.pending(),
           window.tgbuddy.plan.pending(),
+          window.tgbuddy.askUser.pending(),
         ])
         if (disposed) return
         if (revision !== pendingRevision) continue
 
         store.set(pendingPermissionsAtom, indexPendingRequests(permissions))
         store.set(pendingPlansAtom, indexPendingRequests(plans))
+        store.set(pendingAskUserAtom, indexPendingRequests(questions))
         return
       }
     }

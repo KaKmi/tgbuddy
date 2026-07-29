@@ -21,7 +21,9 @@ import { DATA_DIR, listChannels } from './channel-store.ts'
 import * as permission from './permission-service.ts'
 import * as store from './session-store.ts'
 import * as plan from './plan-service.ts'
+import * as askUser from './ask-user-service.ts'
 import { buildBuiltinTools } from './tools/index.ts'
+import { buildAskUserTool } from './tools/ask-user.ts'
 import { buildPlanModeTools } from './tools/plan-mode.ts'
 import { configureSandbox } from './tools/sandbox.ts'
 import { existsSync, mkdirSync } from 'node:fs'
@@ -99,10 +101,19 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
     // 状态在我们手里，Agent 只是个无状态的执行器——这正是 pi 的心智模型。
     const agent = new Agent({
       initialState: {
-        systemPrompt: buildSystemPrompt(workspaceDir),
+        systemPrompt: buildSystemPrompt(workspaceDir, meta.permissionMode ?? 'auto'),
         model,
         tools: [
           ...buildBuiltinTools(workspaceDir),
+          buildAskUserTool({
+            requestAnswers: (questions, signal) =>
+              askUser.requestAnswers(
+                sessionId,
+                questions,
+                (request) => emit({ channel: 'host', event: { type: 'ask_user_request', request } }),
+                signal,
+              ),
+          }),
           ...buildPlanModeTools({
             getMode: () => permission.getMode(sessionId),
             setMode: (mode) => {
@@ -175,6 +186,7 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
     //   不做这个，用户关掉窗口后 agent loop 会永远挂在一个等不到答复的 Promise 上
     permission.clearSession(sessionId)
     plan.clearSession(sessionId)
+    askUser.clearSession(sessionId)
     emit({ channel: 'host', event: { type: 'pending_requests_cleared' } })
     releaseRun() // ③ 兜底释放
   }
@@ -220,7 +232,7 @@ function shortReason(message: string): string {
  *   - 静态部分吃 prompt caching，会话期间不变
  *   - 动态部分每条消息实时读盘（当前时间、工作目录、专家绑定的技能列表）
  */
-function buildSystemPrompt(workspaceDir: string): string {
+function buildSystemPrompt(workspaceDir: string, mode: 'plan' | 'auto' | 'bypass'): string {
   return [
     '你是 TgBuddy 的 Agent 助手。回答简洁准确，中文优先。',
     '',
@@ -232,6 +244,16 @@ function buildSystemPrompt(workspaceDir: string): string {
     '- 改文件前先 read 确认现状，不要凭猜测 write 覆盖',
     '- edit 的 old_text 必须唯一，找不到或有多处时请提供更长的上下文',
     '- 写操作和命令需要用户授权，被拒绝时换一种方式，不要重复请求同一个操作',
+    '- 缺少会显著影响方案或结果的信息时，必须调用 ask_user；不要只输出问题后结束任务',
+    ...(mode === 'plan'
+      ? [
+          '',
+          '## 计划模式',
+          '- 当前已经处于计划模式，不要再次调用 enter_plan_mode',
+          '- 先用只读工具调研；需要用户补充信息时调用 ask_user',
+          '- 计划完整后调用 exit_plan_mode 提交审批，不要直接执行写操作',
+        ]
+      : []),
   ].join('\n')
 }
 

@@ -163,6 +163,11 @@ function extractPath(args: Record<string, unknown>): string | undefined {
 // ── 判定 ──────────────────────────────────────────────────────────
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search'])
+const CONTROL_TOOLS = new Set(['enter_plan_mode', 'exit_plan_mode', 'ask_user'])
+
+export function isControlTool(toolName: string): boolean {
+  return CONTROL_TOOLS.has(toolName)
+}
 
 function assessRisk(toolName: string, args: Record<string, unknown>): RiskLevel {
   if (READONLY_TOOLS.has(toolName)) return 'low'
@@ -208,6 +213,9 @@ export function createBeforeToolCall(sessionId: string, send: RequestSender) {
     const toolName = ctx.toolCall.name
     const args = (ctx.args ?? {}) as Record<string, unknown>
     const mode = getMode(sessionId)
+
+    // 宿主控制工具不产生工作区副作用，不能被权限模式反向拦截。
+    if (isControlTool(toolName)) return undefined
 
     // ── bypass：全放行 ────────────────────────────────────────
     if (mode === 'bypass') return undefined

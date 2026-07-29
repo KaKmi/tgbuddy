@@ -140,3 +140,33 @@ export interface PlanResponse {
   /** 拒绝时给模型的修改意见 */
   reason?: string
 }
+
+// ── 用户问答 ──────────────────────────────────────────────────────
+
+export interface AskUserOption {
+  label: string
+  description: string
+}
+
+export interface AskUserQuestion {
+  id: string
+  header: string
+  question: string
+  options: AskUserOption[]
+}
+
+export interface AskUserRequest {
+  requestId: string
+  sessionId: string
+  questions: AskUserQuestion[]
+}
+
+export interface AskUserAnswer {
+  questionId: string
+  value: string
+}
+
+export interface AskUserResponse {
+  requestId: string
+  answers: AskUserAnswer[]
+}

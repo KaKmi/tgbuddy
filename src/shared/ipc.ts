@@ -15,6 +15,8 @@ import type { StreamFrame } from './types/event.ts'
 import type { SessionMessage } from './types/message.ts'
 import type { Channel } from './types/channel.ts'
 import type {
+  AskUserRequest,
+  AskUserResponse,
   PermissionMode,
   PermissionRequest,
   PermissionResponse,
@@ -47,6 +49,10 @@ export const IPC = {
   PLAN_RESPOND: 'plan:respond',
   PLAN_PENDING: 'plan:pending',
   MODE_SET: 'mode:set',
+
+  // 用户问答
+  ASK_USER_RESPOND: 'ask-user:respond',
+  ASK_USER_PENDING: 'ask-user:pending',
 
   // 渠道
   CHANNEL_LIST: 'channel:list',
@@ -133,6 +139,10 @@ export interface TgBuddyAPI {
     pending(): Promise<PlanRequest[]>
     /** 用户手动切换权限模式 */
     setMode(sessionId: string, mode: PermissionMode): Promise<void>
+  }
+  askUser: {
+    respond(res: AskUserResponse): Promise<void>
+    pending(): Promise<AskUserRequest[]>
   }
   channel: {
     list(): Promise<Channel[]>

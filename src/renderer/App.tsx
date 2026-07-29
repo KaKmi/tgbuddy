@@ -14,6 +14,7 @@ import {
   currentStreamAtom,
   currentPermissionsAtom,
   currentPlansAtom,
+  currentAskUserAtom,
   currentMarkersAtom,
   type ToolActivity,
   messagesBySessionAtom,
@@ -24,6 +25,7 @@ import type { SessionMeta } from '../shared/ipc.ts'
 import { PermissionBanner } from './components/PermissionBanner.tsx'
 import { ToolCard } from './components/ToolCard.tsx'
 import { PlanApproval } from './components/PlanApproval.tsx'
+import { AskUserCard } from './components/AskUserCard.tsx'
 import { MARKER_STYLE, SystemMarker } from './components/SystemMarker.tsx'
 import type { PermissionMode } from '../shared/types/permission.ts'
 import {
@@ -42,6 +44,7 @@ export function App() {
   const stream = useAtomValue(currentStreamAtom)
   const permissions = useAtomValue(currentPermissionsAtom)
   const plans = useAtomValue(currentPlansAtom)
+  const questions = useAtomValue(currentAskUserAtom)
   const markers = useAtomValue(currentMarkersAtom)
   const currentSession = sessions.find((x) => x.id === currentId)
   const mode: PermissionMode = currentSession?.permissionMode ?? 'auto'
@@ -195,6 +198,10 @@ export function App() {
               {/* 计划待审批 */}
               {plans.map((p) => (
                 <PlanApproval key={p.requestId} request={p} />
+              ))}
+
+              {questions.map((request) => (
+                <AskUserCard key={request.requestId} request={request} />
               ))}
 
               {/* ★ 内核错误必须显示。不显示的话认证失败看起来就是"模型不说话" */}

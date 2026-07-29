@@ -8,12 +8,13 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import { IPC, type PermissionResponse, type SendInput, type SessionMeta } from '../shared/ipc.ts'
 import type { HostEvent, StreamFrame } from '../shared/types/event.ts'
-import type { PermissionMode, PlanResponse } from '../shared/types/permission.ts'
+import type { AskUserResponse, PermissionMode, PlanResponse } from '../shared/types/permission.ts'
 import type { Channel } from '../shared/types/channel.ts'
 import { listChannels, saveChannels } from './channel-store.ts'
 import * as orchestrator from './orchestrator.ts'
 import * as permission from './permission-service.ts'
 import * as plan from './plan-service.ts'
+import * as askUser from './ask-user-service.ts'
 import * as store from './session-store.ts'
 
 export function registerIpc(getWindow: () => BrowserWindow | null): void {
@@ -80,6 +81,13 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   })
 
   ipcMain.handle(IPC.PLAN_PENDING, () => plan.getPending())
+
+  ipcMain.handle(IPC.ASK_USER_RESPOND, (_e, res: AskUserResponse): void => {
+    askUser.respond(res)
+    pushHost({ type: 'ask_user_resolved', requestId: res.requestId })
+  })
+
+  ipcMain.handle(IPC.ASK_USER_PENDING, () => askUser.getPending())
 
   ipcMain.handle(IPC.MODE_SET, (_e, sessionId: string, mode: PermissionMode): void => {
     permission.setMode(sessionId, mode)

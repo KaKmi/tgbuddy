@@ -9,7 +9,11 @@ import { atom } from 'jotai'
 import type { AgentEvent } from '../../shared/types/event.ts'
 import type { SessionMeta } from '../../shared/ipc.ts'
 import type { SessionMessage } from '../../shared/types/message.ts'
-import type { PermissionRequest, PlanRequest } from '../../shared/types/permission.ts'
+import type {
+  AskUserRequest,
+  PermissionRequest,
+  PlanRequest,
+} from '../../shared/types/permission.ts'
 import type { MarkerKind } from '../components/SystemMarker.tsx'
 
 export interface ToolActivity {
@@ -72,6 +76,9 @@ export const pendingPermissionsAtom = atom<Map<string, PermissionRequest[]>>(new
 /** sessionId → 待审批的计划 */
 export const pendingPlansAtom = atom<Map<string, PlanRequest[]>>(new Map())
 
+/** sessionId → 等待用户回答的问题 */
+export const pendingAskUserAtom = atom<Map<string, AskUserRequest[]>>(new Map())
+
 export const currentPlansAtom = atom((get) => {
   const id = get(currentSessionIdAtom)
   return id ? (get(pendingPlansAtom).get(id) ?? []) : []
@@ -110,6 +117,11 @@ export const currentStreamAtom = atom((get) => {
 export const currentMessagesAtom = atom((get) => {
   const id = get(currentSessionIdAtom)
   return id ? (get(messagesBySessionAtom).get(id) ?? []) : []
+})
+
+export const currentAskUserAtom = atom((get) => {
+  const id = get(currentSessionIdAtom)
+  return id ? (get(pendingAskUserAtom).get(id) ?? []) : []
 })
 
 interface PendingRequestBase {

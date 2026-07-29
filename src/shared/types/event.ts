@@ -51,8 +51,15 @@ export type AgentEvent =
 // ── 宿主事件 ──────────────────────────────────────────────────────
 
 // 权限相关的类型统一在 types/permission.ts，这里只做转发，避免两处定义漂移
-import type { PermissionRequest, PlanRequest } from './permission.ts'
-export type { PermissionRequest, PermissionResponse, PlanRequest, PlanResponse } from './permission.ts'
+import type { AskUserRequest, PermissionRequest, PlanRequest } from './permission.ts'
+export type {
+  AskUserRequest,
+  AskUserResponse,
+  PermissionRequest,
+  PermissionResponse,
+  PlanRequest,
+  PlanResponse,
+} from './permission.ts'
 
 export type HostEvent =
   | { type: 'permission_request'; request: PermissionRequest }
@@ -60,6 +67,8 @@ export type HostEvent =
   | { type: 'mode_changed'; mode: 'plan' | 'auto' | 'bypass'; source: 'user' | 'tool' }
   | { type: 'plan_request'; request: PlanRequest }
   | { type: 'plan_resolved'; requestId: string; approved: boolean }
+  | { type: 'ask_user_request'; request: AskUserRequest }
+  | { type: 'ask_user_resolved'; requestId: string }
   /** 一次运行结束时统一清掉可能残留的授权和计划卡片 */
   | { type: 'pending_requests_cleared' }
   | { type: 'expert_changed'; expertId: string; expertName: string }

@@ -38,6 +38,10 @@ const api: TgBuddyAPI = {
     pending: () => ipcRenderer.invoke(IPC.PLAN_PENDING),
     setMode: (sessionId, mode) => ipcRenderer.invoke(IPC.MODE_SET, sessionId, mode),
   },
+  askUser: {
+    respond: (res) => ipcRenderer.invoke(IPC.ASK_USER_RESPOND, res),
+    pending: () => ipcRenderer.invoke(IPC.ASK_USER_PENDING),
+  },
   channel: {
     list: () => ipcRenderer.invoke(IPC.CHANNEL_LIST),
     save: (channel) => ipcRenderer.invoke(IPC.CHANNEL_SAVE, channel),
