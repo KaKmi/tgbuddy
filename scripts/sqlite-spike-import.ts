@@ -21,8 +21,10 @@ export interface LegacyDiagnostic {
 
 export interface LegacyParseResult {
   sessionId: string
+  relativePath: string
   header: SessionHeader
   entries: SessionEntry[]
+  entryLines: Record<string, number>
   diagnostics: LegacyDiagnostic[]
   fingerprint: string
 }
@@ -108,11 +110,45 @@ function isHeader(value: unknown): value is SessionHeader {
   )
 }
 
+function hasMessageContent(value: Record<string, unknown>): boolean {
+  const content = value.content
+  if (typeof content === 'string') return content.length > 0
+  if (!Array.isArray(content)) return false
+  return content.every(
+    (block) =>
+      isRecord(block) &&
+      typeof block.type === 'string' &&
+      (block.type !== 'text' || typeof block.text === 'string'),
+  )
+}
+
+function isKernelMessage(value: unknown): boolean {
+  if (!isRecord(value) || !isFiniteNumber(value.timestamp) || !hasMessageContent(value)) return false
+  if (value.role === 'user') return true
+  if (value.role === 'assistant') {
+    return (
+      typeof value.api === 'string' &&
+      typeof value.provider === 'string' &&
+      typeof value.model === 'string' &&
+      typeof value.stopReason === 'string' &&
+      isRecord(value.usage)
+    )
+  }
+  if (value.role === 'toolResult') {
+    return (
+      typeof value.toolCallId === 'string' &&
+      typeof value.toolName === 'string' &&
+      typeof value.isError === 'boolean'
+    )
+  }
+  return false
+}
+
 function isSessionMessage(value: unknown): boolean {
   if (!isRecord(value) || typeof value.id !== 'string' || !isFiniteNumber(value.createdAt)) {
     return false
   }
-  if (value.kind === 'kernel') return isRecord(value.message) && typeof value.message.role === 'string'
+  if (value.kind === 'kernel') return isKernelMessage(value.message)
   if (value.kind === 'notice') {
     return typeof value.notice === 'string' && typeof value.text === 'string' && typeof value.display === 'boolean'
   }
@@ -236,13 +272,22 @@ export function parseLegacySession(input: LegacyParseInput): LegacyParseResult {
 
   if (!header) throw new Error(`${input.relativePath}:1 缺少 Session header`)
   const parsedEntries = entries.map((item) => item.entry)
+  const entryLines = Object.fromEntries(entries.map((item) => [item.entry.id, item.line]))
   const fingerprint = hash(
     input.sessionId +
       canonicalJson(input.indexMeta) +
       canonicalJson(header) +
       parsedEntries.map((entry) => canonicalJson(entry)).join('\n'),
   )
-  return { sessionId: input.sessionId, header, entries: parsedEntries, diagnostics, fingerprint }
+  return {
+    sessionId: input.sessionId,
+    relativePath: input.relativePath,
+    header,
+    entries: parsedEntries,
+    entryLines,
+    diagnostics,
+    fingerprint,
+  }
 }
 
 export function legacyReplayMessageIds(parsed: LegacyParseResult): string[] {
@@ -351,22 +396,32 @@ function activeMessageIdsFromMapped(entries: SessionTreeEntry[]): string[] {
     current = entry.parentId
   }
   path.reverse()
-  const lastCompaction = [...path].reverse().find((entry) => entry.type === 'compaction')
-  const active = lastCompaction
-    ? path.slice(path.findIndex((entry) => entry.id === lastCompaction.id))
-    : path
-  const ids: string[] = []
-  if (lastCompaction) ids.push(lastCompaction.id)
-  const firstKept =
-    lastCompaction?.type === 'compaction' ? lastCompaction.firstKeptEntryId : undefined
-  if (firstKept) {
-    const kept = path.find((entry) => entry.id === firstKept)
-    if (kept && !ids.includes(kept.id)) ids.push(kept.id)
+  const compaction = [...path]
+    .reverse()
+    .find(
+      (entry): entry is Extract<SessionTreeEntry, { type: 'compaction' }> =>
+        entry.type === 'compaction',
+    )
+  let active = path
+  if (compaction) {
+    const compactionIndex = path.findIndex((entry) => entry.id === compaction.id)
+    active = [compaction]
+    if (compaction.firstKeptEntryId) {
+      const keptIndex = path.findIndex((entry) => entry.id === compaction.firstKeptEntryId)
+      if (keptIndex !== -1 && keptIndex < compactionIndex) {
+        active.push(...path.slice(keptIndex, compactionIndex))
+      }
+    }
+    active.push(...path.slice(compactionIndex + 1))
   }
-  for (const entry of active) {
-    if (entry.type === 'message' && !ids.includes(entry.id)) ids.push(entry.id)
-  }
-  return ids
+  return active
+    .filter(
+      (entry) =>
+        entry.type === 'message' ||
+        entry.type === 'custom_message' ||
+        entry.type === 'compaction',
+    )
+    .map((entry) => entry.id)
 }
 
 export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
@@ -381,8 +436,8 @@ export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
     if (entry.type === 'model_change') {
       diagnostics.push({
         sessionId: parsed.sessionId,
-        relativePath: parsed.diagnostics[0]?.relativePath ?? `sessions/${parsed.sessionId}.jsonl`,
-        line: 0,
+        relativePath: parsed.relativePath,
+        line: parsed.entryLines[entry.id] ?? 0,
         category: 'compatibility',
         code: 'CHANNEL_PROVIDER_UNRESOLVED',
         reason: 'model_change.channelId 已保存为 legacy.model_change，未伪装为 provider',
@@ -394,15 +449,32 @@ export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
     .filter((entry): entry is Extract<SessionEntry, { type: 'truncate' }> => entry.type === 'truncate')
     .map((entry) => entry.fromId)
   if (truncateTargets.length > 0) {
-    let earliestIndex = Number.POSITIVE_INFINITY
-    let predecessor: string | null = null
-    for (const target of truncateTargets) {
-      const index = parsed.entries.findIndex((entry) => entry.id === target)
-      if (index !== -1 && index < earliestIndex) {
-        earliestIndex = index
-        predecessor = index === 0 ? null : parsed.entries[index - 1]!.id
+    const expectedActive = legacyReplayMessageIds(parsed)
+    const compaction = [...entries]
+      .reverse()
+      .find(
+        (entry): entry is Extract<SessionTreeEntry, { type: 'compaction' }> =>
+          entry.type === 'compaction',
+      )
+    if (
+      compaction?.firstKeptEntryId &&
+      !expectedActive.includes(compaction.firstKeptEntryId)
+    ) {
+      compaction.details = {
+        ...(isRecord(compaction.details) ? compaction.details : {}),
+        legacyFirstKeptEntryId: compaction.firstKeptEntryId,
       }
+      compaction.firstKeptEntryId = undefined
     }
+    const compactionIndex = compaction
+      ? parsed.entries.findIndex((entry) => entry.id === compaction.id)
+      : -1
+    const lastExpected = expectedActive.at(-1)
+    const lastExpectedIndex = lastExpected
+      ? parsed.entries.findIndex((entry) => entry.id === lastExpected)
+      : -1
+    const targetId =
+      compaction && lastExpectedIndex <= compactionIndex ? compaction.id : (lastExpected ?? null)
     const leafId = hash(`${parsed.sessionId}:truncate-leaf`).slice(0, 16)
     entries.push({
       type: 'leaf',
@@ -411,7 +483,7 @@ export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
       timestamp: new Date(
         Math.max(...parsed.entries.map((entry) => entry.timestamp)) + 1,
       ).toISOString(),
-      targetId: predecessor,
+      targetId,
     })
   }
 
@@ -433,7 +505,11 @@ export function decideLegacyImport(
   expected: LegacyImportExpectation,
 ): LegacyImportDecision {
   if (!existing) return { action: 'create' }
-  if (existing.marker !== 'tgbuddy-jsonl-v1' || existing.fingerprint !== expected.fingerprint) {
+  if (
+    existing.marker !== 'tgbuddy-jsonl-v1' ||
+    existing.sessionId !== expected.sessionId ||
+    existing.fingerprint !== expected.fingerprint
+  ) {
     return { action: 'conflict', reason: '已有同 ID Session 不属于本 importer' }
   }
   if (
