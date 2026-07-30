@@ -13,7 +13,9 @@
     "types": ["bun", "node"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@runtime/*": ["src/runtime/*"],
+      "@shared/*": ["src/shared/*"]
     }
   },
   "include": ["src/**/*", "scripts/**/*"]

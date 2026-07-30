@@ -5,14 +5,18 @@
 import { app, BrowserWindow } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { registerIpc } from './ipc.ts'
-import { ensureDataDir } from './channel-store.ts'
+import {
+  createApplication,
+  type TgBuddyApplication,
+} from './bootstrap/create-application.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
 const DEV_URL = 'http://localhost:5173'
 
 let mainWindow: BrowserWindow | null = null
+let application: TgBuddyApplication | null = null
+let quittingAfterDispose = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -59,13 +63,19 @@ async function loadDevUrlWithRetry(win: BrowserWindow, attempts = 20): Promise<v
 }
 
 app.whenReady().then(() => {
-  ensureDataDir()
-  registerIpc(() => mainWindow)
+  application = createApplication({ getWindow: () => mainWindow })
   createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', (event) => {
+  if (!application || quittingAfterDispose) return
+  event.preventDefault()
+  quittingAfterDispose = true
+  void application.dispose().finally(() => app.quit())
 })
 
 app.on('window-all-closed', () => {

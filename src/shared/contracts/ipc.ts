@@ -1,0 +1,187 @@
+/**
+ * IPC 契约 —— 通道名常量与 preload 暴露的 API 形状。
+ *
+ * 加一个新通道要同步改四个地方：
+ *   1. 这里加常量和类型
+ *   2. main/ipc.ts 注册 handler
+ *   3. preload/index.ts 暴露方法
+ *   4. renderer 的 atoms 里调用
+ *
+ * 四处不同步是这类架构最常见的 bug 来源，所以类型定义集中放这里，
+ * 让 TypeScript 帮忙对齐。
+ */
+
+import type { StreamFrame } from './events.ts'
+import type { SessionMessage } from './message.ts'
+import type { Channel } from './channel.ts'
+import type { SessionMeta } from './session.ts'
+import type {
+  AskUserRequest,
+  AskUserResponse,
+  PermissionMode,
+  PermissionRequest,
+  PermissionResponse,
+  PlanRequest,
+  PlanResponse,
+} from './permission.ts'
+
+// ── 通道名 ────────────────────────────────────────────────────────
+
+export const IPC = {
+  // 会话
+  SESSION_LIST: 'session:list',
+  SESSION_CREATE: 'session:create',
+  SESSION_DELETE: 'session:delete',
+  SESSION_MESSAGES: 'session:messages',
+  SESSION_COMPACTED_MESSAGES: 'session:compacted-messages',
+  SESSION_UPDATE_META: 'session:update-meta',
+
+  // Agent 运行
+  AGENT_SEND: 'agent:send',
+  AGENT_STOP: 'agent:stop',
+  /** 主 → 渲染，单向推送 */
+  AGENT_STREAM: 'agent:stream',
+
+  // 权限
+  PERMISSION_RESPOND: 'permission:respond',
+  /** 渲染进程重载后捞回挂起的请求 */
+  PERMISSION_PENDING: 'permission:pending',
+
+  // 计划模式
+  PLAN_RESPOND: 'plan:respond',
+  PLAN_PENDING: 'plan:pending',
+  MODE_SET: 'mode:set',
+
+  // 上下文压缩
+  COMPACTION_START: 'compaction:start',
+  COMPACTION_DEFER: 'compaction:defer',
+  COMPACTION_CANCEL: 'compaction:cancel',
+
+  // 用户问答
+  ASK_USER_RESPOND: 'ask-user:respond',
+  ASK_USER_PENDING: 'ask-user:pending',
+
+  // 渠道
+  CHANNEL_LIST: 'channel:list',
+  CHANNEL_SAVE: 'channel:save',
+  CHANNEL_DELETE: 'channel:delete',
+  CHANNEL_TEST: 'channel:test',
+} as const satisfies Record<string, keyof IpcCommandMap | keyof IpcEventMap>
+
+// ── 请求/响应类型 ─────────────────────────────────────────────────
+
+export interface SendInput {
+  sessionId: string
+  text: string
+  /** 显式调用的技能名（用户点了 /skill:xxx） */
+  invokeSkill?: string
+}
+
+export type { PermissionRequest, PermissionResponse } from './permission.ts'
+export type { SessionMeta } from './session.ts'
+
+export interface IpcCommand<Request, Response> {
+  request: Request
+  response: Response
+}
+
+/**
+ * IPC 请求/响应唯一类型源。Electron handler 与 Preload 友好 API 都从这里取类型。
+ */
+export interface IpcCommandMap {
+  'session:list': IpcCommand<undefined, SessionMeta[]>
+  'session:create': IpcCommand<
+    { title?: string; channelId?: string; modelId?: string },
+    SessionMeta
+  >
+  'session:delete': IpcCommand<string, void>
+  'session:messages': IpcCommand<string, SessionMessage[]>
+  'session:compacted-messages': IpcCommand<
+    { sessionId: string; compactionId: string },
+    SessionMessage[]
+  >
+  'session:update-meta': IpcCommand<
+    { sessionId: string; patch: Partial<SessionMeta> },
+    void
+  >
+  'agent:send': IpcCommand<SendInput, void>
+  'agent:stop': IpcCommand<string, void>
+  'permission:respond': IpcCommand<PermissionResponse, void>
+  'permission:pending': IpcCommand<undefined, PermissionRequest[]>
+  'plan:respond': IpcCommand<PlanResponse, void>
+  'plan:pending': IpcCommand<undefined, PlanRequest[]>
+  'mode:set': IpcCommand<{ sessionId: string; mode: PermissionMode }, void>
+  'compaction:start': IpcCommand<string, void>
+  'compaction:defer': IpcCommand<string, void>
+  'compaction:cancel': IpcCommand<string, void>
+  'ask-user:respond': IpcCommand<AskUserResponse, void>
+  'ask-user:pending': IpcCommand<undefined, AskUserRequest[]>
+  'channel:list': IpcCommand<undefined, Channel[]>
+  'channel:save': IpcCommand<Channel, void>
+  'channel:delete': IpcCommand<string, void>
+  'channel:test': IpcCommand<string, { success: boolean; message: string }>
+}
+
+export type IpcCommandName = keyof IpcCommandMap
+export type IpcRequest<Name extends IpcCommandName> = IpcCommandMap[Name]['request']
+export type IpcResponse<Name extends IpcCommandName> = IpcCommandMap[Name]['response']
+
+export interface IpcEventMap {
+  'agent:stream': StreamFrame
+}
+
+// ── preload 暴露给渲染进程的 API ──────────────────────────────────
+
+export interface TgBuddyAPI {
+  session: {
+    list(): Promise<IpcResponse<'session:list'>>
+    create(input: IpcRequest<'session:create'>): Promise<IpcResponse<'session:create'>>
+    delete(id: IpcRequest<'session:delete'>): Promise<IpcResponse<'session:delete'>>
+    messages(id: IpcRequest<'session:messages'>): Promise<IpcResponse<'session:messages'>>
+    compactedMessages(
+      id: string,
+      compactionId: string,
+    ): Promise<IpcResponse<'session:compacted-messages'>>
+    updateMeta(
+      id: string,
+      patch: Partial<SessionMeta>,
+    ): Promise<IpcResponse<'session:update-meta'>>
+  }
+  agent: {
+    send(input: IpcRequest<'agent:send'>): Promise<IpcResponse<'agent:send'>>
+    stop(sessionId: IpcRequest<'agent:stop'>): Promise<IpcResponse<'agent:stop'>>
+    /** 订阅流式帧，返回取消订阅函数 */
+    onStream(listener: (frame: StreamFrame) => void): () => void
+  }
+  permission: {
+    respond(res: IpcRequest<'permission:respond'>): Promise<IpcResponse<'permission:respond'>>
+    pending(): Promise<IpcResponse<'permission:pending'>>
+  }
+  plan: {
+    respond(res: IpcRequest<'plan:respond'>): Promise<IpcResponse<'plan:respond'>>
+    pending(): Promise<IpcResponse<'plan:pending'>>
+    /** 用户手动切换权限模式 */
+    setMode(sessionId: string, mode: PermissionMode): Promise<void>
+  }
+  askUser: {
+    respond(res: IpcRequest<'ask-user:respond'>): Promise<IpcResponse<'ask-user:respond'>>
+    pending(): Promise<IpcResponse<'ask-user:pending'>>
+  }
+  compaction: {
+    start(sessionId: string): Promise<void>
+    defer(sessionId: string): Promise<void>
+    cancel(sessionId: string): Promise<void>
+  }
+  channel: {
+    list(): Promise<IpcResponse<'channel:list'>>
+    save(channel: IpcRequest<'channel:save'>): Promise<IpcResponse<'channel:save'>>
+    delete(id: IpcRequest<'channel:delete'>): Promise<IpcResponse<'channel:delete'>>
+    test(id: IpcRequest<'channel:test'>): Promise<IpcResponse<'channel:test'>>
+  }
+}
+
+declare global {
+  interface Window {
+    tgbuddy: TgBuddyAPI
+  }
+}

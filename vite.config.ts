@@ -7,7 +7,11 @@ export default defineConfig({
   base: './', // 打包后用 file:// 加载，必须是相对路径
   plugins: [react()],
   resolve: {
-    alias: { '@': resolve(import.meta.dirname, 'src/renderer') },
+    alias: {
+      '@': resolve(import.meta.dirname, 'src'),
+      '@runtime': resolve(import.meta.dirname, 'src/runtime'),
+      '@shared': resolve(import.meta.dirname, 'src/shared'),
+    },
   },
   server: { port: 5173, strictPort: true },
   build: {

@@ -9,18 +9,22 @@
  */
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, type TgBuddyAPI } from '../shared/ipc.ts'
-import type { StreamFrame } from '../shared/types/event.ts'
+import { IPC, type TgBuddyAPI } from '../shared/contracts/ipc.ts'
+import type { StreamFrame } from '../shared/contracts/events.ts'
 
-const api: TgBuddyAPI = {
+const api = {
   session: {
     list: () => ipcRenderer.invoke(IPC.SESSION_LIST),
     create: (input) => ipcRenderer.invoke(IPC.SESSION_CREATE, input),
     delete: (id) => ipcRenderer.invoke(IPC.SESSION_DELETE, id),
     messages: (id) => ipcRenderer.invoke(IPC.SESSION_MESSAGES, id),
     compactedMessages: (id, compactionId) =>
-      ipcRenderer.invoke(IPC.SESSION_COMPACTED_MESSAGES, id, compactionId),
-    updateMeta: (id, patch) => ipcRenderer.invoke(IPC.SESSION_UPDATE_META, id, patch),
+      ipcRenderer.invoke(IPC.SESSION_COMPACTED_MESSAGES, {
+        sessionId: id,
+        compactionId,
+      }),
+    updateMeta: (id, patch) =>
+      ipcRenderer.invoke(IPC.SESSION_UPDATE_META, { sessionId: id, patch }),
   },
   agent: {
     send: (input) => ipcRenderer.invoke(IPC.AGENT_SEND, input),
@@ -38,7 +42,7 @@ const api: TgBuddyAPI = {
   plan: {
     respond: (res) => ipcRenderer.invoke(IPC.PLAN_RESPOND, res),
     pending: () => ipcRenderer.invoke(IPC.PLAN_PENDING),
-    setMode: (sessionId, mode) => ipcRenderer.invoke(IPC.MODE_SET, sessionId, mode),
+    setMode: (sessionId, mode) => ipcRenderer.invoke(IPC.MODE_SET, { sessionId, mode }),
   },
   askUser: {
     respond: (res) => ipcRenderer.invoke(IPC.ASK_USER_RESPOND, res),
@@ -55,6 +59,6 @@ const api: TgBuddyAPI = {
     delete: (id) => ipcRenderer.invoke(IPC.CHANNEL_DELETE, id),
     test: (id) => ipcRenderer.invoke(IPC.CHANNEL_TEST, id),
   },
-}
+} satisfies TgBuddyAPI
 
 contextBridge.exposeInMainWorld('tgbuddy', api)

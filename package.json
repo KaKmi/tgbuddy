@@ -18,6 +18,7 @@
     "probe": "bun run scripts/probe.ts",
     "probe:compaction": "bun run scripts/probe-compaction.ts",
     "test": "bun test",
+    "check:architecture": "bun run scripts/check-architecture.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
