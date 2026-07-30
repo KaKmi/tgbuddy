@@ -7,6 +7,7 @@
  * - 该文件不得成为第二个长期应用门面。
  */
 import {
+  createRunCoordinator,
   createTgBuddyRuntime,
   type SessionCommands,
   type SessionMessageHistory,
@@ -29,17 +30,21 @@ export function createLegacyRuntime(
   options: CreateLegacyRuntimeOptions,
 ): TgBuddyRuntime {
   ensureDataDir()
+  const runs = createRunCoordinator({
+    now: Date.now,
+    executor: {
+      execute: (input, context) =>
+        orchestrator.execute(input, context, options.history),
+      stop: orchestrator.stop,
+    },
+  })
 
   return createTgBuddyRuntime({
     workspaces: {
       list: () => [],
     },
     sessions: options.sessions,
-    runs: {
-      send: (input, emit) => orchestrator.send(input, emit, options.history),
-      stop: orchestrator.stop,
-      isRunning: orchestrator.isRunning,
-    },
+    runs,
     permissions: {
       respond: permission.respond,
       pending: permission.getPending,
@@ -80,6 +85,9 @@ export function createLegacyRuntime(
         return { success: false, message: '未实现' }
       },
     },
-    dispose: options.dispose,
+    async dispose() {
+      await runs.dispose()
+      await options.dispose?.()
+    },
   })
 }

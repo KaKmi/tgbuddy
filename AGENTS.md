@@ -212,7 +212,7 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 |---:|---|---|---|---|
 | 0 | SQLite packaged spike | B00 | ✅ 完成 | 打包、恢复、备份、legacy import |
 | 1 | 仓库边界与 Runtime 门面 | B01 | ✅ 完成 | contracts、Runtime、Composition Root、checker |
-| 2 | M1 可恢复 Agent 内核 | K01–K17 | ▶ K01–K06 完成；K07 下一步 | 会话、消息、流式、停止、工具、恢复、压缩 |
+| 2 | M1 可恢复 Agent 内核 | K01–K17 | ▶ K01–K07 完成；K08 下一步 | 会话、消息、流式、停止、工具、恢复、压缩 |
 | 3 | M2 Workspace 与安全 | S01–S11 | 待开始 | mount、ExecutionEnv、权限、Plan、ask_user |
 | 4 | M3 通用能力系统 | C01–C12 | 待开始 | Channel、Profile、Tool、Skill、MCP |
 | 5 | M4 附件与结果 | A01–A09 | 待开始 | Blob、附件、长输出、Artifact、结果区 |
@@ -317,7 +317,7 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 - 默认不超过 6 个生产文件；超过时先拆，或在 ledger 解释不能再拆的原因。
 - 连续两个纯基础设施 Slice 后必须有一个真实 Runtime/IPC/Renderer 消费者。
 - 同时含两个用户流程、两个持久化聚合或“新 IPC + 新整页 UI”时必须继续拆分。
-- 每个 Slice 独立 RED、GREEN、验证、peer review 和 commit。
+- 每个 Slice 独立 RED、GREEN、targeted 验证和 commit；M1 在 E2E 前集中 peer review。
 
 ---
 
@@ -330,11 +330,11 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 3. 将验收标准写成失败测试，先确认 Red。
 4. 写满足当前 Slice 的最小实现，不提前做后续 Slice。
 5. 删除本 Slice 负责的旧 owner；不能只增加新层而保留双 owner。
-6. 运行 targeted test，再运行全套 gate。
+6. 运行 targeted test、architecture、typecheck；仅按 Slice 风险追加 build/probe/spike。
 7. 使用 Conventional Commit，只暂存本 Slice 文件。
-8. 进行独立 peer review；finding 由原 implementer 定点修复。
-9. fresh review PASS 后更新 `.ship/tasks/<slice-id>/dev-ledger.md`。
-10. Slice 完成后重新运行全套回归。
+8. 更新 `.ship/tasks/<slice-id>/dev-ledger.md`，直接进入下一个 Slice。
+9. K17 后、E2E 前对整个 M1 做一次集中独立 peer review。
+10. 集中修复 finding 并通过 fresh review 后，依次进入 `$ship:e2e`、`$ship:qa`。
 
 ### Slice 完成定义
 
@@ -345,10 +345,10 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 - 本 Slice 负责的旧 owner 已删除或收缩到有明确下一删除期限的 adapter；
 - `bun run check:architecture` 通过；
 - `bun run typecheck` 通过；
-- `bun test` 全部通过；
-- `bun run build` 通过；
+- targeted test 通过；里程碑集中评审前 `bun test` 全部通过；
+- 涉及 Main/Preload/Renderer/入口的 Slice 执行 `bun run build`；
 - Slice 要求的 probe/spike/integration/E2E 通过；
-- peer review 为 PASS 或只有已记录的非阻断 concern；
+- M1 集中 peer review 在 E2E 前为 PASS；
 - ledger 已记录 commit、文件和产出接口。
 
 不允许用以下方式制造完成：

@@ -44,6 +44,10 @@ bun run dev            # 有用户可见交互时人工核对
 
 每个里程碑末尾必须执行全部 gate，并在 `.ship/tasks/<slice-id>/dev-ledger.md` 留证据。
 
+执行节奏按用户决定调整为：K01–K17 保持一个 Slice 一个 commit，只做对应
+targeted gate；K17 后、M1 E2E 前做一次整体独立 review 和集中修复，不再逐
+Slice 等待 peer review。
+
 ## 1. 路线总览
 
 | 顺序 | 里程碑 | Slice | 可演示结果 |
@@ -775,6 +779,6 @@ D04 -> U01 -> ... -> U09
 5. 运行相关测试和固定 gate。
 6. 有 UI 时启动真实 Electron，对照指定原型场景。
 7. 更新 `dev-ledger.md`：文件、公开 API、删除项、验证命令、偏差。
-8. fresh peer review；修复后独立 commit。
+8. 独立 commit 后继续下一 Slice；里程碑全部代码完成后、E2E 前集中 fresh peer review。
 
 如果实现中发现 Slice 同时包含两个主要行为，停止扩张，把第二个行为追加为新的后续 Slice，而不是把当前任务做大。

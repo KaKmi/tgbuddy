@@ -123,6 +123,19 @@ SQLite、kernel、bundle 和 UI Slice 再按计划追加 `spike:sqlite`、`probe
   - truncate 删除 compaction 原边界时写入独立 synthetic boundary 和 leaf；production `SessionMessageHistory` 通过 marker 只回放摘要及迁移后的新 tail。
   - catalog 已有同 ID 时用不可漂移的 `id + createdAt` 验证身份；不能证明同源则诊断冲突，不创建 history。
 
+### K07: RunRegistry 单 Session 单飞
+
+- Reference: `src/main/orchestrator.ts`
+  - Why analogous: 旧 owner 已有 generation token、同 Session 拒绝和跨 Session 并行语义。
+  - Mirror: 抢占必须发生在第一个 await 前；settle 必须校验 runId，迟到旧 Run 不能释放新 Run。
+  - Deviations: active Run 状态迁入 Runtime `RunRegistry`；Main 只暂留真实 Agent executor 和 stop adapter。
+- Reference: `src/runtime/app/tgbuddy-runtime.ts`
+  - Why analogous: 公开 RunCommands 已稳定，IPC/Renderer 无需变化。
+  - Mirror: `send/stop/isRunning` 契约和现有 recoverable host error 保持不变。
+  - Deviations: `RunCoordinator.dispose()` 先 stop active executor，再等待 in-flight settled，之后才释放下游 store。
+- Review cadence:
+  - 按用户决定，K07–K17 不再逐 Slice 等 peer review；保持一 Slice 一 commit，K17 后、M1 E2E 前集中 review。
+
 ## Waves
 
 M1 的 K01–K17 存在严格数据/装配依赖，并共享 Composition Root、Runtime contract 或 compatibility owner，因此全部顺序执行：
@@ -131,5 +144,5 @@ M1 的 K01–K17 存在严格数据/装配依赖，并共享 Composition Root、
 K01 -> K02 -> K03 -> K04 -> K05 -> K06
   -> K07 -> K08 -> K09 -> K10 -> K11 -> K12
   -> K13 -> K14 -> K15 -> K16 -> K17
-  -> M1 E2E -> M1 QA -> 全量回归
+  -> M1 集中 review -> M1 E2E -> M1 QA -> 全量回归
 ```

@@ -34,3 +34,15 @@ export {
   type CreateSessionMessageHistoryOptions,
   type SessionMessageHistory,
 } from './sessions/session-message-history.ts'
+export {
+  RunRegistry,
+  type ActiveRun,
+  type RunRegistryOptions,
+} from './runs/run-registry.ts'
+export {
+  createRunCoordinator,
+  type CreateRunCoordinatorOptions,
+  type RunCoordinator,
+  type RunExecutionContext,
+  type RunExecutor,
+} from './runs/run-coordinator.ts'

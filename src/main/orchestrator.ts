@@ -15,7 +15,10 @@ import { Agent, type AgentMessage } from '@earendil-works/pi-agent-core'
 import type { SendInput } from '../shared/ipc.ts'
 import type { StreamFrame, StreamPayload } from '../shared/types/event.ts'
 import { toKernelMessages } from '../shared/types/message.ts'
-import type { SessionMessageHistory } from '../runtime/index.ts'
+import type {
+  RunExecutionContext,
+  SessionMessageHistory,
+} from '../runtime/index.ts'
 import { buildModels } from '../kernel/models.ts'
 import { eventFromPi } from '../kernel/normalize.ts'
 import { buildContextUsage } from '../kernel/context-usage.ts'
@@ -35,49 +38,20 @@ import { join } from 'node:path'
 
 export type FrameSender = (frame: StreamFrame) => void
 
-/**
- * 并发守卫：sessionId → runId。
- *
- * generation 令牌处理三个常见的异步竞态：
- *   ① 抢占槽位必须在第一个 await 之前，否则并发调用会在 await 间隙绕过入口检查
- *   ② 释放时要校验 runId，防止旧流的 finally 误删新流的注册
- *   ③ 用户主动停止用单独的 Set 标记 —— 不能只靠 catch，
- *      因为中断后内核不一定走异常路径
- */
-const activeRuns = new Map<string, number>()
 const runningAgents = new Map<string, Agent>()
 const stoppedByUser = new Set<string>()
-let runSequence = 0
 
-export function isRunning(sessionId: string): boolean {
-  return activeRuns.has(sessionId)
-}
-
-export async function send(
+export async function execute(
   input: SendInput,
-  sendFrame: FrameSender,
+  context: RunExecutionContext,
   history: SessionMessageHistory,
 ): Promise<void> {
   const { sessionId } = input
+  const { runId, emit: sendFrame } = context
 
-  // ── ① 入口检查 + 抢占槽位（第一个 await 之前）──────────────────
-  if (activeRuns.has(sessionId)) {
-    emitHostError(sessionId, 0, '上一条消息仍在处理中，请稍候', sendFrame)
-    return
-  }
   if (compaction.isCompacting(sessionId)) {
     emitHostError(sessionId, 0, '正在压缩历史消息，请稍候', sendFrame)
     return
-  }
-  // 严格递增，避免 Date.now() 在同一毫秒内重复导致旧流无法识别。
-  const runId = ++runSequence
-  activeRuns.set(sessionId, runId)
-
-  const releaseRun = (): void => {
-    if (activeRuns.get(sessionId) !== runId) return // ② runId 不匹配就不清
-    activeRuns.delete(sessionId)
-    runningAgents.delete(sessionId)
-    stoppedByUser.delete(sessionId)
   }
 
   const emit = (payload: StreamPayload): void => sendFrame({ sessionId, runId, payload })
@@ -143,13 +117,16 @@ export async function send(
       compactedContext
         ? [...compactedContext, ...messages.slice(sourceMessageCount)]
         : messages
+    const initialMessages = toKernelMessages(await history.messages(sessionId))
+    // dispose/stop 可能发生在历史读取期间；此时不能再启动一个无人能中断的新 Agent。
+    if (stoppedByUser.has(sessionId)) return
 
     const agent = new Agent({
       initialState: {
         systemPrompt,
         model,
         tools,
-        messages: toKernelMessages(await history.messages(sessionId)),
+        messages: initialMessages,
       },
       streamFn: models.streamSimple.bind(models),
       // 不依赖 process.env —— GUI 启动的 Electron 读不到 shell 环境变量
@@ -218,7 +195,7 @@ export async function send(
           contextUsage.usedTokens,
           contextUsage.contextWindow,
           sendFrame,
-          () => isRunning(sessionId),
+          context.isRunning,
           history,
         )
       }
@@ -252,7 +229,8 @@ export async function send(
     plan.clearSession(sessionId)
     askUser.clearSession(sessionId)
     emit({ channel: 'host', event: { type: 'pending_requests_cleared' } })
-    releaseRun() // ③ 兜底释放
+    runningAgents.delete(sessionId)
+    stoppedByUser.delete(sessionId)
     compaction.runQueued(sessionId, sendFrame, history)
   }
 }
@@ -260,8 +238,7 @@ export async function send(
 export function stop(sessionId: string): void {
   stoppedByUser.add(sessionId)
   runningAgents.get(sessionId)?.abort()
-  // 槽位由 send() 的 finally 释放，这里不直接删，
-  // 否则和 releaseRun 的 runId 校验会打架
+  // Run 槽位由 Runtime RunCoordinator 的 finally 释放。
 }
 
 // ── 辅助 ──────────────────────────────────────────────────────────

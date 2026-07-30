@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  createRunCoordinator,
+  RunRegistry,
+  type RunExecutionContext,
+} from '../src/runtime/index.ts'
+import type { SendInput } from '../src/shared/contracts/ipc.ts'
+import type { StreamFrame } from '../src/shared/contracts/events.ts'
+import {
   acceptRunFrame,
   applyAgentEvent,
   applyCompactionState,
@@ -12,6 +19,19 @@ import {
 interface TestRequest {
   requestId: string
   sessionId: string
+}
+
+interface Deferred {
+  promise: Promise<void>
+  resolve(): void
+}
+
+function deferred(): Deferred {
+  let resolve = (): void => {}
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
 }
 
 describe('Agent 并发状态', () => {
@@ -69,5 +89,130 @@ describe('Agent 并发状态', () => {
 
     expect(running.running).toBe(true)
     expect(running.compaction?.status).toBe('scheduled')
+  })
+})
+
+describe('RunRegistry', () => {
+  test('同 Session 单飞、跨 Session 并行，旧 token 不能释放新 Run', () => {
+    const registry = new RunRegistry({ now: () => 100 })
+
+    const first = registry.start('session-1')
+    expect(registry.start('session-1')).toBeUndefined()
+    const parallel = registry.start('session-2')
+    expect(first?.runId).toBe(1)
+    expect(parallel?.runId).toBe(2)
+
+    expect(first && registry.settle(first)).toBe(true)
+    const next = registry.start('session-1')
+    expect(next?.runId).toBe(3)
+    expect(first && registry.settle(first)).toBe(false)
+    expect(registry.isRunning('session-1')).toBe(true)
+  })
+
+  test('dispose 清空 active Run 并拒绝新 Run', () => {
+    const registry = new RunRegistry({ now: () => 100 })
+    registry.start('session-1')
+    registry.start('session-2')
+
+    expect(registry.dispose().map((run) => run.sessionId)).toEqual([
+      'session-1',
+      'session-2',
+    ])
+    expect(registry.isRunning('session-1')).toBe(false)
+    expect(() => registry.start('session-3')).toThrow('RunRegistry 已关闭')
+  })
+})
+
+describe('RunCoordinator', () => {
+  test('拒绝同 Session 重入，同时允许不同 Session 执行并在 settled 后释放', async () => {
+    const pending = new Map<string, Deferred>()
+    const started: Array<{ input: SendInput; context: RunExecutionContext }> = []
+    const frames: StreamFrame[] = []
+    const coordinator = createRunCoordinator({
+      now: () => 100,
+      executor: {
+        async execute(input, context) {
+          started.push({ input, context })
+          const gate = deferred()
+          pending.set(input.sessionId, gate)
+          await gate.promise
+        },
+        stop() {},
+      },
+    })
+
+    const first = coordinator.send(
+      { sessionId: 'session-1', text: '一' },
+      (frame) => frames.push(frame),
+    )
+    await Promise.resolve()
+    await coordinator.send(
+      { sessionId: 'session-1', text: '重复' },
+      (frame) => frames.push(frame),
+    )
+    const parallel = coordinator.send(
+      { sessionId: 'session-2', text: '二' },
+      (frame) => frames.push(frame),
+    )
+    await Promise.resolve()
+
+    expect(started.map((item) => [item.input.sessionId, item.context.runId])).toEqual([
+      ['session-1', 1],
+      ['session-2', 2],
+    ])
+    expect(frames).toContainEqual({
+      sessionId: 'session-1',
+      runId: 0,
+      payload: {
+        channel: 'host',
+        event: {
+          type: 'host_error',
+          message: '上一条消息仍在处理中，请稍候',
+          recoverable: true,
+        },
+      },
+    })
+
+    pending.get('session-1')?.resolve()
+    await first
+    expect(coordinator.isRunning('session-1')).toBe(false)
+    const restarted = coordinator.send(
+      { sessionId: 'session-1', text: '三' },
+      (frame) => frames.push(frame),
+    )
+    await Promise.resolve()
+    expect(started.at(-1)?.context.runId).toBe(3)
+
+    pending.get('session-1')?.resolve()
+    pending.get('session-2')?.resolve()
+    await Promise.all([restarted, parallel])
+  })
+
+  test('dispose 停止并等待所有 active executor 后清空状态', async () => {
+    const pending = new Map<string, Deferred>()
+    const stopped: string[] = []
+    const coordinator = createRunCoordinator({
+      now: () => 100,
+      executor: {
+        async execute(input) {
+          const gate = deferred()
+          pending.set(input.sessionId, gate)
+          await gate.promise
+        },
+        stop(sessionId) {
+          stopped.push(sessionId)
+          pending.get(sessionId)?.resolve()
+        },
+      },
+    })
+    void coordinator.send({ sessionId: 'session-1', text: '一' }, () => {})
+    void coordinator.send({ sessionId: 'session-2', text: '二' }, () => {})
+    await Promise.resolve()
+
+    await coordinator.dispose()
+
+    expect(stopped).toEqual(['session-1', 'session-2'])
+    expect(coordinator.isRunning('session-1')).toBe(false)
+    expect(coordinator.isRunning('session-2')).toBe(false)
   })
 })
