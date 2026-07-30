@@ -133,7 +133,6 @@ describe('Run settled', () => {
         }
         yield { type: 'run_end', stopReason: 'stop' }
       },
-      abort() {},
       async dispose() {},
     }
     const harness = lifecycleHarness()
@@ -173,7 +172,6 @@ describe('Run settled', () => {
         }
         yield { type: 'run_end', stopReason: 'error' }
       },
-      abort() {},
       async dispose() {},
     }
     const harness = lifecycleHarness()
@@ -198,7 +196,6 @@ describe('Run settled', () => {
       async *run(): AsyncIterable<AgentEvent> {
         throw new Error('engine 崩溃')
       },
-      abort() {},
       async dispose() {},
     }
     const harness = lifecycleHarness()
@@ -223,7 +220,6 @@ describe('Run settled', () => {
         yield { type: 'run_start' }
         throw new Error('message_end 落盘失败')
       },
-      abort() {},
       async dispose() {},
     }
     const harness = lifecycleHarness()
@@ -250,7 +246,6 @@ describe('Run settled', () => {
         yield { type: 'run_end', stopReason: 'stop' }
         yield { type: 'run_end', stopReason: 'stop' }
       },
-      abort() {},
       async dispose() {},
     }
     const harness = lifecycleHarness()
@@ -273,7 +268,6 @@ describe('Run settled', () => {
         yield { type: 'run_start' }
         yield { type: 'run_end', stopReason: 'stop' }
       },
-      abort() {},
       async dispose() {},
     }
     const harness = lifecycleHarness({

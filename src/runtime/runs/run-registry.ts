@@ -2,6 +2,7 @@ export interface ActiveRun {
   sessionId: string
   runId: number
   startedAt: number
+  signal: AbortSignal
 }
 
 export interface RunRegistryOptions {
@@ -16,7 +17,10 @@ export interface RunRegistryOptions {
  */
 export class RunRegistry {
   readonly #now: () => number
-  readonly #active = new Map<string, ActiveRun>()
+  readonly #active = new Map<
+    string,
+    ActiveRun & { controller: AbortController }
+  >()
   #sequence = 0
   #disposed = false
 
@@ -28,13 +32,23 @@ export class RunRegistry {
     if (this.#disposed) throw new Error('RunRegistry 已关闭')
     if (this.#active.has(sessionId)) return undefined
 
-    const run: ActiveRun = {
+    const controller = new AbortController()
+    const run = {
       sessionId,
       runId: ++this.#sequence,
       startedAt: this.#now(),
+      signal: controller.signal,
+      controller,
     }
     this.#active.set(sessionId, run)
     return run
+  }
+
+  cancel(sessionId: string): boolean {
+    const run = this.#active.get(sessionId)
+    if (!run || run.signal.aborted) return false
+    run.controller.abort()
+    return true
   }
 
   settle(run: ActiveRun): boolean {
@@ -51,6 +65,7 @@ export class RunRegistry {
     if (this.#disposed) return []
     this.#disposed = true
     const active = [...this.#active.values()]
+    for (const run of active) run.controller.abort()
     this.#active.clear()
     return active
   }

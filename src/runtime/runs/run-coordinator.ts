@@ -22,7 +22,7 @@ export interface CreateRunCoordinatorOptions {
 
 export interface RunSettlement {
   sessionId: string
-  status: 'done' | 'failed'
+  status: 'idle' | 'done' | 'failed'
   detail?: string
 }
 
@@ -86,9 +86,7 @@ class DefaultRunCoordinator implements RunCoordinator {
   }
 
   stop(sessionId: string): void {
-    if (this.#registry.isRunning(sessionId)) {
-      this.#engine.abort(sessionId)
-    }
+    this.#registry.cancel(sessionId)
   }
 
   isRunning(sessionId: string): boolean {
@@ -97,8 +95,7 @@ class DefaultRunCoordinator implements RunCoordinator {
 
   dispose(): Promise<void> {
     if (this.#disposePromise) return this.#disposePromise
-    const active = this.#registry.dispose()
-    for (const run of active) this.#engine.abort(run.sessionId)
+    this.#registry.dispose()
     this.#disposePromise = this.#dispose()
     return this.#disposePromise
   }
@@ -117,13 +114,22 @@ class DefaultRunCoordinator implements RunCoordinator {
 
     try {
       const runningSession = await this.#lifecycle.started(run.sessionId)
+      if (run.signal.aborted) {
+        terminalEvent = { type: 'run_end', stopReason: 'aborted' }
+        return
+      }
       this.#emitHostEvent(
         run,
         { type: 'session_updated', session: runningSession },
         emit,
       )
       const invocation = await this.#createInvocation(input)
-      for await (const event of this.#engine.run(invocation)) {
+      if (run.signal.aborted) {
+        terminalEvent = { type: 'run_end', stopReason: 'aborted' }
+        return
+      }
+      for await (const event of this.#engine.run(invocation, run.signal)) {
+        if (run.signal.aborted) continue
         if (event.type === 'error') {
           agentErrorVisible = true
           failureMessage ??= event.message
@@ -134,7 +140,9 @@ class DefaultRunCoordinator implements RunCoordinator {
         }
         this.#emitAgentEvent(run, event, emit)
       }
-      if (!terminalEvent) {
+      if (run.signal.aborted) {
+        terminalEvent = { type: 'run_end', stopReason: 'aborted' }
+      } else if (!terminalEvent) {
         throw new Error('AgentEngine 未产生 run_end')
       }
       if (
@@ -146,13 +154,26 @@ class DefaultRunCoordinator implements RunCoordinator {
           : '模型调用失败'
       }
     } catch (error) {
-      failureMessage ??= errorMessage(error)
+      if (run.signal.aborted) {
+        failureMessage = undefined
+        terminalEvent = { type: 'run_end', stopReason: 'aborted' }
+      } else {
+        failureMessage ??= errorMessage(error)
+      }
     } finally {
       try {
         const settledSession = await this.#lifecycle.settled({
           sessionId: run.sessionId,
-          status: failureMessage ? 'failed' : 'done',
-          ...(failureMessage ? { detail: failureMessage } : {}),
+          status: run.signal.aborted
+            ? 'idle'
+            : failureMessage
+              ? 'failed'
+              : 'done',
+          ...(
+            failureMessage && !run.signal.aborted
+              ? { detail: failureMessage }
+              : {}
+          ),
         })
         this.#emitHostEvent(
           run,
@@ -168,10 +189,12 @@ class DefaultRunCoordinator implements RunCoordinator {
         { type: 'pending_requests_cleared' },
         emit,
       )
-      if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
-
       const visibleFailure = settlementFailure
-        ?? (!agentErrorVisible ? failureMessage : undefined)
+        ?? (
+          !run.signal.aborted && !agentErrorVisible
+            ? failureMessage
+            : undefined
+        )
       if (visibleFailure) {
         this.#emitHostEvent(
           run,
@@ -183,6 +206,7 @@ class DefaultRunCoordinator implements RunCoordinator {
           emit,
         )
       }
+      if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
       this.#registry.settle(run)
     }
   }

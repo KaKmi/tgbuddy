@@ -76,7 +76,6 @@ describe('RunCoordinator + fake AgentEngine', () => {
       async *run() {
         for (const event of emitted) yield event
       },
-      abort() {},
       async dispose() {},
     }
     const frames: StreamFrame[] = []

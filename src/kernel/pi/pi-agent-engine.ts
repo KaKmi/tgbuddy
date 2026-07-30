@@ -99,8 +99,10 @@ class PiAgentEngine implements AgentEngine {
 
   async *run(
     invocation: AgentInvocation,
+    signal: AbortSignal,
   ): AsyncIterable<AgentEvent> {
     if (this.#disposed) throw new Error('PiAgentEngine 已关闭')
+    if (signal.aborted) return
     if (this.#active.has(invocation.sessionId)) {
       throw new Error(`Session ${invocation.sessionId} 的 AgentHarness 已在运行`)
     }
@@ -112,6 +114,7 @@ class PiAgentEngine implements AgentEngine {
     if (!session) {
       throw new Error(`Session 消息后端不存在：${invocation.sessionId}`)
     }
+    if (signal.aborted) return
 
     const models = buildModels([invocation.channel])
     const model = models.getModel(invocation.channel.id, invocation.modelId)
@@ -120,6 +123,7 @@ class PiAgentEngine implements AgentEngine {
         `模型未注册：${invocation.channel.id}/${invocation.modelId}`,
       )
     }
+    if (signal.aborted) return
 
     const harness = new AgentHarness({
       session,
@@ -132,6 +136,7 @@ class PiAgentEngine implements AgentEngine {
     let promptFailed = false
     let promptError: unknown
     let sawErrorEvent = false
+    let abortPromise: Promise<void> | undefined
 
     const unsubscribe = harness.subscribe(async (event) => {
       const persisted = event.type === 'message_end'
@@ -150,7 +155,16 @@ class PiAgentEngine implements AgentEngine {
     })
 
     this.#active.set(invocation.sessionId, harness)
-    const prompt = harness.prompt(invocation.text)
+    const abortHarness = (): void => {
+      abortPromise ??= harness.abort().then(
+        () => undefined,
+        () => undefined,
+      )
+    }
+    signal.addEventListener('abort', abortHarness, { once: true })
+    const prompt = (signal.aborted
+      ? Promise.resolve()
+      : harness.prompt(invocation.text))
       .then(() => undefined, (error: unknown) => {
         promptFailed = true
         promptError = error
@@ -159,12 +173,14 @@ class PiAgentEngine implements AgentEngine {
         promptSettled = true
         events.close()
       })
+    if (signal.aborted) abortHarness()
 
     try {
       for await (const event of events) yield event
       await prompt
       if (promptFailed) throw promptError
     } finally {
+      signal.removeEventListener('abort', abortHarness)
       unsubscribe()
       if (this.#active.get(invocation.sessionId) === harness) {
         this.#active.delete(invocation.sessionId)
@@ -173,12 +189,8 @@ class PiAgentEngine implements AgentEngine {
         await harness.abort()
         await prompt
       }
+      await abortPromise
     }
-  }
-
-  abort(sessionId: string): void {
-    const harness = this.#active.get(sessionId)
-    if (harness) void harness.abort()
   }
 
   async dispose(): Promise<void> {

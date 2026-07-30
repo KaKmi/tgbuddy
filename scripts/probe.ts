@@ -125,17 +125,27 @@ const agent = new Agent({
 // 你的监听器慢 = agent 慢。往渲染进程发 IPC 时不要 await 渲染完成。
 let sawError = false
 
-async function runProductionEngine(text: string): Promise<void> {
+async function runProductionEngine(
+  text: string,
+  abortOnStart = false,
+): Promise<'completed' | 'aborted'> {
+  const controller = new AbortController()
+  let aborted = false
   for await (const event of agentEngine.run({
     ...engineInvocation,
     text,
-  })) {
+  }, controller.signal)) {
+    if (event.type === 'run_start' && abortOnStart) controller.abort()
     if (event.type === 'text_delta') process.stdout.write(event.delta)
     if (event.type === 'thinking_delta') {
       process.stdout.write(`\x1b[90m${event.delta}\x1b[0m`)
     }
     if (event.type === 'error') {
-      sawError = true
+      if (event.reason === 'aborted' && abortOnStart) {
+        aborted = true
+      } else {
+        sawError = true
+      }
       console.error(`\n\x1b[31m  [错误] ${event.reason}：${event.message}\x1b[0m`)
     }
     if (event.type === 'turn_end' && event.usage) {
@@ -146,6 +156,7 @@ async function runProductionEngine(text: string): Promise<void> {
       )
     }
   }
+  return aborted ? 'aborted' : 'completed'
 }
 
 agent.subscribe((event) => {
@@ -202,6 +213,17 @@ console.log('\n【第 3 轮】验证多轮上下文（消息数组就是全部�
 await runProductionEngine('我刚才问你的第一个问题是什么？')
 
 console.log('\n\n' + '─'.repeat(60))
+console.log('\n【第 4 轮】验证生产 AbortSignal 能停止 Harness\n')
+const abortResult = await runProductionEngine(
+  '请写一篇很长的文章，用来验证停止。',
+  true,
+)
+if (abortResult !== 'aborted') {
+  sawError = true
+  console.error('\n\x1b[31m  [错误] AbortSignal 未产生 aborted 终态\x1b[0m')
+}
+
+console.log('\n\n' + '─'.repeat(60))
 
 if (sawError) {
   await agentEngine.dispose()
@@ -219,3 +241,4 @@ await agentEngine.dispose()
 console.log(`\n✓ Harness 会话消息数：${persistedMessages.length}`)
 console.log('✓ 生产 PiAgentEngine 已通过同一 Session 恢复多轮上下文')
 console.log('✓ message_end 在 Harness 持久化完成后进入 Runtime\n')
+console.log('✓ AbortSignal 已停止生产 AgentHarness\n')

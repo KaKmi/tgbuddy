@@ -215,17 +215,35 @@ export function indexPendingRequests<T extends PendingRequestBase>(requests: T[]
   return mergePendingRequests(new Map(), requests)
 }
 
-/** 丢弃晚到的旧 run 帧，避免上一轮的完成事件覆盖新一轮状态。 */
+export interface RunFrameCursor {
+  runId: number
+  settled: boolean
+}
+
+/** 丢弃旧 Run 以及已经 settled 的同 Run 迟到帧。 */
 export function acceptRunFrame(
-  activeRunIds: Map<string, number>,
+  cursors: Map<string, RunFrameCursor>,
   sessionId: string,
   runId: number,
 ): boolean {
   if (!sessionId || runId <= 0) return true
-  const current = activeRunIds.get(sessionId)
-  if (current !== undefined && runId < current) return false
-  if (current === undefined || runId > current) activeRunIds.set(sessionId, runId)
+  const current = cursors.get(sessionId)
+  if (current && runId < current.runId) return false
+  if (current && runId === current.runId) return !current.settled
+  cursors.set(sessionId, { runId, settled: false })
   return true
+}
+
+export function settleRunFrame(
+  cursors: Map<string, RunFrameCursor>,
+  sessionId: string,
+  runId: number,
+): void {
+  if (!sessionId || runId <= 0) return
+  const current = cursors.get(sessionId)
+  if (current?.runId === runId) {
+    cursors.set(sessionId, { runId, settled: true })
+  }
 }
 
 // ── 状态机 ────────────────────────────────────────────────────────

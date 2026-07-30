@@ -27,12 +27,14 @@ import {
   pendingAskUserAtom,
   queuedPromptsAtom,
   replaceSession,
+  settleRunFrame,
   sessionsAtom,
   streamStatesAtom,
   updateSessionMode,
   updateSessionContextUsage,
   type LocalEvent,
   type Marker,
+  type RunFrameCursor,
 } from '../atoms/agent.ts'
 import type { AgentEvent } from '../../shared/types/event.ts'
 
@@ -79,8 +81,8 @@ export function useGlobalAgentListeners(): void {
   useEffect(() => {
     /** toolCallId → 待触发的「升级为执行中」定时器 */
     const timers = new Map<string, ReturnType<typeof setTimeout>>()
-    /** sessionId → 当前接受的 runId，用于丢弃旧流的迟到事件 */
-    const activeRunIds = new Map<string, number>()
+    /** 每个 Session 的 Run 游标；settled 后同 runId 的迟到帧也会被拒绝。 */
+    const runCursors = new Map<string, RunFrameCursor>()
     let pendingRevision = 0
     let disposed = false
 
@@ -101,7 +103,7 @@ export function useGlobalAgentListeners(): void {
 
     const unsubscribe = window.tgbuddy.agent.onStream((frame) => {
       const { sessionId, runId, payload } = frame
-      if (!acceptRunFrame(activeRunIds, sessionId, runId)) return
+      if (!acceptRunFrame(runCursors, sessionId, runId)) return
 
       // ── agent 通道 ─────────────────────────────────────────────
       if (payload.channel === 'agent') {
@@ -128,6 +130,9 @@ export function useGlobalAgentListeners(): void {
         if (event.type === 'tool_end') clearTimer(event.toolCallId)
 
         dispatch(sessionId, event)
+        if (event.type === 'run_end') {
+          settleRunFrame(runCursors, sessionId, runId)
+        }
         return
       }
 
@@ -340,7 +345,7 @@ export function useGlobalAgentListeners(): void {
       disposed = true
       for (const t of timers.values()) clearTimeout(t)
       timers.clear()
-      activeRunIds.clear()
+      runCursors.clear()
       unsubscribe()
     }
   }, [store])

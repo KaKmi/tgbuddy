@@ -16,7 +16,9 @@ import {
   indexPendingRequests,
   mergePendingRequests,
   replaceSession,
+  settleRunFrame,
   updateSessionMode,
+  type RunFrameCursor,
 } from '../src/renderer/atoms/agent.ts'
 
 interface TestRequest {
@@ -87,10 +89,12 @@ function createLifecycle(): RunSessionLifecycle {
 
 describe('Agent 并发状态', () => {
   test('旧 run 的迟到帧会被丢弃', () => {
-    const active = new Map<string, number>()
+    const active = new Map<string, RunFrameCursor>()
 
     expect(acceptRunFrame(active, 'session-1', 10)).toBe(true)
     expect(acceptRunFrame(active, 'session-1', 9)).toBe(false)
+    settleRunFrame(active, 'session-1', 10)
+    expect(acceptRunFrame(active, 'session-1', 10)).toBe(false)
     expect(acceptRunFrame(active, 'session-1', 11)).toBe(true)
     expect(acceptRunFrame(active, 'session-2', 1)).toBe(true)
   })
@@ -173,6 +177,10 @@ describe('RunRegistry', () => {
     const parallel = registry.start('session-2')
     expect(first?.runId).toBe(1)
     expect(parallel?.runId).toBe(2)
+    expect(first?.signal.aborted).toBe(false)
+    expect(registry.cancel('session-1')).toBe(true)
+    expect(first?.signal.aborted).toBe(true)
+    expect(registry.cancel('session-1')).toBe(false)
 
     expect(first && registry.settle(first)).toBe(true)
     const next = registry.start('session-1')
@@ -209,7 +217,6 @@ describe('RunCoordinator', () => {
         await gate.promise
         yield { type: 'run_end', stopReason: 'stop' }
       },
-      abort() {},
       async dispose() {},
     }
     const coordinator = createRunCoordinator({
@@ -283,16 +290,16 @@ describe('RunCoordinator', () => {
     const pending = new Map<string, Deferred>()
     const stopped: string[] = []
     const engine: AgentEngine = {
-      async *run(invocation) {
+      async *run(invocation, signal) {
         const gate = deferred()
         pending.set(invocation.sessionId, gate)
+        if (signal.aborted) gate.resolve()
+        signal.addEventListener('abort', gate.resolve, { once: true })
         await gate.promise
       },
-      abort(sessionId) {
-        stopped.push(sessionId)
-        pending.get(sessionId)?.resolve()
+      async dispose() {
+        stopped.push(...pending.keys())
       },
-      async dispose() {},
     }
     const coordinator = createRunCoordinator({
       now: () => 100,
@@ -309,5 +316,84 @@ describe('RunCoordinator', () => {
     expect(stopped).toEqual(['session-1', 'session-2'])
     expect(coordinator.isRunning('session-1')).toBe(false)
     expect(coordinator.isRunning('session-2')).toBe(false)
+  })
+
+  test('stop 幂等触发 AbortSignal，丢弃停止后的 engine 迟到事件并 settled 为 idle', async () => {
+    const started = deferred()
+    const settlements: Array<{
+      sessionId: string
+      status: 'idle' | 'done' | 'failed'
+    }> = []
+    const frames: StreamFrame[] = []
+    const engine: AgentEngine = {
+      async *run(_invocation, signal) {
+        yield { type: 'run_start' }
+        started.resolve()
+        if (!signal.aborted) {
+          await new Promise<void>((resolve) => {
+            signal.addEventListener('abort', () => resolve(), { once: true })
+          })
+        }
+        yield { type: 'text_delta', delta: '迟到内容' }
+        yield { type: 'run_end', stopReason: 'aborted' }
+      },
+      async dispose() {},
+    }
+    const coordinator = createRunCoordinator({
+      now: () => 100,
+      engine,
+      createInvocation,
+      lifecycle: {
+        started: (sessionId) => Promise.resolve({
+          id: sessionId,
+          title: sessionId,
+          status: 'running',
+          createdAt: 1,
+          updatedAt: 2,
+        }),
+        settled: (settlement) => {
+          settlements.push({
+            sessionId: settlement.sessionId,
+            status: settlement.status,
+          })
+          return Promise.resolve({
+            id: settlement.sessionId,
+            title: settlement.sessionId,
+            status: settlement.status,
+            createdAt: 1,
+            updatedAt: 3,
+          })
+        },
+      },
+    })
+
+    const operation = coordinator.send(
+      { sessionId: 'session-1', text: '开始' },
+      (frame) => frames.push(frame),
+    )
+    await started.promise
+    coordinator.stop('session-1')
+    coordinator.stop('session-1')
+    await operation
+
+    expect(settlements).toEqual([{
+      sessionId: 'session-1',
+      status: 'idle',
+    }])
+    expect(
+      frames.some(
+        (frame) =>
+          frame.payload.channel === 'agent'
+          && frame.payload.event.type === 'text_delta',
+      ),
+    ).toBe(false)
+    expect(frames.at(-1)).toEqual({
+      sessionId: 'session-1',
+      runId: 1,
+      payload: {
+        channel: 'agent',
+        event: { type: 'run_end', stopReason: 'aborted' },
+      },
+    })
   })
 })

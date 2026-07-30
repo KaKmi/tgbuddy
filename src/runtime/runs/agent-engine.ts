@@ -21,7 +21,9 @@ export interface AgentInvocation {
  * `message_end` 暴露前完成。
  */
 export interface AgentEngine {
-  run(invocation: AgentInvocation): AsyncIterable<AgentEvent>
-  abort(sessionId: string): void
+  run(
+    invocation: AgentInvocation,
+    signal: AbortSignal,
+  ): AsyncIterable<AgentEvent>
   dispose(): Promise<void>
 }
