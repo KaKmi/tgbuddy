@@ -7,6 +7,10 @@ import {
   mapLegacyEntries,
   parseLegacySession,
 } from '../scripts/sqlite-spike-import.ts'
+import {
+  assertPackagedRuntime,
+  resolvePackagedExecutable,
+} from '../scripts/sqlite-spike-runtime.ts'
 
 describe('SQLite Spike legacy importer', () => {
   test('逐行诊断并映射所有当前类型', async () => {
@@ -231,5 +235,29 @@ describe('SQLite Spike legacy importer', () => {
 
   test('canonicalJson 按 Unicode code point 排序对象键', () => {
     expect(canonicalJson({ '\uE000': 1, '😀': 2 })).toBe('{"":1,"😀":2}')
+  })
+})
+
+describe('SQLite Spike packaged runtime', () => {
+  test('runtime gate 拒绝开发 Electron 和错误版本', () => {
+    expect(() =>
+      assertPackagedRuntime({
+        isPackaged: false,
+        defaultApp: true,
+        appPath: 'C:\\repo',
+        electron: '39.8.10',
+        node: '22.22.1',
+        sqlite: '3.51.2',
+        hasDatabaseSync: true,
+        hasBackup: true,
+        electronRunAsNode: false,
+      }),
+    ).toThrow('必须从 packaged Electron 运行')
+  })
+
+  test('按平台解析 packaged 可执行文件', () => {
+    expect(resolvePackagedExecutable('C:\\out\\TgBuddySQLiteSpike-win32-x64', 'win32')).toBe(
+      'C:\\out\\TgBuddySQLiteSpike-win32-x64\\TgBuddySQLiteSpike.exe',
+    )
   })
 })

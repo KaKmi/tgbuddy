@@ -13,6 +13,8 @@
     "build:preload": "esbuild src/preload/index.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload.cjs",
     "build:renderer": "vite build",
     "build": "bun run build:main && bun run build:preload && bun run build:renderer",
+    "build:sqlite-spike": "esbuild scripts/sqlite-spike.ts scripts/sqlite-spike-main.ts --bundle --platform=node --format=esm --packages=external --outdir=dist/sqlite-spike --sourcemap",
+    "spike:sqlite": "bun run build:sqlite-spike && node dist/sqlite-spike/sqlite-spike.js",
     "probe": "bun run scripts/probe.ts",
     "probe:compaction": "bun run scripts/probe-compaction.ts",
     "test": "bun test",
