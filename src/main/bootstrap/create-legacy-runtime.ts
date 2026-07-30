@@ -11,9 +11,11 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   createRunCoordinator,
+  createContextService,
   createTgBuddyRuntime,
   type AgentEngine,
   type AgentInvocation,
+  type ContextCompactor,
   type SessionCommands,
   type SessionMessageHistory,
   type TgBuddyRuntime,
@@ -35,6 +37,7 @@ export interface CreateLegacyRuntimeOptions {
   sessions: SessionCommands
   history: SessionMessageHistory
   agentEngine: AgentEngine
+  contextCompactor: ContextCompactor
   dispose?(): Promise<void>
 }
 
@@ -74,6 +77,12 @@ export function createLegacyRuntime(
       },
     },
   })
+  const context = createContextService({
+    sessions: options.sessions,
+    history: options.history,
+    channels: { list: listChannels },
+    compactor: options.contextCompactor,
+  })
 
   return createTgBuddyRuntime({
     workspaces: {
@@ -96,11 +105,17 @@ export function createLegacyRuntime(
       pending: askUser.getPending,
     },
     context: {
-      start: (sessionId, emit, isRunning) =>
-        compaction.start(sessionId, emit, options.history, isRunning),
+      start: context.start,
       defer: compaction.defer,
-      cancel: compaction.cancel,
-      clearSession: compaction.clearSession,
+      cancel(sessionId, emit) {
+        if (!context.cancel(sessionId, emit)) {
+          compaction.cancel(sessionId, emit)
+        }
+      },
+      clearSession(sessionId) {
+        context.clearSession(sessionId)
+        compaction.clearSession(sessionId)
+      },
     },
     artifacts: {
       list: () => [],

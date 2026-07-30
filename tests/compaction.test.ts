@@ -5,8 +5,8 @@ import {
   shouldCompactBeforeModelCall,
   shouldScheduleCompaction,
   toPiEntries,
-} from '../src/kernel/compaction.ts'
-import { buildPostCompactionUsage } from '../src/kernel/context-usage.ts'
+} from '../src/kernel/pi/pi-compaction.ts'
+import { buildPostCompactionUsage } from '../src/kernel/pi/pi-context-usage.ts'
 import { applyCompactionState, emptyStreamState } from '../src/renderer/atoms/agent.ts'
 import { toKernelMessages, type SessionMessage } from '../src/shared/types/message.ts'
 import type { CompactionSourceEntry } from '../src/shared/types/session.ts'

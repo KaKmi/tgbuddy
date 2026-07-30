@@ -8,7 +8,10 @@
 import { estimateContextTokens, estimateTokens } from '@earendil-works/pi-agent-core'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import type { Usage } from '@earendil-works/pi-ai'
-import type { ContextUsage, ContextUsageBreakdown } from '../shared/types/context.ts'
+import type {
+  ContextUsage,
+  ContextUsageBreakdown,
+} from '../../shared/contracts/context.ts'
 
 export interface ContextToolDefinition {
   name: string

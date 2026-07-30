@@ -13,6 +13,7 @@ import {
 } from '../../infrastructure/sqlite/index.ts'
 import {
   createPiAgentEngine,
+  createPiContextCompactor,
   createPiSessionStore,
 } from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
@@ -82,6 +83,7 @@ export async function createApplication(
         tools: (invocation) => buildBuiltinTools(invocation.cwd),
         toolPolicy: createPermissiveToolPolicy(),
       }),
+      contextCompactor: createPiContextCompactor(),
       history: messageHistory,
       sessions: createSessionCommands({
         repository: sessionRepository,

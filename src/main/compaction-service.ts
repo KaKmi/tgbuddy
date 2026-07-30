@@ -12,13 +12,13 @@ import {
   shouldCompactBeforeModelCall,
   shouldScheduleCompaction,
   type CompactionKernelRuntime,
-} from '../kernel/compaction.ts'
+} from '../kernel/pi/pi-compaction.ts'
 import {
   buildPostCompactionUsage,
   estimateTextTokens,
   estimateToolTokens,
   type ContextToolDefinition,
-} from '../kernel/context-usage.ts'
+} from '../kernel/pi/pi-context-usage.ts'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import { toKernelMessages } from '../shared/types/message.ts'
 import type { HostEvent, StreamFrame } from '../shared/types/event.ts'
@@ -102,7 +102,7 @@ export function scheduleIfNeeded(
   const deadlineAt = Date.now() + AUTO_DELAY_MS
   const timer = setTimeout(() => {
     scheduled.delete(sessionId)
-    void start(sessionId, sendFrame, history, isSessionRunning)
+    void startAutomaticCompaction(sessionId, sendFrame, history, isSessionRunning)
   }, AUTO_DELAY_MS)
   scheduled.set(sessionId, { timer, usedTokens })
   emitHost(sendFrame, sessionId, { type: 'compaction_scheduled', deadlineAt })
@@ -203,7 +203,7 @@ export function defer(sessionId: string, sendFrame: FrameSender): void {
   emitHost(sendFrame, sessionId, { type: 'compaction_cancelled' })
 }
 
-export async function start(
+async function startAutomaticCompaction(
   sessionId: string,
   sendFrame: FrameSender,
   history: SessionMessageHistory,
@@ -307,7 +307,7 @@ export function runQueued(
   history: SessionMessageHistory,
 ): void {
   if (!queued.delete(sessionId)) return
-  void start(sessionId, sendFrame, history)
+  void startAutomaticCompaction(sessionId, sendFrame, history)
 }
 
 export function clearSession(sessionId: string): void {

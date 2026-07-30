@@ -61,3 +61,17 @@ export type {
   ToolPolicyDecision,
   ToolPolicyInput,
 } from './runs/agent-engine.ts'
+export {
+  createContextService,
+  type ContextChannelCatalog,
+  type ContextService,
+  type ContextSessionCatalog,
+  type CreateContextServiceOptions,
+} from './context/context-service.ts'
+export type {
+  ContextCompactionInput,
+  ContextCompactionResult,
+  ContextCompactor,
+  ContextUsageEstimateInput,
+  PreparedContextCompaction,
+} from './context/ports/context-compactor.ts'

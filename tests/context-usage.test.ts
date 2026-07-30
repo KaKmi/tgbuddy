@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-import { allocateContextBreakdown, buildContextUsage } from '../src/kernel/context-usage.ts'
+import {
+  allocateContextBreakdown,
+  buildContextUsage,
+} from '../src/kernel/pi/pi-context-usage.ts'
 import { buildContextRows, formatTokens } from '../src/renderer/components/ContextUsagePanel.tsx'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import type { Usage } from '@earendil-works/pi-ai'

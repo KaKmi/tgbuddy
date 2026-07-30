@@ -13,10 +13,17 @@ import {
   type SessionTreeEntry,
 } from '@earendil-works/pi-agent-core'
 import type { Api, Message, Model, Models } from '@earendil-works/pi-ai'
-import type { CompactionSourceEntry } from '../shared/types/session.ts'
-import type { Channel } from '../shared/types/channel.ts'
-import { toKernelMessages } from '../shared/types/message.ts'
-import { buildModels } from './pi/pi-models.ts'
+import type {
+  ContextCompactionInput,
+  ContextCompactor,
+  ContextUsageEstimateInput,
+  PreparedContextCompaction,
+} from '../../runtime/context/ports/context-compactor.ts'
+import type { Channel } from '../../shared/contracts/channel.ts'
+import { toKernelMessages } from '../../shared/contracts/message.ts'
+import type { CompactionSourceEntry } from '../../shared/contracts/session.ts'
+import { buildPostCompactionUsage } from './pi-context-usage.ts'
+import { buildModels } from './pi-models.ts'
 
 const SUMMARY_MAX_CHARS = 16_000
 const AUTO_THRESHOLD = 0.85
@@ -33,6 +40,55 @@ export interface CompactionKernelRuntime {
   models: Models
   model: Model<Api>
   preparation: CompactionPreparation
+}
+
+/**
+ * Runtime 只持有压缩端口；pi 的模型注册表、Preparation 和 Usage 都封装在本适配器内。
+ */
+export function createPiContextCompactor(): ContextCompactor {
+  return {
+    prepare(input: ContextCompactionInput): PreparedContextCompaction {
+      const runtime = prepareCompactionRuntime(
+        [input.channel],
+        input.channel.id,
+        input.modelId,
+        input.entries,
+      )
+      if (!runtime.ok) throw runtime.error
+
+      return {
+        compactedCount:
+          runtime.value.preparation.messagesToSummarize.length
+          + runtime.value.preparation.turnPrefixMessages.length,
+        contextWindow: runtime.value.model.contextWindow,
+        async execute(signal) {
+          const result = await compactPreparedContext(
+            runtime.value.preparation,
+            runtime.value.models,
+            runtime.value.model,
+            signal,
+          )
+          if (!result.ok) throw result.error
+          return {
+            summary: result.value.summary,
+            firstKeptEntryId: result.value.firstKeptEntryId,
+            tokensBefore: result.value.tokensBefore,
+            outputTokens: result.value.usage?.output ?? 0,
+            costUsd: result.value.usage?.cost.total ?? 0,
+          }
+        },
+      }
+    },
+    estimateUsage(input: ContextUsageEstimateInput) {
+      return buildPostCompactionUsage(
+        toKernelMessages(input.messages),
+        input.previous,
+        input.contextWindow,
+        input.outputTokens,
+        input.costUsd,
+      )
+    },
+  }
 }
 
 export function shouldScheduleCompaction(

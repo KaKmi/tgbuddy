@@ -12,6 +12,20 @@ export {
   type CreatePiSessionStoreOptions,
 } from './pi-session-store.ts'
 export {
+  compactPreparedContext,
+  compactStoredContext,
+  convertStoredMessagesToLlm,
+  createPiContextCompactor,
+  estimateModelCallContextTokens,
+  prepareCompactionRuntime,
+  prepareStoredCompaction,
+  shouldCompactBeforeModelCall,
+  shouldScheduleCompaction,
+  toPiEntries,
+  type CompactionKernelRuntime,
+  type StoredCompactionResult,
+} from './pi-compaction.ts'
+export {
   createPiLegacySessionImporter,
   type CreatePiLegacySessionImporterOptions,
   type DecidePiLegacyImport,
