@@ -308,16 +308,26 @@ async function runIsolationAndDelete(
   const entriesA = await sessionA.getEntries()
   const entriesB = await sessionB.getEntries()
   assertCondition(listed.length === 2, '隔离数据库必须有两个 Session')
+  assertCondition(entriesA.length === 100, `A 必须恰好包含 100 条 entry: ${entriesA.length}`)
+  assertCondition(entriesB.length === 100, `B 必须恰好包含 100 条 entry: ${entriesB.length}`)
   assertContinuousPrefix(entriesA, 'A-', 100, 100)
   assertContinuousPrefix(entriesB, 'B-', 100, 100)
-  assertCondition(entriesA.every((entry) => !messageText(entry)?.startsWith('B-')), 'A 不得串入 B')
-  assertCondition(entriesB.every((entry) => !messageText(entry)?.startsWith('A-')), 'B 不得串入 A')
+  assertCondition(
+    entriesA.every((entry) => messageText(entry)?.startsWith('A-') === true),
+    'A 只能包含自身的消息 entry',
+  )
+  assertCondition(
+    entriesB.every((entry) => messageText(entry)?.startsWith('B-') === true),
+    'B 只能包含自身的消息 entry',
+  )
+  assertCondition((await sessionA.getSessionStats()).messageCount === 100, 'A 物化计数必须为 100')
+  assertCondition((await sessionB.getSessionStats()).messageCount === 100, 'B 物化计数必须为 100')
   await cleanupSession(sessionA)
   await cleanupSession(sessionB)
   const isolationResult = passedScenario(
     'session-isolation',
     isolationStarted,
-    5,
+    9,
     200,
     await fileBytes(databasePath),
     await fileBytes(`${databasePath}-wal`),
@@ -423,6 +433,9 @@ async function runWalBackupRestore(context: ScenarioContext): Promise<ScenarioRe
   const created = createSpikeRepo(sourcePath, cwd)
   let metadataA: Awaited<ReturnType<typeof created.repo.list>>[number]
   let metadataB: Awaited<ReturnType<typeof created.repo.list>>[number]
+  let expectedEntriesA = ''
+  let expectedEntriesB = ''
+  let expectedContextA = ''
   try {
     const sessionA = await created.repo.create({ id: 'backup-a', cwd })
     const sessionB = await created.repo.create({ id: 'backup-b', cwd })
@@ -437,6 +450,9 @@ async function runWalBackupRestore(context: ScenarioContext): Promise<ScenarioRe
     await sessionA.appendCompaction('备份摘要', keptId, 20_000, { compactedCount: 895 })
     metadataA = await sessionA.getMetadata()
     metadataB = await sessionB.getMetadata()
+    expectedEntriesA = JSON.stringify(await sessionA.getEntries())
+    expectedEntriesB = JSON.stringify(await sessionB.getEntries())
+    expectedContextA = JSON.stringify(await sessionA.buildContext())
     assertCondition((await fileBytes(`${sourcePath}-wal`)) > 0, 'checkpoint 前 WAL 必须存在')
     await cleanupSession(sessionA)
     await cleanupSession(sessionB)
@@ -463,10 +479,25 @@ async function runWalBackupRestore(context: ScenarioContext): Promise<ScenarioRe
     const sessionB = await restored.repo.open(
       listed.find((item) => item.id === metadataB!.id)!,
     )
-    assertCondition((await sessionA.getEntries()).length === 901, 'restore A 条数不一致')
-    assertCondition((await sessionB.getEntries()).length === 100, 'restore B 条数不一致')
+    const restoredEntriesA = await sessionA.getEntries()
+    const restoredEntriesB = await sessionB.getEntries()
+    assertCondition(restoredEntriesA.length === 901, 'restore A 条数不一致')
+    assertCondition(restoredEntriesB.length === 100, 'restore B 条数不一致')
+    assertCondition(
+      JSON.stringify(restoredEntriesA) === expectedEntriesA,
+      'restore A entry 顺序或内容与源库不一致',
+    )
+    assertCondition(
+      JSON.stringify(restoredEntriesB) === expectedEntriesB,
+      'restore B entry 顺序或内容与源库不一致',
+    )
     const restoredContext = await sessionA.buildContext()
-    assertCondition(restoredContext.messages[0]?.role === 'compactionSummary', 'restore compaction 缺失')
+    assertCondition(
+      JSON.stringify(restoredContext) === expectedContextA,
+      'restore compaction context 与源库不一致',
+    )
+    assertCondition((await sessionA.getSessionStats()).messageCount === 900, 'restore A 物化计数不一致')
+    assertCondition((await sessionB.getSessionStats()).messageCount === 100, 'restore B 物化计数不一致')
     await cleanupSession(sessionA)
     await cleanupSession(sessionB)
   } finally {
@@ -485,7 +516,7 @@ async function runWalBackupRestore(context: ScenarioContext): Promise<ScenarioRe
   return passedScenario(
     'wal-backup-restore',
     startedAt,
-    6,
+    11,
     1001,
     await fileBytes(backupPath),
     0,
