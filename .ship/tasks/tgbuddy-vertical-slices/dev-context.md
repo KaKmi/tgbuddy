@@ -74,6 +74,21 @@ SQLite、kernel、bundle 和 UI Slice 再按计划追加 `spike:sqlite`、`probe
   - Mirror: get/update 的既有 no-op 与强制 id/updatedAt 语义。
   - Deviations: K03–K08 临时 bridge 转发到同一 SQLite repository；catalog 的 create/list/delete 不再由 production Runtime 委托给 JSON 索引。
 
+### K04: pi Session backend 适配器
+
+- Reference: `scripts/sqlite-spike-runtime.ts`
+  - Why analogous: 已验证 `SqliteSessionRepo`、`NodeExecutionEnv` 与 storage cleanup 的正确组合。
+  - Mirror: backend 自己创建连接和 migration；每个 Session storage 显式 cleanup；环境在 store dispose 时释放。
+  - Deviations: 生产 adapter 通过 Runtime `MessageStore` port 暴露原生 entry，不暴露 repo metadata 或私有表。
+- Reference: `scripts/sqlite-spike-scenarios.ts`
+  - Why analogous: 已有 ordered entries、session isolation、compaction、delete 与 reopen 的 packaged 证明。
+  - Mirror: 精确 entry ID/parentId/顺序、两个 Session、close/reopen、删除后不可打开。
+  - Deviations: 新 `pi-session-store` 场景直接覆盖生产 `PiSessionStore`，并先在同一物理 DB 执行 app migration。
+- Reference: `src/shared/contracts/message.ts`
+  - Why analogous: 当前架构已决定 pi 消息类型只做 type alias，不做第二套归一化。
+  - Mirror: type-only import、版本护栏、零字段复制。
+  - Deviations: K04 新增 `PersistedSessionEntry` alias，供 Runtime port 保持 pi entry 无损。
+
 ## Waves
 
 M1 的 K01–K17 存在严格数据/装配依赖，并共享 Composition Root、Runtime contract 或 compatibility owner，因此全部顺序执行：

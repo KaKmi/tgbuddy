@@ -7,6 +7,7 @@ import {
   AppDatabase,
   SqliteSessionRepository,
 } from '../../infrastructure/sqlite/index.ts'
+import { createPiSessionStore } from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
 import * as store from '../session-store.ts'
 import { createLegacyRuntime } from './create-legacy-runtime.ts'
@@ -27,11 +28,17 @@ export interface TgBuddyApplication {
 export function createApplication(options: CreateApplicationOptions): TgBuddyApplication {
   const appDatabase = AppDatabase.open(options.databasePath)
   const sessionRepository = new SqliteSessionRepository(appDatabase)
-  store.configureSessionRepository(sessionRepository)
 
+  let messageStore: ReturnType<typeof createPiSessionStore> | undefined
   let runtime: TgBuddyRuntime
   let unsubscribe: () => void
   try {
+    const createdMessageStore = createPiSessionStore({
+      databasePath: options.databasePath,
+      cwd: process.cwd(),
+    })
+    messageStore = createdMessageStore
+    store.configureSessionRepository(sessionRepository)
     runtime = createLegacyRuntime({
       sessions: createSessionCommands({
         repository: sessionRepository,
@@ -43,10 +50,14 @@ export function createApplication(options: CreateApplicationOptions): TgBuddyApp
         createId: store.newId,
         now: Date.now,
       }),
+      dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(runtime, options.getWindow)
   } catch (error) {
     store.configureSessionRepository(undefined)
+    void messageStore?.dispose().catch((disposeError: unknown) => {
+      console.error('[application] PiSessionStore 初始化回滚失败', disposeError)
+    })
     appDatabase.close()
     throw error
   }

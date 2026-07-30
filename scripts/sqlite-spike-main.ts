@@ -18,6 +18,7 @@ import {
   runDeleteCleanup,
   runLegacyImportScenario,
   runOrderedEntries,
+  runPiSessionStoreScenario,
   runRuntimeScenario,
   runSessionCatalogScenario,
   runSessionIsolation,
@@ -121,6 +122,7 @@ async function executeScenarios(
       await runRuntimeScenario(context),
       await runAppDatabaseScenario(context),
       await runSessionCatalogScenario(context),
+      await runPiSessionStoreScenario(context),
       await runBootstrapScenario(context),
     ]
   }
@@ -129,6 +131,7 @@ async function executeScenarios(
       await runRuntimeScenario(context),
       await runAppDatabaseScenario(context),
       await runSessionCatalogScenario(context),
+      await runPiSessionStoreScenario(context),
       await runBootstrapScenario(context),
       ...(await runStorageScenarios(context)),
     ]
@@ -138,6 +141,7 @@ async function executeScenarios(
       await runRuntimeScenario(context),
       await runAppDatabaseScenario(context),
       await runSessionCatalogScenario(context),
+      await runPiSessionStoreScenario(context),
       await runBootstrapScenario(context),
       await runCrashRecoveryScenario(context),
     ]
@@ -147,6 +151,7 @@ async function executeScenarios(
       await runRuntimeScenario(context),
       await runAppDatabaseScenario(context),
       await runSessionCatalogScenario(context),
+      await runPiSessionStoreScenario(context),
       await runBootstrapScenario(context),
       await runLegacyImportScenario(context),
     ]
@@ -156,6 +161,7 @@ async function executeScenarios(
       await runRuntimeScenario(context),
       await runAppDatabaseScenario(context),
       await runSessionCatalogScenario(context),
+      await runPiSessionStoreScenario(context),
       await runBootstrapScenario(context),
       await runOrderedEntries(context),
       await runSessionIsolation(context),

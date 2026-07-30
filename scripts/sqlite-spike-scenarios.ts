@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { AppDatabase } from '../src/infrastructure/sqlite/app-database.ts'
 import { SqliteSessionRepository } from '../src/infrastructure/sqlite/repositories/sqlite-session-repository.ts'
+import { createPiSessionStore } from '../src/kernel/pi/pi-session-store.ts'
 import { createSessionCommands } from '../src/runtime/sessions/session-commands.ts'
+import type { PersistedSessionEntry } from '../src/shared/contracts/message.ts'
 import type { SessionMeta } from '../src/shared/contracts/session.ts'
 import {
   importLegacySession,
@@ -363,6 +365,140 @@ export async function runSessionCatalogScenario(
     startedAt,
     assertions,
     2,
+    await fileBytes(databasePath),
+    await fileBytes(`${databasePath}-wal`),
+  )
+}
+
+export async function runPiSessionStoreScenario(
+  context: ScenarioContext,
+): Promise<ScenarioResult> {
+  const startedAt = Date.now()
+  const scenarioRoot = join(context.rootDir, 'pi-session-store')
+  const databasePath = join(scenarioRoot, 'tgbuddy.db')
+  const renamedPath = join(scenarioRoot, 'tgbuddy-renamed.db')
+  const workspaceA = join(scenarioRoot, 'workspace-a')
+  const workspaceB = join(scenarioRoot, 'workspace-b')
+  await mkdir(workspaceA, { recursive: true })
+  await mkdir(workspaceB, { recursive: true })
+  let assertions = 0
+
+  // 与生产 Composition Root 相同：app 与 pi 共用物理文件，但各自维护连接和 migration。
+  const appDatabase = AppDatabase.open(databasePath)
+  appDatabase.close()
+
+  const entriesA: PersistedSessionEntry[] = [
+    {
+      type: 'message',
+      id: 'a-entry-1',
+      parentId: null,
+      timestamp: '2026-01-01T00:00:01.000Z',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: 'A 第一条' }],
+        timestamp: 1,
+      },
+    },
+    {
+      type: 'message',
+      id: 'a-entry-2',
+      parentId: 'a-entry-1',
+      timestamp: '2026-01-01T00:00:02.000Z',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: 'A 第二条' }],
+        timestamp: 2,
+      },
+    },
+    {
+      type: 'compaction',
+      id: 'a-entry-3',
+      parentId: 'a-entry-2',
+      timestamp: '2026-01-01T00:00:03.000Z',
+      summary: 'A 摘要',
+      firstKeptEntryId: 'a-entry-2',
+      tokensBefore: 100,
+    },
+  ]
+  const entryB: PersistedSessionEntry = {
+    type: 'message',
+    id: 'b-entry-1',
+    parentId: null,
+    timestamp: '2026-01-01T00:00:01.000Z',
+    message: {
+      role: 'user',
+      content: [{ type: 'text', text: 'B 第一条' }],
+      timestamp: 1,
+    },
+  }
+
+  const firstStore = createPiSessionStore({
+    databasePath,
+    cwd: scenarioRoot,
+  })
+  const firstA = await firstStore.create({ sessionId: 'session-a', cwd: workspaceA })
+  const firstB = await firstStore.create({ sessionId: 'session-b', cwd: workspaceB })
+  for (const entry of entriesA) await firstA.append(entry)
+  await firstB.append(entryB)
+  assertCondition(
+    isDeepStrictEqual(await firstA.entries(), entriesA),
+    '首次 append 必须保留 Session A 的 entry ID、parentId 与顺序',
+  )
+  assertions++
+  assertCondition(
+    isDeepStrictEqual(await firstB.entries(), [entryB]),
+    'Session B 不得混入 Session A 的 entry',
+  )
+  assertions++
+  await firstA.close()
+  await firstB.close()
+  await firstStore.dispose()
+
+  const appReopen = AppDatabase.open(databasePath)
+  appReopen.close()
+  assertions++
+
+  const reopenedStore = createPiSessionStore({
+    databasePath,
+    cwd: scenarioRoot,
+  })
+  const reopenedA = await reopenedStore.open('session-a')
+  const reopenedB = await reopenedStore.open('session-b')
+  assertCondition(reopenedA !== undefined, 'reopen 后必须找到 Session A')
+  assertions++
+  assertCondition(reopenedB !== undefined, 'reopen 后必须找到 Session B')
+  assertions++
+  assertCondition(
+    isDeepStrictEqual(await reopenedA.entries(), entriesA),
+    'reopen 后 Session A entry ID、顺序和 compaction 必须稳定',
+  )
+  assertions++
+  assertCondition(
+    isDeepStrictEqual(await reopenedB.entries(), [entryB]),
+    'reopen 后两个 Session 仍须隔离',
+  )
+  assertions++
+
+  await reopenedStore.delete('session-a')
+  assertCondition(await reopenedStore.open('session-a') === undefined, 'delete 后 Session A 不得 reopen')
+  assertions++
+  assertCondition(
+    isDeepStrictEqual(await reopenedB.entries(), [entryB]),
+    '删除 Session A 不得影响 Session B',
+  )
+  assertions++
+  await reopenedB.close()
+  await reopenedStore.dispose()
+
+  await rename(databasePath, renamedPath)
+  await rename(renamedPath, databasePath)
+  assertions++
+
+  return passedScenario(
+    'pi-session-store',
+    startedAt,
+    assertions,
+    1,
     await fileBytes(databasePath),
     await fileBytes(`${databasePath}-wal`),
   )

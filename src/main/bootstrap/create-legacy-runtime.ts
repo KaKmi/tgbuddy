@@ -21,6 +21,7 @@ import * as store from '../session-store.ts'
 
 export interface CreateLegacyRuntimeOptions {
   sessions?: SessionCommands
+  dispose?(): Promise<void>
 }
 
 export function createLegacyRuntime(
@@ -85,5 +86,6 @@ export function createLegacyRuntime(
         return { success: false, message: '未实现' }
       },
     },
+    dispose: options.dispose,
   })
 }

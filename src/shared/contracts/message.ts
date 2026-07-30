@@ -29,7 +29,10 @@
  */
 
 import type { Message as PiMessage } from '@earendil-works/pi-ai'
-import type { AgentMessage } from '@earendil-works/pi-agent-core'
+import type {
+  AgentMessage,
+  SessionTreeEntry,
+} from '@earendil-works/pi-agent-core'
 
 /** 当前内核标识，写进会话文件头 */
 export const KERNEL_ID = 'pi@0.82' as const
@@ -99,6 +102,14 @@ export interface CompactionMessage extends EnvelopeBase {
 }
 
 export type SessionMessage = KernelMessage | NoticeMessage | CompactionMessage
+
+/**
+ * pi Session backend 的原生 entry 类型。
+ *
+ * 这里只做 type alias，不复制字段、不做归一化翻译；Runtime port 因而能保持
+ * 内核 entry 的 ID、parentId 和签名数据原样往返。
+ */
+export type PersistedSessionEntry = SessionTreeEntry
 
 // ── 便利函数 ──────────────────────────────────────────────────────
 

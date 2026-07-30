@@ -23,3 +23,8 @@ export {
   type CreateSessionCommandsOptions,
   type SessionHistoryAdapter,
 } from './sessions/session-commands.ts'
+export type {
+  CreateMessageSessionInput,
+  MessageSession,
+  MessageStore,
+} from './sessions/message-store.ts'

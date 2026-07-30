@@ -24,6 +24,7 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.82.1",
     "@earendil-works/pi-ai": "^0.82.1",
+    "@earendil-works/pi-storage-sqlite-node": "0.82.1",
     "@streamdown/code": "^1.1.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -39,7 +40,6 @@
     "use-stick-to-bottom": "^1.1.6"
   },
   "devDependencies": {
-    "@earendil-works/pi-storage-sqlite-node": "0.82.1",
     "@electron/packager": "20.0.4",
     "@tailwindcss/typography": "^0.5.20",
     "@types/bun": "latest",
