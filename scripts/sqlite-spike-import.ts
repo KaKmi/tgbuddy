@@ -110,34 +110,79 @@ function isHeader(value: unknown): value is SessionHeader {
   )
 }
 
-function hasMessageContent(value: Record<string, unknown>): boolean {
-  const content = value.content
-  if (typeof content === 'string') return content.length > 0
-  if (!Array.isArray(content)) return false
-  return content.every(
-    (block) =>
-      isRecord(block) &&
-      typeof block.type === 'string' &&
-      (block.type !== 'text' || typeof block.text === 'string'),
+function isTextContent(value: unknown): boolean {
+  return isRecord(value) && value.type === 'text' && typeof value.text === 'string'
+}
+
+function isImageContent(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.type === 'image' &&
+    typeof value.data === 'string' &&
+    typeof value.mimeType === 'string'
   )
 }
 
+function isThinkingContent(value: unknown): boolean {
+  return isRecord(value) && value.type === 'thinking' && typeof value.thinking === 'string'
+}
+
+function isToolCall(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.type === 'toolCall' &&
+    typeof value.id === 'string' &&
+    typeof value.name === 'string' &&
+    isRecord(value.arguments)
+  )
+}
+
+function isUsage(value: unknown): boolean {
+  if (!isRecord(value) || !isRecord(value.cost)) return false
+  const cost = value.cost
+  const numeric = ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens'] as const
+  const costNumeric = ['input', 'output', 'cacheRead', 'cacheWrite', 'total'] as const
+  return (
+    numeric.every((key) => isFiniteNumber(value[key])) &&
+    costNumeric.every((key) => isFiniteNumber(cost[key]))
+  )
+}
+
+function isContentArray(
+  value: unknown,
+  blockGuard: (block: unknown) => boolean,
+): value is unknown[] {
+  return Array.isArray(value) && value.every(blockGuard)
+}
+
 function isKernelMessage(value: unknown): boolean {
-  if (!isRecord(value) || !isFiniteNumber(value.timestamp) || !hasMessageContent(value)) return false
-  if (value.role === 'user') return true
-  if (value.role === 'assistant') {
+  if (!isRecord(value) || !isFiniteNumber(value.timestamp)) return false
+  if (value.role === 'user') {
     return (
+      typeof value.content === 'string' ||
+      isContentArray(value.content, (block) => isTextContent(block) || isImageContent(block))
+    )
+  }
+  if (value.role === 'assistant') {
+    const stopReasons = new Set(['stop', 'length', 'toolUse', 'error', 'aborted'])
+    return (
+      isContentArray(
+        value.content,
+        (block) => isTextContent(block) || isThinkingContent(block) || isToolCall(block),
+      ) &&
       typeof value.api === 'string' &&
       typeof value.provider === 'string' &&
       typeof value.model === 'string' &&
       typeof value.stopReason === 'string' &&
-      isRecord(value.usage)
+      stopReasons.has(value.stopReason) &&
+      isUsage(value.usage)
     )
   }
   if (value.role === 'toolResult') {
     return (
       typeof value.toolCallId === 'string' &&
       typeof value.toolName === 'string' &&
+      isContentArray(value.content, (block) => isTextContent(block) || isImageContent(block)) &&
       typeof value.isError === 'boolean'
     )
   }
@@ -172,7 +217,11 @@ function parseEntry(value: unknown): SessionEntry | undefined {
   }
   switch (value.type) {
     case 'message':
-      return isSessionMessage(value.message) ? (value as unknown as SessionEntry) : undefined
+      return isSessionMessage(value.message) &&
+        isRecord(value.message) &&
+        value.message.id === value.id
+        ? (value as unknown as SessionEntry)
+        : undefined
     case 'model_change':
       return typeof value.channelId === 'string' && typeof value.modelId === 'string'
         ? (value as unknown as SessionEntry)

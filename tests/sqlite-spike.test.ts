@@ -90,6 +90,42 @@ describe('SQLite Spike legacy importer', () => {
     expect(parsed.diagnostics.map((item) => [item.line, item.category])).toEqual([[2, 'schema']])
   })
 
+  test('按 pi Message union 校验 assistant 和 toolResult', () => {
+    const parsed = parseLegacySession({
+      sessionId: 'invalid-pi-messages',
+      relativePath: 'archive/invalid-pi-messages.jsonl',
+      indexMeta: {},
+      text: [
+        '{"type":"session","version":2,"kernel":"pi@0.82","cwd":"C:\\\\fixture","createdAt":1}',
+        '{"type":"message","id":"a1","timestamp":2,"message":{"kind":"kernel","id":"a1","createdAt":2,"message":{"role":"assistant","content":"错误字符串","api":"x","provider":"x","model":"x","usage":{},"stopReason":"whatever","timestamp":2}}}',
+        '{"type":"message","id":"r1","timestamp":3,"message":{"kind":"kernel","id":"r1","createdAt":3,"message":{"role":"toolResult","toolCallId":"call","toolName":"tool","content":[{"type":"unknown"}],"isError":false,"timestamp":3}}}',
+      ].join('\n'),
+    })
+    expect(parsed.entries).toEqual([])
+    expect(parsed.diagnostics.map((item) => [item.line, item.category])).toEqual([
+      [2, 'schema'],
+      [3, 'schema'],
+    ])
+  })
+
+  test('拒绝 entry ID 与消息信封 ID 不一致', () => {
+    const parsed = parseLegacySession({
+      sessionId: 'mismatched-id',
+      relativePath: 'archive/mismatched-id.jsonl',
+      indexMeta: {},
+      text: [
+        '{"type":"session","version":2,"kernel":"pi@0.82","cwd":"C:\\\\fixture","createdAt":1}',
+        '{"type":"message","id":"outer","timestamp":2,"message":{"kind":"kernel","id":"inner","createdAt":2,"message":{"role":"user","content":[{"type":"text","text":"消息"}],"timestamp":2}}}',
+        '{"type":"truncate","id":"t1","timestamp":3,"fromId":"outer"}',
+      ].join('\n'),
+    })
+    expect(parsed.entries).toEqual([])
+    expect(parsed.diagnostics.map((item) => [item.line, item.code])).toEqual([
+      [2, 'INVALID_ENTRY'],
+      [3, 'INVALID_REFERENCE'],
+    ])
+  })
+
   test('truncate 可以裁剪 compaction 的 first kept message', () => {
     const parsed = parseLegacySession({
       sessionId: 'truncate-compaction',
