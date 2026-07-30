@@ -99,6 +99,18 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+function isValidTimestamp(value: unknown): value is number {
+  return isFiniteNumber(value) && !Number.isNaN(new Date(value).getTime())
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string'
+}
+
+function isOptionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean'
+}
+
 function isHeader(value: unknown): value is SessionHeader {
   return (
     isRecord(value) &&
@@ -106,12 +118,17 @@ function isHeader(value: unknown): value is SessionHeader {
     (value.version === 1 || value.version === 2) &&
     value.kernel === 'pi@0.82' &&
     typeof value.cwd === 'string' &&
-    isFiniteNumber(value.createdAt)
+    isValidTimestamp(value.createdAt)
   )
 }
 
 function isTextContent(value: unknown): boolean {
-  return isRecord(value) && value.type === 'text' && typeof value.text === 'string'
+  return (
+    isRecord(value) &&
+    value.type === 'text' &&
+    typeof value.text === 'string' &&
+    isOptionalString(value.textSignature)
+  )
 }
 
 function isImageContent(value: unknown): boolean {
@@ -124,7 +141,13 @@ function isImageContent(value: unknown): boolean {
 }
 
 function isThinkingContent(value: unknown): boolean {
-  return isRecord(value) && value.type === 'thinking' && typeof value.thinking === 'string'
+  return (
+    isRecord(value) &&
+    value.type === 'thinking' &&
+    typeof value.thinking === 'string' &&
+    isOptionalString(value.thinkingSignature) &&
+    isOptionalBoolean(value.redacted)
+  )
 }
 
 function isToolCall(value: unknown): boolean {
@@ -133,7 +156,8 @@ function isToolCall(value: unknown): boolean {
     value.type === 'toolCall' &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
-    isRecord(value.arguments)
+    isRecord(value.arguments) &&
+    isOptionalString(value.thoughtSignature)
   )
 }
 
@@ -144,7 +168,9 @@ function isUsage(value: unknown): boolean {
   const costNumeric = ['input', 'output', 'cacheRead', 'cacheWrite', 'total'] as const
   return (
     numeric.every((key) => isFiniteNumber(value[key])) &&
-    costNumeric.every((key) => isFiniteNumber(cost[key]))
+    costNumeric.every((key) => isFiniteNumber(cost[key])) &&
+    (value.cacheWrite1h === undefined || isFiniteNumber(value.cacheWrite1h)) &&
+    (value.reasoning === undefined || isFiniteNumber(value.reasoning))
   )
 }
 
@@ -156,7 +182,7 @@ function isContentArray(
 }
 
 function isKernelMessage(value: unknown): boolean {
-  if (!isRecord(value) || !isFiniteNumber(value.timestamp)) return false
+  if (!isRecord(value) || !isValidTimestamp(value.timestamp)) return false
   if (value.role === 'user') {
     return (
       typeof value.content === 'string' ||
@@ -175,7 +201,12 @@ function isKernelMessage(value: unknown): boolean {
       typeof value.model === 'string' &&
       typeof value.stopReason === 'string' &&
       stopReasons.has(value.stopReason) &&
-      isUsage(value.usage)
+      isUsage(value.usage) &&
+      isOptionalString(value.responseModel) &&
+      isOptionalString(value.responseId) &&
+      isOptionalString(value.errorMessage) &&
+      (value.diagnostics === undefined ||
+        (Array.isArray(value.diagnostics) && value.diagnostics.every(isRecord)))
     )
   }
   if (value.role === 'toolResult') {
@@ -183,19 +214,34 @@ function isKernelMessage(value: unknown): boolean {
       typeof value.toolCallId === 'string' &&
       typeof value.toolName === 'string' &&
       isContentArray(value.content, (block) => isTextContent(block) || isImageContent(block)) &&
-      typeof value.isError === 'boolean'
+      typeof value.isError === 'boolean' &&
+      (value.usage === undefined || isUsage(value.usage)) &&
+      (value.addedToolNames === undefined ||
+        (Array.isArray(value.addedToolNames) &&
+          value.addedToolNames.every((name) => typeof name === 'string')))
     )
   }
   return false
 }
 
 function isSessionMessage(value: unknown): boolean {
-  if (!isRecord(value) || typeof value.id !== 'string' || !isFiniteNumber(value.createdAt)) {
+  if (!isRecord(value) || typeof value.id !== 'string' || !isValidTimestamp(value.createdAt)) {
     return false
   }
-  if (value.kind === 'kernel') return isKernelMessage(value.message)
+  if (value.kind === 'kernel') {
+    return (
+      isKernelMessage(value.message) &&
+      (value.durationMs === undefined || isFiniteNumber(value.durationMs))
+    )
+  }
   if (value.kind === 'notice') {
-    return typeof value.notice === 'string' && typeof value.text === 'string' && typeof value.display === 'boolean'
+    const notices = new Set(['expert_changed', 'mode_changed', 'compaction', 'session_resumed'])
+    return (
+      typeof value.notice === 'string' &&
+      notices.has(value.notice) &&
+      typeof value.text === 'string' &&
+      typeof value.display === 'boolean'
+    )
   }
   return (
     value.kind === 'compaction' &&
@@ -211,7 +257,7 @@ function parseEntry(value: unknown): SessionEntry | undefined {
     !isRecord(value) ||
     typeof value.id !== 'string' ||
     value.id.length === 0 ||
-    !isFiniteNumber(value.timestamp)
+    !isValidTimestamp(value.timestamp)
   ) {
     return undefined
   }
@@ -490,6 +536,30 @@ export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
         category: 'compatibility',
         code: 'CHANNEL_PROVIDER_UNRESOLVED',
         reason: 'model_change.channelId 已保存为 legacy.model_change，未伪装为 provider',
+      })
+    }
+    if (
+      entry.type === 'message' &&
+      entry.message.kind === 'kernel' &&
+      entry.message.durationMs !== undefined
+    ) {
+      diagnostics.push({
+        sessionId: parsed.sessionId,
+        relativePath: parsed.relativePath,
+        line: parsed.entryLines[entry.id] ?? 0,
+        category: 'compatibility',
+        code: 'KERNEL_DURATION_UNMAPPED',
+        reason: 'KernelMessage.durationMs 不属于 pi Message，已明确记录兼容差异',
+      })
+    }
+    if (entry.type === 'message' && entry.message.kind === 'compaction') {
+      diagnostics.push({
+        sessionId: parsed.sessionId,
+        relativePath: parsed.relativePath,
+        line: parsed.entryLines[entry.id] ?? 0,
+        category: 'compatibility',
+        code: 'COMPACTION_ENVELOPE_METADATA_UNMAPPED',
+        reason: '消息内 compaction 的 compactedCount/firstKeptEntryId 无等价 pi Message 字段',
       })
     }
   }

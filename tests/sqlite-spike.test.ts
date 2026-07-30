@@ -108,6 +108,46 @@ describe('SQLite Spike legacy importer', () => {
     ])
   })
 
+  test('拒绝无效可选字段、notice 枚举和 Date 范围', () => {
+    const parsed = parseLegacySession({
+      sessionId: 'invalid-optionals',
+      relativePath: 'archive/invalid-optionals.jsonl',
+      indexMeta: {},
+      text: [
+        '{"type":"session","version":2,"kernel":"pi@0.82","cwd":"C:\\\\fixture","createdAt":1}',
+        '{"type":"message","id":"m1","timestamp":2,"message":{"kind":"kernel","id":"m1","createdAt":2,"message":{"role":"user","content":[{"type":"text","text":"x","textSignature":123}],"timestamp":2}}}',
+        '{"type":"message","id":"n1","timestamp":3,"message":{"kind":"notice","id":"n1","createdAt":3,"notice":"unknown_notice","text":"x","display":true}}',
+        '{"type":"custom","id":"u1","timestamp":1e300,"key":"x","value":true}',
+      ].join('\n'),
+    })
+    expect(parsed.entries).toEqual([])
+    expect(parsed.diagnostics.map((item) => [item.line, item.code])).toEqual([
+      [2, 'INVALID_ENTRY'],
+      [3, 'INVALID_ENTRY'],
+      [4, 'INVALID_ENTRY'],
+    ])
+  })
+
+  test('无法等价映射的消息信封元数据产生 compatibility warning', () => {
+    const parsed = parseLegacySession({
+      sessionId: 'envelope-metadata',
+      relativePath: 'archive/envelope-metadata.jsonl',
+      indexMeta: {},
+      text: [
+        '{"type":"session","version":2,"kernel":"pi@0.82","cwd":"C:\\\\fixture","createdAt":1}',
+        '{"type":"message","id":"m1","timestamp":2,"message":{"kind":"kernel","id":"m1","createdAt":2,"durationMs":42,"message":{"role":"user","content":"x","timestamp":2}}}',
+        '{"type":"message","id":"q1","timestamp":3,"message":{"kind":"compaction","id":"q1","createdAt":3,"summary":"摘要","compactedCount":2,"tokensBefore":10,"firstKeptEntryId":"m1"}}',
+      ].join('\n'),
+    })
+    const codes = mapLegacyEntries(parsed).diagnostics
+      .filter((item) => item.category === 'compatibility')
+      .map((item) => [item.line, item.code])
+    expect(codes).toEqual([
+      [2, 'KERNEL_DURATION_UNMAPPED'],
+      [3, 'COMPACTION_ENVELOPE_METADATA_UNMAPPED'],
+    ])
+  })
+
   test('拒绝 entry ID 与消息信封 ID 不一致', () => {
     const parsed = parseLegacySession({
       sessionId: 'mismatched-id',
