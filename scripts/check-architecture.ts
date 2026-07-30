@@ -49,7 +49,11 @@ export const LEGACY_COMPATIBILITY = [
   { prefix: 'src/kernel/', deleteIn: 'Story 1C' },
   { prefix: 'src/main/orchestrator.ts', deleteIn: 'Story 1C' },
   { prefix: 'src/main/compaction-service.ts', deleteIn: 'Story 1C' },
-  { prefix: 'src/main/tools/', deleteIn: 'Story 1C' },
+  { prefix: 'src/main/tools/sandbox.ts', deleteIn: 'Story 2' },
+  { prefix: 'src/main/tools/sandboxed-env.ts', deleteIn: 'Story 2' },
+  { prefix: 'src/main/tools/index.ts', deleteIn: 'Story 4' },
+  { prefix: 'src/main/tools/plan-mode.ts', deleteIn: 'Story 4' },
+  { prefix: 'src/main/tools/ask-user.ts', deleteIn: 'Story 4' },
 ] as const
 
 function normalizePath(path: string): string {
@@ -119,33 +123,42 @@ function parseImports(filePath: string): ImportReference[] {
   )
   const imports: ImportReference[] = []
 
-  for (const statement of source.statements) {
-    if (
-      ts.isImportDeclaration(statement)
-      && ts.isStringLiteral(statement.moduleSpecifier)
-    ) {
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       imports.push({
-        specifier: statement.moduleSpecifier.text,
-        typeOnly: importIsTypeOnly(statement),
-        importedNames: importedNames(statement),
+        specifier: node.moduleSpecifier.text,
+        typeOnly: importIsTypeOnly(node),
+        importedNames: importedNames(node),
       })
-      continue
-    }
-
-    if (
-      ts.isExportDeclaration(statement)
-      && statement.moduleSpecifier
-      && ts.isStringLiteral(statement.moduleSpecifier)
+    } else if (
+      ts.isExportDeclaration(node)
+      && node.moduleSpecifier
+      && ts.isStringLiteral(node.moduleSpecifier)
     ) {
       imports.push({
-        specifier: statement.moduleSpecifier.text,
-        typeOnly: statement.isTypeOnly,
-        importedNames: statement.exportClause && ts.isNamedExports(statement.exportClause)
-          ? statement.exportClause.elements.map((item) => (item.propertyName ?? item.name).text)
+        specifier: node.moduleSpecifier.text,
+        typeOnly: node.isTypeOnly,
+        importedNames: node.exportClause && ts.isNamedExports(node.exportClause)
+          ? node.exportClause.elements.map((item) => (item.propertyName ?? item.name).text)
           : ['*'],
       })
+    } else if (
+      ts.isCallExpression(node)
+      && node.expression.kind === ts.SyntaxKind.ImportKeyword
+      && node.arguments.length === 1
+      && ts.isStringLiteral(node.arguments[0]!)
+    ) {
+      imports.push({
+        specifier: node.arguments[0].text,
+        typeOnly: false,
+        importedNames: ['*'],
+      })
     }
+
+    ts.forEachChild(node, visit)
   }
+
+  visit(source)
 
   return imports
 }
@@ -259,6 +272,7 @@ function classifySource(source: string): SourceLayer | undefined {
   if (source.startsWith('src/kernel/pi/')) return 'kernel-pi'
   if (source.startsWith('src/infrastructure/')) return 'infrastructure'
   if (source.startsWith('src/main/bootstrap/')) return 'main-bootstrap'
+  if (source === 'src/main/ipc.ts') return 'main-ipc'
   if (source.startsWith('src/main/ipc/')) return 'main-ipc'
   if (source.startsWith('src/main/')) return 'main'
   if (source.startsWith('src/preload/')) return 'preload'

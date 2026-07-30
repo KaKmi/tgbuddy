@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import {
   checkArchitecture,
   formatArchitectureViolation,
+  LEGACY_COMPATIBILITY,
 } from '../../../scripts/check-architecture.ts'
 
 const temporaryProjects: string[] = []
@@ -96,6 +97,8 @@ describe('仓库 import 边界', () => {
       'src/infrastructure/sqlite/bad.ts': "import '../../kernel/pi/pi-agent-engine.ts'",
       'src/main/bootstrap/bad.ts': "import '../../renderer/app/App.tsx'",
       'src/main/ipc/bad.ts': "import '../../runtime/sessions/session-service.ts'",
+      'src/main/ipc.ts': "import './session-store.ts'",
+      'src/main/session-store.ts': 'export const store = true',
       'src/main/window.ts': "import '../infrastructure/sqlite/repository.ts'",
       'src/preload/bad.ts': "import '../runtime/index.ts'",
       'src/renderer/app/App.tsx': "import '../../main/window.ts'\nimport { readFileSync } from 'node:fs'",
@@ -107,11 +110,29 @@ describe('仓库 import 边界', () => {
     const violations = checkArchitecture({ projectRoot: root })
     const output = violations.map(formatArchitectureViolation).join('\n')
 
-    expect(violations.length).toBe(11)
+    expect(violations.length).toBe(12)
     expect(output).toContain('src/shared/contracts/bad.ts -> src/runtime/index.ts ->')
     expect(output).toContain('src/runtime/bad-node.ts -> node:fs ->')
     expect(output).toContain('src/renderer/app/App.tsx -> src/main/window.ts ->')
     expect(output).toContain('src/renderer/app/App.tsx -> node:fs ->')
+    expect(output).toContain(
+      'src/main/ipc.ts -> src/main/session-store.ts -> main/ipc 只能依赖',
+    )
+  })
+
+  test('动态 import 与静态 import 使用同一边界规则', () => {
+    const root = createProject({
+      'src/runtime/dynamic.ts': "export async function load() { return import('../main/window.ts') }",
+      'src/main/window.ts': 'export const window = true',
+      'src/renderer/dynamic.ts': "export async function load() { return import('node:fs') }",
+    })
+
+    const output = checkArchitecture({ projectRoot: root })
+      .map(formatArchitectureViolation)
+      .join('\n')
+
+    expect(output).toContain('src/runtime/dynamic.ts -> src/main/window.ts ->')
+    expect(output).toContain('src/renderer/dynamic.ts -> node:fs ->')
   })
 
   test('pi type-only 例外只允许指定 contract，value import 仍然失败', () => {
@@ -167,5 +188,18 @@ describe('仓库 import 边界', () => {
     expect(invalid.stderr.toString()).toContain(
       'src/renderer/bad.ts -> node:fs -> renderer 不得依赖 Node、pi 或 Electron',
     )
+  })
+
+  test('每个 legacy 豁免都绑定实际删除 Story', () => {
+    expect(LEGACY_COMPATIBILITY).toEqual([
+      { prefix: 'src/kernel/', deleteIn: 'Story 1C' },
+      { prefix: 'src/main/orchestrator.ts', deleteIn: 'Story 1C' },
+      { prefix: 'src/main/compaction-service.ts', deleteIn: 'Story 1C' },
+      { prefix: 'src/main/tools/sandbox.ts', deleteIn: 'Story 2' },
+      { prefix: 'src/main/tools/sandboxed-env.ts', deleteIn: 'Story 2' },
+      { prefix: 'src/main/tools/index.ts', deleteIn: 'Story 4' },
+      { prefix: 'src/main/tools/plan-mode.ts', deleteIn: 'Story 4' },
+      { prefix: 'src/main/tools/ask-user.ts', deleteIn: 'Story 4' },
+    ])
   })
 })

@@ -139,19 +139,19 @@ export interface TgBuddyAPI {
     delete(id: IpcRequest<'session:delete'>): Promise<IpcResponse<'session:delete'>>
     messages(id: IpcRequest<'session:messages'>): Promise<IpcResponse<'session:messages'>>
     compactedMessages(
-      id: string,
-      compactionId: string,
+      id: IpcRequest<'session:compacted-messages'>['sessionId'],
+      compactionId: IpcRequest<'session:compacted-messages'>['compactionId'],
     ): Promise<IpcResponse<'session:compacted-messages'>>
     updateMeta(
-      id: string,
-      patch: Partial<SessionMeta>,
+      id: IpcRequest<'session:update-meta'>['sessionId'],
+      patch: IpcRequest<'session:update-meta'>['patch'],
     ): Promise<IpcResponse<'session:update-meta'>>
   }
   agent: {
     send(input: IpcRequest<'agent:send'>): Promise<IpcResponse<'agent:send'>>
     stop(sessionId: IpcRequest<'agent:stop'>): Promise<IpcResponse<'agent:stop'>>
     /** 订阅流式帧，返回取消订阅函数 */
-    onStream(listener: (frame: StreamFrame) => void): () => void
+    onStream(listener: (frame: IpcEventMap['agent:stream']) => void): () => void
   }
   permission: {
     respond(res: IpcRequest<'permission:respond'>): Promise<IpcResponse<'permission:respond'>>
@@ -161,16 +161,25 @@ export interface TgBuddyAPI {
     respond(res: IpcRequest<'plan:respond'>): Promise<IpcResponse<'plan:respond'>>
     pending(): Promise<IpcResponse<'plan:pending'>>
     /** 用户手动切换权限模式 */
-    setMode(sessionId: string, mode: PermissionMode): Promise<void>
+    setMode(
+      sessionId: IpcRequest<'mode:set'>['sessionId'],
+      mode: IpcRequest<'mode:set'>['mode'],
+    ): Promise<IpcResponse<'mode:set'>>
   }
   askUser: {
     respond(res: IpcRequest<'ask-user:respond'>): Promise<IpcResponse<'ask-user:respond'>>
     pending(): Promise<IpcResponse<'ask-user:pending'>>
   }
   compaction: {
-    start(sessionId: string): Promise<void>
-    defer(sessionId: string): Promise<void>
-    cancel(sessionId: string): Promise<void>
+    start(
+      sessionId: IpcRequest<'compaction:start'>,
+    ): Promise<IpcResponse<'compaction:start'>>
+    defer(
+      sessionId: IpcRequest<'compaction:defer'>,
+    ): Promise<IpcResponse<'compaction:defer'>>
+    cancel(
+      sessionId: IpcRequest<'compaction:cancel'>,
+    ): Promise<IpcResponse<'compaction:cancel'>>
   }
   channel: {
     list(): Promise<IpcResponse<'channel:list'>>
