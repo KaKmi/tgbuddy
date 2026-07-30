@@ -22,6 +22,7 @@ import {
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import { toKernelMessages } from '../shared/types/message.ts'
 import type { HostEvent, StreamFrame } from '../shared/types/event.ts'
+import type { SessionMessageHistory } from '../runtime/index.ts'
 import { listChannels } from './channel-store.ts'
 import * as store from './session-store.ts'
 
@@ -61,7 +62,10 @@ function emitHost(
   sendFrame({ sessionId, runId: 0, payload: { channel: 'host', event } })
 }
 
-function resolveRuntime(sessionId: string): CompactionKernelRuntime {
+async function resolveRuntime(
+  sessionId: string,
+  history: SessionMessageHistory,
+): Promise<CompactionKernelRuntime> {
   const meta = store.getSession(sessionId)
   if (!meta) throw new Error(`会话不存在：${sessionId}`)
   const channels = listChannels()
@@ -73,7 +77,7 @@ function resolveRuntime(sessionId: string): CompactionKernelRuntime {
     channels,
     channel.id,
     modelId,
-    store.getCompactionSourceEntries(sessionId),
+    await history.compactionSourceEntries(sessionId),
   )
   if (!runtime.ok) throw runtime.error
   return runtime.value
@@ -85,6 +89,7 @@ export function scheduleIfNeeded(
   contextWindow: number,
   sendFrame: FrameSender,
   isSessionRunning: () => boolean,
+  history: SessionMessageHistory,
 ): void {
   if (
     scheduled.has(sessionId) ||
@@ -97,7 +102,7 @@ export function scheduleIfNeeded(
   const deadlineAt = Date.now() + AUTO_DELAY_MS
   const timer = setTimeout(() => {
     scheduled.delete(sessionId)
-    void start(sessionId, sendFrame, isSessionRunning)
+    void start(sessionId, sendFrame, history, isSessionRunning)
   }, AUTO_DELAY_MS)
   scheduled.set(sessionId, { timer, usedTokens })
   emitHost(sendFrame, sessionId, { type: 'compaction_scheduled', deadlineAt })
@@ -113,6 +118,7 @@ export function isCompacting(sessionId: string): boolean {
  */
 export async function compactBeforeModelCall(
   input: BeforeModelCallInput,
+  history: SessionMessageHistory,
 ): Promise<AgentMessage[]> {
   const fixedTokens = estimateTextTokens(input.systemPrompt) + estimateToolTokens(input.tools)
   const contextTokens = estimateModelCallContextTokens(input.messages, fixedTokens)
@@ -125,7 +131,7 @@ export async function compactBeforeModelCall(
   scheduled.delete(input.sessionId)
   queued.delete(input.sessionId)
 
-  const runtime = resolveRuntime(input.sessionId)
+  const runtime = await resolveRuntime(input.sessionId, history)
   const controller = new AbortController()
   const abort = (): void => controller.abort()
   input.signal?.addEventListener('abort', abort, { once: true })
@@ -149,8 +155,10 @@ export async function compactBeforeModelCall(
       throw new Error('压缩已取消')
     }
 
-    const marker = store.appendCompaction(input.sessionId, result.value)
-    const compactedMessages = toKernelMessages(store.getMessages(input.sessionId))
+    const marker = await history.appendCompaction(input.sessionId, result.value)
+    const compactedMessages = toKernelMessages(
+      await history.messages(input.sessionId),
+    )
     const meta = store.getSession(input.sessionId)
     const contextUsage = buildPostCompactionUsage(
       compactedMessages,
@@ -198,6 +206,7 @@ export function defer(sessionId: string, sendFrame: FrameSender): void {
 export async function start(
   sessionId: string,
   sendFrame: FrameSender,
+  history: SessionMessageHistory,
   isSessionRunning: () => boolean = () => false,
 ): Promise<void> {
   const pending = scheduled.get(sessionId)
@@ -214,7 +223,7 @@ export async function start(
 
   let runtime: CompactionKernelRuntime
   try {
-    runtime = resolveRuntime(sessionId)
+    runtime = await resolveRuntime(sessionId, history)
   } catch (error) {
     emitHost(sendFrame, sessionId, { type: 'compaction_cancelled' })
     emitHost(sendFrame, sessionId, {
@@ -245,10 +254,10 @@ export async function start(
     if (controller.signal.aborted || running.get(sessionId)?.controller !== controller) {
       throw new Error('压缩已取消')
     }
-    const marker = store.appendCompaction(sessionId, result.value)
+    const marker = await history.appendCompaction(sessionId, result.value)
     const meta = store.getSession(sessionId)
     const contextUsage = buildPostCompactionUsage(
-      toKernelMessages(store.getMessages(sessionId)),
+      toKernelMessages(await history.messages(sessionId)),
       meta?.contextUsage,
       runtime.model.contextWindow,
       result.value.usage?.output,
@@ -292,9 +301,13 @@ export function cancel(sessionId: string, sendFrame: FrameSender): void {
   }
 }
 
-export function runQueued(sessionId: string, sendFrame: FrameSender): void {
+export function runQueued(
+  sessionId: string,
+  sendFrame: FrameSender,
+  history: SessionMessageHistory,
+): void {
   if (!queued.delete(sessionId)) return
-  void start(sessionId, sendFrame)
+  void start(sessionId, sendFrame, history)
 }
 
 export function clearSession(sessionId: string): void {

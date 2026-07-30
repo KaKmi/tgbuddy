@@ -1,5 +1,9 @@
 /**
- * 会话存储 —— 索引 JSON + 消息 JSONL。
+ * legacy 会话兼容层 —— 索引 JSON + 消息 JSONL。
+ *
+ * K03 起生产 catalog 已切到 SQLite，K05 起生产消息历史已切到 pi Session backend。
+ * 本文件暂留元数据 bridge 给旧 orchestrator，并给 K06 一次性导入读取旧 JSONL；
+ * 新消息不得再调用这里的 append/get/delete 历史函数。
  *
  * ```
  * ~/.tgbuddy/

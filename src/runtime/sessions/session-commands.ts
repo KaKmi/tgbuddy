@@ -3,9 +3,10 @@ import type { SessionMessage } from '../../shared/contracts/message.ts'
 import type { SessionRepository } from './session-repository.ts'
 
 export interface SessionHistoryAdapter {
-  messages(sessionId: string): SessionMessage[]
-  compactedMessages(sessionId: string, compactionId: string): SessionMessage[]
-  delete(sessionId: string): void
+  create(sessionId: string, cwd: string): Promise<void>
+  messages(sessionId: string): Promise<SessionMessage[]>
+  compactedMessages(sessionId: string, compactionId: string): Promise<SessionMessage[]>
+  delete(sessionId: string): Promise<void>
 }
 
 export interface CreateSessionCommandsOptions {
@@ -13,6 +14,8 @@ export interface CreateSessionCommandsOptions {
   history: SessionHistoryAdapter
   createId(): string
   now(): number
+  resolveCwd(): string
+  onHistoryDeleteError?(sessionId: string, error: unknown): void
 }
 
 /**
@@ -26,9 +29,9 @@ export function createSessionCommands(
 ): SessionCommands {
   return {
     list: () => options.repository.list(),
-    create(input) {
+    async create(input) {
       const now = options.now()
-      return options.repository.create({
+      const meta = options.repository.create({
         id: options.createId(),
         title: input.title ?? '新会话',
         ...(input.channelId ? { channelId: input.channelId } : {}),
@@ -36,10 +39,23 @@ export function createSessionCommands(
         createdAt: now,
         updatedAt: now,
       })
+      try {
+        await options.history.create(meta.id, options.resolveCwd())
+        return meta
+      } catch (error) {
+        options.repository.delete(meta.id)
+        throw error
+      }
     },
-    delete(sessionId) {
+    async delete(sessionId) {
+      // catalog 是用户可见的 canonical 状态：它删除失败时不得先破坏消息；
+      // 消息清理失败则保留为不可见孤儿并上报，不能把已删除会话重新暴露成空历史。
       options.repository.delete(sessionId)
-      options.history.delete(sessionId)
+      try {
+        await options.history.delete(sessionId)
+      } catch (error) {
+        options.onHistoryDeleteError?.(sessionId, error)
+      }
     },
     messages: (sessionId) => options.history.messages(sessionId),
     compactedMessages: (sessionId, compactionId) =>

@@ -7,7 +7,11 @@ import { AppDatabase } from '../src/infrastructure/sqlite/app-database.ts'
 import { SqliteSessionRepository } from '../src/infrastructure/sqlite/repositories/sqlite-session-repository.ts'
 import { createPiSessionStore } from '../src/kernel/pi/pi-session-store.ts'
 import { createSessionCommands } from '../src/runtime/sessions/session-commands.ts'
-import type { PersistedSessionEntry } from '../src/shared/contracts/message.ts'
+import { createSessionMessageHistory } from '../src/runtime/sessions/session-message-history.ts'
+import type {
+  PersistedSessionEntry,
+  SessionMessage,
+} from '../src/shared/contracts/message.ts'
 import type { SessionMeta } from '../src/shared/contracts/session.ts'
 import {
   importLegacySession,
@@ -265,15 +269,19 @@ export async function runSessionCatalogScenario(
   const firstCommands = createSessionCommands({
     repository: firstRepository,
     history: {
-      messages: () => [],
-      compactedMessages: () => [],
-      delete: (sessionId) => historyDeletes.push(sessionId),
+      create: async () => undefined,
+      messages: async () => [],
+      compactedMessages: async () => [],
+      delete: async (sessionId) => {
+        historyDeletes.push(sessionId)
+      },
     },
     createId: () => 'runtime-created',
     now: () => 250,
+    resolveCwd: () => context.rootDir,
   })
   assertCondition(
-    isDeepStrictEqual(firstCommands.create({ title: 'Runtime 新会话' }), {
+    isDeepStrictEqual(await firstCommands.create({ title: 'Runtime 新会话' }), {
       id: 'runtime-created',
       title: 'Runtime 新会话',
       createdAt: 250,
@@ -307,12 +315,16 @@ export async function runSessionCatalogScenario(
   const reopenedCommands = createSessionCommands({
     repository: reopenedRepository,
     history: {
-      messages: () => [],
-      compactedMessages: () => [],
-      delete: (sessionId) => historyDeletes.push(sessionId),
+      create: async () => undefined,
+      messages: async () => [],
+      compactedMessages: async () => [],
+      delete: async (sessionId) => {
+        historyDeletes.push(sessionId)
+      },
     },
     createId: () => 'unused',
     now: () => 400,
+    resolveCwd: () => context.rootDir,
   })
   assertCondition(
     reopenedCommands.list().some((session) => session.id === 'runtime-created'),
@@ -337,7 +349,7 @@ export async function runSessionCatalogScenario(
     'Runtime updateMeta 必须更新 SQLite catalog',
   )
   assertions++
-  reopenedCommands.delete('runtime-created')
+  await reopenedCommands.delete('runtime-created')
   assertCondition(
     reopenedRepository.get('runtime-created') === undefined
       && historyDeletes[0] === 'runtime-created',
@@ -431,15 +443,84 @@ export async function runPiSessionStoreScenario(
       timestamp: 1,
     },
   }
+  const historyMessages: SessionMessage[] = [
+    {
+      kind: 'kernel',
+      id: 'history-user',
+      createdAt: 1_767_225_601_000,
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: '读取 README' }],
+        timestamp: 1_767_225_601_000,
+      },
+    },
+    {
+      kind: 'kernel',
+      id: 'history-assistant',
+      createdAt: 1_767_225_602_000,
+      message: {
+        role: 'assistant',
+        content: [{
+          type: 'toolCall',
+          id: 'history-call',
+          name: 'read',
+          arguments: { path: 'README.md' },
+        }],
+        api: 'openai-responses',
+        provider: 'spike',
+        model: 'spike-model',
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: 'toolUse',
+        timestamp: 1_767_225_602_000,
+      },
+    },
+    {
+      kind: 'kernel',
+      id: 'history-tool',
+      createdAt: 1_767_225_603_000,
+      message: {
+        role: 'toolResult',
+        toolCallId: 'history-call',
+        toolName: 'read',
+        content: [{ type: 'text', text: '内容' }],
+        isError: false,
+        timestamp: 1_767_225_603_000,
+      },
+    },
+  ]
 
   const firstStore = createPiSessionStore({
     databasePath,
     cwd: scenarioRoot,
   })
-  const firstA = await firstStore.create({ sessionId: 'session-a', cwd: workspaceA })
-  const firstB = await firstStore.create({ sessionId: 'session-b', cwd: workspaceB })
+  const firstA = await firstStore.create({
+    sessionId: 'session-a',
+    cwd: workspaceA,
+    kernel: 'pi@0.82',
+  })
+  const firstB = await firstStore.create({
+    sessionId: 'session-b',
+    cwd: workspaceB,
+    kernel: 'pi@0.82',
+  })
   for (const entry of entriesA) await firstA.append(entry)
   await firstB.append(entryB)
+  const firstHistory = createSessionMessageHistory({
+    store: firstStore,
+    createId: () => 'unused',
+    now: Date.now,
+  })
+  await firstHistory.create('session-history', workspaceA)
+  for (const message of historyMessages) {
+    await firstHistory.append('session-history', message)
+  }
   assertCondition(
     isDeepStrictEqual(await firstA.entries(), entriesA),
     '首次 append 必须保留 Session A 的 entry ID、parentId 与顺序',
@@ -462,8 +543,13 @@ export async function runPiSessionStoreScenario(
     databasePath,
     cwd: scenarioRoot,
   })
-  const reopenedA = await reopenedStore.open('session-a')
-  const reopenedB = await reopenedStore.open('session-b')
+  const reopenedA = await reopenedStore.open('session-a', 'pi@0.82')
+  const reopenedB = await reopenedStore.open('session-b', 'pi@0.82')
+  const reopenedHistory = createSessionMessageHistory({
+    store: reopenedStore,
+    createId: () => 'unused',
+    now: Date.now,
+  })
   assertCondition(reopenedA !== undefined, 'reopen 后必须找到 Session A')
   assertions++
   assertCondition(reopenedB !== undefined, 'reopen 后必须找到 Session B')
@@ -478,9 +564,18 @@ export async function runPiSessionStoreScenario(
     'reopen 后两个 Session 仍须隔离',
   )
   assertions++
+  const replayedHistory = await reopenedHistory.messages('session-history')
+  assertCondition(
+    isDeepStrictEqual(replayedHistory, historyMessages),
+    'SessionMessageHistory 必须在真实 backend 重启后保留信封、角色与顺序',
+  )
+  assertions++
 
   await reopenedStore.delete('session-a')
-  assertCondition(await reopenedStore.open('session-a') === undefined, 'delete 后 Session A 不得 reopen')
+  assertCondition(
+    await reopenedStore.open('session-a', 'pi@0.82') === undefined,
+    'delete 后 Session A 不得 reopen',
+  )
   assertions++
   assertCondition(
     isDeepStrictEqual(await reopenedB.entries(), [entryB]),

@@ -89,6 +89,21 @@ SQLite、kernel、bundle 和 UI Slice 再按计划追加 `spike:sqlite`、`probe
   - Mirror: type-only import、版本护栏、零字段复制。
   - Deviations: K04 新增 `PersistedSessionEntry` alias，供 Runtime port 保持 pi entry 无损。
 
+### K05: 消息历史切换到 pi Session backend
+
+- Reference: `scripts/sqlite-spike-import.ts`
+  - Why analogous: Spike 已验证现有 `SessionMessage` 到 pi 原生 message/custom_message/compaction entry 的无翻译映射。
+  - Mirror: 信封 ID 写入 entry ID、线性 parentId、notice details、compaction details 和 `pi@0.82` 版本护栏。
+  - Deviations: 生产 `SessionMessageHistory` 只处理当前可写类型；legacy truncate/custom 的一次性迁移留给 K06。
+- Reference: `src/runtime/sessions/session-commands.ts`
+  - Why analogous: catalog 与消息历史必须作为同一个用户动作创建和删除，不能留下只存在一侧的半会话。
+  - Mirror: Composition Root 注入、创建失败回滚 catalog、删除先释放消息 backend 再删 catalog。
+  - Deviations: Session create/delete/messages 改为 Promise；Preload/Renderer 原本已使用 Promise，因此 IPC 名称和 UI 调用方式不变。删除以用户可见 catalog 为 commit point：catalog 失败不触碰消息，history 清理失败只留下不可见孤儿并显式上报。
+- Reference: `src/renderer/App.tsx`
+  - Why analogous: 当前时间线已经通过 `window.tgbuddy.session.messages()` 读取 `SessionMessage[]`，并使用现有 AI Elements Conversation/Response 与 Markdown 链路。
+  - Mirror: 保持消息 contract 和组件树，不引入新视觉或第二套渲染。
+  - Deviations: K05 无需修改 Renderer；异步 SQLite 边界由原有 preload Promise 吸收。
+
 ## Waves
 
 M1 的 K01–K17 存在严格数据/装配依赖，并共享 Composition Root、Runtime contract 或 compatibility owner，因此全部顺序执行：

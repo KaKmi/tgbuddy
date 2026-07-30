@@ -9,6 +9,7 @@ import type { PersistedSessionEntry } from '../../../src/shared/contracts/messag
 class MemoryPiSession implements PiSessionAdapter {
   readonly entries: PersistedSessionEntry[] = []
   closeCount = 0
+  metadataError: Error | undefined
   readonly #beforeAppend: (() => Promise<void>) | undefined
   readonly #beforeClose: (() => Promise<void>) | undefined
 
@@ -18,6 +19,11 @@ class MemoryPiSession implements PiSessionAdapter {
   ) {
     this.#beforeAppend = beforeAppend
     this.#beforeClose = beforeClose
+  }
+
+  async metadata(): Promise<Record<string, unknown> | undefined> {
+    if (this.metadataError) throw this.metadataError
+    return { kernel: 'pi@0.82' }
   }
 
   async listEntries(): Promise<PersistedSessionEntry[]> {
@@ -50,7 +56,11 @@ class MemoryPiRepository implements PiSessionRepositoryAdapter {
     this.#beforeOpen = options.beforeOpen
   }
 
-  async create(sessionId: string, _cwd: string): Promise<PiSessionAdapter> {
+  async create(
+    sessionId: string,
+    _cwd: string,
+    _metadata: Record<string, unknown>,
+  ): Promise<PiSessionAdapter> {
     if (this.sessions.has(sessionId)) throw new Error(`重复 Session: ${sessionId}`)
     const session = this.#createSession()
     this.sessions.set(sessionId, session)
@@ -107,7 +117,11 @@ describe('PiSessionStore', () => {
   test('追加后 close/reopen 保留 entry ID、顺序和 compaction', async () => {
     const repository = new MemoryPiRepository()
     const store = new PiSessionStore(repository)
-    const first = await store.create({ sessionId: 'session-a', cwd: 'C:\\workspace-a' })
+    const first = await store.create({
+      sessionId: 'session-a',
+      cwd: 'C:\\workspace-a',
+      kernel: 'pi@0.82',
+    })
     const entries: PersistedSessionEntry[] = [
       userEntry('entry-1', null, '第一条'),
       userEntry('entry-2', 'entry-1', '第二条'),
@@ -124,7 +138,7 @@ describe('PiSessionStore', () => {
     for (const entry of entries) await first.append(entry)
     await first.close()
 
-    const reopened = await store.open('session-a')
+    const reopened = await store.open('session-a', 'pi@0.82')
     expect(reopened).toBeDefined()
     expect(await reopened?.entries()).toEqual(entries)
 
@@ -136,15 +150,23 @@ describe('PiSessionStore', () => {
   test('两个 Session 隔离，删除一个不影响另一个', async () => {
     const repository = new MemoryPiRepository()
     const store = new PiSessionStore(repository)
-    const sessionA = await store.create({ sessionId: 'session-a', cwd: 'C:\\workspace-a' })
-    const sessionB = await store.create({ sessionId: 'session-b', cwd: 'C:\\workspace-b' })
+    const sessionA = await store.create({
+      sessionId: 'session-a',
+      cwd: 'C:\\workspace-a',
+      kernel: 'pi@0.82',
+    })
+    const sessionB = await store.create({
+      sessionId: 'session-b',
+      cwd: 'C:\\workspace-b',
+      kernel: 'pi@0.82',
+    })
     await sessionA.append(userEntry('a-entry-1', null, 'A'))
     await sessionB.append(userEntry('b-entry-1', null, 'B'))
 
     await store.delete('session-a')
 
-    expect(await store.open('session-a')).toBeUndefined()
-    expect((await store.open('session-b'))?.entries()).resolves.toEqual([
+    expect(await store.open('session-a', 'pi@0.82')).toBeUndefined()
+    expect((await store.open('session-b', 'pi@0.82'))?.entries()).resolves.toEqual([
       userEntry('b-entry-1', null, 'B'),
     ])
     await store.dispose()
@@ -155,7 +177,11 @@ describe('PiSessionStore', () => {
     const session = new MemoryPiSession(() => appendGate.promise)
     const repository = new MemoryPiRepository({ createSession: () => session })
     const store = new PiSessionStore(repository)
-    const managed = await store.create({ sessionId: 'session-a', cwd: 'C:\\workspace-a' })
+    const managed = await store.create({
+      sessionId: 'session-a',
+      cwd: 'C:\\workspace-a',
+      kernel: 'pi@0.82',
+    })
 
     const append = managed.append(userEntry('entry-1', null, 'A'))
     const close = managed.close()
@@ -177,8 +203,8 @@ describe('PiSessionStore', () => {
     const store = new PiSessionStore(repository)
 
     const [first, second] = await Promise.all([
-      store.open('session-a'),
-      store.open('session-a'),
+      store.open('session-a', 'pi@0.82'),
+      store.open('session-a', 'pi@0.82'),
     ])
 
     expect(first).toBe(second)
@@ -200,7 +226,7 @@ describe('PiSessionStore', () => {
     repository.sessions.set('session-a', session)
     const store = new PiSessionStore(repository)
 
-    const opening = store.open('session-a')
+    const opening = store.open('session-a', 'pi@0.82')
     await openStarted.promise
     const disposing = store.dispose()
     openGate.resolve()
@@ -220,11 +246,15 @@ describe('PiSessionStore', () => {
     })
     const repository = new MemoryPiRepository({ createSession: () => session })
     const store = new PiSessionStore(repository)
-    const first = await store.create({ sessionId: 'session-a', cwd: 'C:\\workspace-a' })
+    const first = await store.create({
+      sessionId: 'session-a',
+      cwd: 'C:\\workspace-a',
+      kernel: 'pi@0.82',
+    })
 
     const closing = first.close()
     await closeStarted.promise
-    const reopening = store.open('session-a')
+    const reopening = store.open('session-a', 'pi@0.82')
     await Promise.resolve()
     expect(repository.openCount).toBe(0)
 
@@ -249,7 +279,7 @@ describe('PiSessionStore', () => {
     repository.sessions.set('session-a', session)
     const store = new PiSessionStore(repository)
 
-    const opening = store.open('session-a')
+    const opening = store.open('session-a', 'pi@0.82')
     await openStarted.promise
     const firstDispose = store.dispose()
     const secondDispose = store.dispose()
@@ -265,6 +295,20 @@ describe('PiSessionStore', () => {
     openGate.resolve()
     await expect(opening).rejects.toThrow('PiSessionStore 已关闭')
     await Promise.all([firstDispose, secondDispose])
+    expect(session.closeCount).toBe(1)
+    expect(repository.disposeCount).toBe(1)
+  })
+
+  test('metadata 读取失败时关闭尚未托管的 handle', async () => {
+    const repository = new MemoryPiRepository()
+    const session = new MemoryPiSession()
+    session.metadataError = new Error('metadata 损坏')
+    repository.sessions.set('session-a', session)
+    const store = new PiSessionStore(repository)
+
+    await expect(store.open('session-a', 'pi@0.82')).rejects.toThrow('metadata 损坏')
+    expect(session.closeCount).toBe(1)
+    await store.dispose()
     expect(session.closeCount).toBe(1)
     expect(repository.disposeCount).toBe(1)
   })

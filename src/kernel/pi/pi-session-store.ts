@@ -15,13 +15,18 @@ import type {
 } from '../../runtime/sessions/message-store.ts'
 
 export interface PiSessionAdapter {
+  metadata(): Promise<Record<string, unknown> | undefined>
   listEntries(): Promise<PersistedSessionEntry[]>
   appendEntry(entry: PersistedSessionEntry): Promise<void>
   close(): Promise<void>
 }
 
 export interface PiSessionRepositoryAdapter {
-  create(sessionId: string, cwd: string): Promise<PiSessionAdapter>
+  create(
+    sessionId: string,
+    cwd: string,
+    metadata: Record<string, unknown>,
+  ): Promise<PiSessionAdapter>
   open(sessionId: string): Promise<PiSessionAdapter | undefined>
   delete(sessionId: string): Promise<void>
   dispose(): Promise<void>
@@ -66,6 +71,10 @@ class SqlitePiSessionAdapter implements PiSessionAdapter {
     this.#session = session
   }
 
+  async metadata(): Promise<Record<string, unknown> | undefined> {
+    return (await this.#session.getMetadata()).metadata
+  }
+
   listEntries(): Promise<SessionTreeEntry[]> {
     return this.#session.getEntries()
   }
@@ -92,9 +101,13 @@ class SqlitePiSessionRepositoryAdapter implements PiSessionRepositoryAdapter {
     this.#environment = environment
   }
 
-  async create(sessionId: string, cwd: string): Promise<PiSessionAdapter> {
+  async create(
+    sessionId: string,
+    cwd: string,
+    metadata: Record<string, unknown>,
+  ): Promise<PiSessionAdapter> {
     return new SqlitePiSessionAdapter(
-      await this.#repository.create({ id: sessionId, cwd }),
+      await this.#repository.create({ id: sessionId, cwd, metadata }),
     )
   }
 
@@ -117,6 +130,7 @@ class SqlitePiSessionRepositoryAdapter implements PiSessionRepositoryAdapter {
 
 class ManagedMessageSession implements MessageSession {
   readonly sessionId: string
+  readonly kernel: string
   readonly #session: PiSessionAdapter
   readonly #onClose: (session: ManagedMessageSession) => void
   readonly #inFlight = new Set<Promise<unknown>>()
@@ -129,10 +143,12 @@ class ManagedMessageSession implements MessageSession {
 
   constructor(
     sessionId: string,
+    kernel: string,
     session: PiSessionAdapter,
     onClose: (session: ManagedMessageSession) => void,
   ) {
     this.sessionId = sessionId
+    this.kernel = kernel
     this.#session = session
     this.#onClose = onClose
   }
@@ -203,25 +219,54 @@ export class PiSessionStore implements MessageStore {
         if (this.#active.has(input.sessionId)) {
           throw new Error(`MessageSession 已打开: ${input.sessionId}`)
         }
-        const session = await this.#repository.create(input.sessionId, input.cwd)
-        return this.#acceptSession(input.sessionId, session)
+        const session = await this.#repository.create(
+          input.sessionId,
+          input.cwd,
+          { kernel: input.kernel },
+        )
+        return this.#acceptSession(input.sessionId, input.kernel, session)
       }),
     )
   }
 
-  open(sessionId: string): Promise<MessageSession | undefined> {
+  open(sessionId: string, kernel: string): Promise<MessageSession | undefined> {
     this.#requireActive()
     return this.#trackStoreOperation(
       this.#withSessionLock(sessionId, async () => {
         this.#requireActive()
         const active = this.#active.get(sessionId)
+        if (active && active.kernel !== kernel) {
+          throw new Error(
+            `Session ${sessionId} 的 kernel 不兼容：${active.kernel}`,
+          )
+        }
         if (active && !active.isClosing) return active
         if (active) {
           await active.close()
           this.#requireActive()
         }
         const session = await this.#repository.open(sessionId)
-        return session ? this.#acceptSession(sessionId, session) : undefined
+        if (!session) return undefined
+        let metadata: Record<string, unknown> | undefined
+        try {
+          metadata = await session.metadata()
+        } catch (error) {
+          return this.#closeRejectedSession(
+            session,
+            error,
+            `Session ${sessionId} metadata 读取失败且连接清理失败`,
+          )
+        }
+        if (metadata?.kernel !== kernel) {
+          return this.#closeRejectedSession(
+            session,
+            new Error(
+              `Session ${sessionId} 的 kernel 不兼容：${String(metadata?.kernel ?? 'missing')}`,
+            ),
+            `Session ${sessionId} kernel 校验失败且连接清理失败`,
+          )
+        }
+        return this.#acceptSession(sessionId, kernel, session)
       }),
     )
   }
@@ -265,8 +310,12 @@ export class PiSessionStore implements MessageStore {
     if (errors.length > 0) throw new AggregateError(errors, 'PiSessionStore 关闭失败')
   }
 
-  #track(sessionId: string, session: PiSessionAdapter): ManagedMessageSession {
-    const managed = new ManagedMessageSession(sessionId, session, (closed) => {
+  #track(
+    sessionId: string,
+    kernel: string,
+    session: PiSessionAdapter,
+  ): ManagedMessageSession {
+    const managed = new ManagedMessageSession(sessionId, kernel, session, (closed) => {
       if (this.#active.get(sessionId) === closed) this.#active.delete(sessionId)
     })
     this.#active.set(sessionId, managed)
@@ -275,12 +324,26 @@ export class PiSessionStore implements MessageStore {
 
   async #acceptSession(
     sessionId: string,
+    kernel: string,
     session: PiSessionAdapter,
   ): Promise<ManagedMessageSession> {
-    if (!this.#disposed) return this.#track(sessionId, session)
+    if (!this.#disposed) return this.#track(sessionId, kernel, session)
 
     await session.close()
     throw new Error('PiSessionStore 已关闭')
+  }
+
+  async #closeRejectedSession(
+    session: PiSessionAdapter,
+    error: unknown,
+    aggregateMessage: string,
+  ): Promise<never> {
+    try {
+      await session.close()
+    } catch (closeError) {
+      throw new AggregateError([error, closeError], aggregateMessage)
+    }
+    throw error
   }
 
   #trackStoreOperation<T>(operation: Promise<T>): Promise<T> {

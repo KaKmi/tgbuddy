@@ -28,3 +28,9 @@ export type {
   MessageSession,
   MessageStore,
 } from './sessions/message-store.ts'
+export {
+  createSessionMessageHistory,
+  type AppendCompactionInput,
+  type CreateSessionMessageHistoryOptions,
+  type SessionMessageHistory,
+} from './sessions/session-message-history.ts'

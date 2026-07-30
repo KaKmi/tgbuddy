@@ -15,6 +15,7 @@ import { Agent, type AgentMessage } from '@earendil-works/pi-agent-core'
 import type { SendInput } from '../shared/ipc.ts'
 import type { StreamFrame, StreamPayload } from '../shared/types/event.ts'
 import { toKernelMessages } from '../shared/types/message.ts'
+import type { SessionMessageHistory } from '../runtime/index.ts'
 import { buildModels } from '../kernel/models.ts'
 import { eventFromPi } from '../kernel/normalize.ts'
 import { buildContextUsage } from '../kernel/context-usage.ts'
@@ -52,7 +53,11 @@ export function isRunning(sessionId: string): boolean {
   return activeRuns.has(sessionId)
 }
 
-export async function send(input: SendInput, sendFrame: FrameSender): Promise<void> {
+export async function send(
+  input: SendInput,
+  sendFrame: FrameSender,
+  history: SessionMessageHistory,
+): Promise<void> {
   const { sessionId } = input
 
   // ── ① 入口检查 + 抢占槽位（第一个 await 之前）──────────────────
@@ -144,7 +149,7 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
         systemPrompt,
         model,
         tools,
-        messages: toKernelMessages(store.getMessages(sessionId)),
+        messages: toKernelMessages(await history.messages(sessionId)),
       },
       streamFn: models.streamSimple.bind(models),
       // 不依赖 process.env —— GUI 启动的 Electron 读不到 shell 环境变量
@@ -152,15 +157,18 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
       convertToLlm: convertStoredMessagesToLlm,
       transformContext: async (messages, signal) => {
         const current = effectiveMessages(messages)
-        const next = await compaction.compactBeforeModelCall({
-          sessionId,
-          messages: current,
-          systemPrompt,
-          tools,
-          contextWindow: model.contextWindow,
-          sendFrame,
-          signal,
-        })
+        const next = await compaction.compactBeforeModelCall(
+          {
+            sessionId,
+            messages: current,
+            systemPrompt,
+            tools,
+            contextWindow: model.contextWindow,
+            sendFrame,
+            signal,
+          },
+          history,
+        )
         if (compactedContext || next !== current) {
           compactedContext = next
           sourceMessageCount = messages.length
@@ -177,13 +185,14 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
 
     // ── ④ 订阅事件 ─────────────────────────────────────────────
     // ⚠️ pi 的监听器是被 await 的、按订阅顺序串行执行。
-    //    你的监听器慢 = agent 慢。所以这里只做转发和落盘，绝不等渲染完成。
-    agent.subscribe((e) => {
+    //    message_end 必须等 SQLite 提交后再上送，确保 UI 已见消息一定能在重启后恢复；
+    //    这里只等待持久化，不等待 Renderer 完成。
+    agent.subscribe(async (e) => {
       const event = eventFromPi(e, store.newId)
       if (!event) return
 
       if (event.type === 'message_end') {
-        store.appendMessage(sessionId, event.message)
+        await history.append(sessionId, event.message)
       }
 
       // 侧边栏那行「正在写 xxx…」的数据来源。
@@ -210,6 +219,7 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
           contextUsage.contextWindow,
           sendFrame,
           () => isRunning(sessionId),
+          history,
         )
       }
 
@@ -223,7 +233,7 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
       status: stoppedByUser.has(sessionId) ? 'idle' : 'done',
       lastActivity: undefined,
       // 从落盘消息重算，不维护增量计数器 —— 重启和截断历史后都自然正确
-      artifactCount: store.countArtifacts(sessionId),
+      artifactCount: await history.countArtifacts(sessionId),
     })
   } catch (err) {
     // 用户主动停止不算错误
@@ -243,7 +253,7 @@ export async function send(input: SendInput, sendFrame: FrameSender): Promise<vo
     askUser.clearSession(sessionId)
     emit({ channel: 'host', event: { type: 'pending_requests_cleared' } })
     releaseRun() // ③ 兜底释放
-    compaction.runQueued(sessionId, sendFrame)
+    compaction.runQueued(sessionId, sendFrame, history)
   }
 }
 

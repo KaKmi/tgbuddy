@@ -26,10 +26,17 @@ export interface WorkspaceCommands {
 
 export interface SessionCommands {
   list(): SessionMeta[]
-  create(input: { title?: string; channelId?: string; modelId?: string }): SessionMeta
-  delete(sessionId: string): void
-  messages(sessionId: string): SessionMessage[]
-  compactedMessages(sessionId: string, compactionId: string): SessionMessage[]
+  create(input: {
+    title?: string
+    channelId?: string
+    modelId?: string
+  }): Promise<SessionMeta>
+  delete(sessionId: string): Promise<void>
+  messages(sessionId: string): Promise<SessionMessage[]>
+  compactedMessages(
+    sessionId: string,
+    compactionId: string,
+  ): Promise<SessionMessage[]>
   updateMeta(sessionId: string, patch: Partial<SessionMeta>): void
 }
 
@@ -139,9 +146,9 @@ export function createTgBuddyRuntime(dependencies: RuntimeDependencies): TgBuddy
     workspaces: dependencies.workspaces,
     sessions: {
       ...dependencies.sessions,
-      delete(sessionId) {
+      async delete(sessionId) {
         dependencies.context.clearSession(sessionId)
-        dependencies.sessions.delete(sessionId)
+        await dependencies.sessions.delete(sessionId)
         dependencies.permissions.expireSessionRules(sessionId)
       },
     },

@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import {
   createSessionCommands,
+  createSessionMessageHistory,
   type TgBuddyRuntime,
 } from '../../runtime/index.ts'
 import {
@@ -38,17 +39,23 @@ export function createApplication(options: CreateApplicationOptions): TgBuddyApp
       cwd: process.cwd(),
     })
     messageStore = createdMessageStore
+    const messageHistory = createSessionMessageHistory({
+      store: createdMessageStore,
+      createId: store.newId,
+      now: Date.now,
+    })
     store.configureSessionRepository(sessionRepository)
     runtime = createLegacyRuntime({
+      history: messageHistory,
       sessions: createSessionCommands({
         repository: sessionRepository,
-        history: {
-          messages: store.getMessages,
-          compactedMessages: store.getCompactedMessages,
-          delete: store.deleteSessionMessages,
-        },
+        history: messageHistory,
         createId: store.newId,
         now: Date.now,
+        resolveCwd: () => process.cwd(),
+        onHistoryDeleteError(sessionId, error) {
+          console.error(`[application] Session ${sessionId} 消息清理失败`, error)
+        },
       }),
       dispose: () => createdMessageStore.dispose(),
     })

@@ -3,6 +3,8 @@ import type { PersistedSessionEntry } from '../../shared/contracts/message.ts'
 export interface CreateMessageSessionInput {
   sessionId: string
   cwd: string
+  /** 不翻译 pi Message 的前提是持久化并校验明确的内核版本。 */
+  kernel: string
 }
 
 export interface MessageSession {
@@ -17,7 +19,7 @@ export interface MessageSession {
  */
 export interface MessageStore {
   create(input: CreateMessageSessionInput): Promise<MessageSession>
-  open(sessionId: string): Promise<MessageSession | undefined>
+  open(sessionId: string, kernel: string): Promise<MessageSession | undefined>
   delete(sessionId: string): Promise<void>
   dispose(): Promise<void>
 }

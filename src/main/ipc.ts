@@ -32,16 +32,16 @@ export function registerIpc(
     (
       _event,
       input: IpcRequest<'session:create'>,
-    ): IpcResponse<'session:create'> => runtime.sessions.create(input ?? {}),
+    ): Promise<IpcResponse<'session:create'>> => runtime.sessions.create(input ?? {}),
   )
   ipcMain.handle(
     IPC.SESSION_DELETE,
-    (_event, sessionId: IpcRequest<'session:delete'>): IpcResponse<'session:delete'> =>
+    (_event, sessionId: IpcRequest<'session:delete'>): Promise<IpcResponse<'session:delete'>> =>
       runtime.sessions.delete(sessionId),
   )
   ipcMain.handle(
     IPC.SESSION_MESSAGES,
-    (_event, sessionId: IpcRequest<'session:messages'>): IpcResponse<'session:messages'> =>
+    (_event, sessionId: IpcRequest<'session:messages'>): Promise<IpcResponse<'session:messages'>> =>
       runtime.sessions.messages(sessionId),
   )
   ipcMain.handle(
@@ -49,7 +49,7 @@ export function registerIpc(
     (
       _event,
       input: IpcRequest<'session:compacted-messages'>,
-    ): IpcResponse<'session:compacted-messages'> =>
+    ): Promise<IpcResponse<'session:compacted-messages'>> =>
       runtime.sessions.compactedMessages(input.sessionId, input.compactionId),
   )
   ipcMain.handle(

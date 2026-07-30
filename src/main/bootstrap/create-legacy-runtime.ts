@@ -9,6 +9,7 @@
 import {
   createTgBuddyRuntime,
   type SessionCommands,
+  type SessionMessageHistory,
   type TgBuddyRuntime,
 } from '../../runtime/index.ts'
 import * as askUser from '../ask-user-service.ts'
@@ -17,33 +18,25 @@ import * as compaction from '../compaction-service.ts'
 import * as orchestrator from '../orchestrator.ts'
 import * as permission from '../permission-service.ts'
 import * as plan from '../plan-service.ts'
-import * as store from '../session-store.ts'
 
 export interface CreateLegacyRuntimeOptions {
-  sessions?: SessionCommands
+  sessions: SessionCommands
+  history: SessionMessageHistory
   dispose?(): Promise<void>
 }
 
 export function createLegacyRuntime(
-  options: CreateLegacyRuntimeOptions = {},
+  options: CreateLegacyRuntimeOptions,
 ): TgBuddyRuntime {
   ensureDataDir()
-  const sessions = options.sessions ?? {
-    list: store.listSessions,
-    create: store.createSession,
-    delete: store.deleteSession,
-    messages: store.getMessages,
-    compactedMessages: store.getCompactedMessages,
-    updateMeta: store.updateMeta,
-  }
 
   return createTgBuddyRuntime({
     workspaces: {
       list: () => [],
     },
-    sessions,
+    sessions: options.sessions,
     runs: {
-      send: orchestrator.send,
+      send: (input, emit) => orchestrator.send(input, emit, options.history),
       stop: orchestrator.stop,
       isRunning: orchestrator.isRunning,
     },
@@ -62,7 +55,8 @@ export function createLegacyRuntime(
       pending: askUser.getPending,
     },
     context: {
-      start: compaction.start,
+      start: (sessionId, emit, isRunning) =>
+        compaction.start(sessionId, emit, options.history, isRunning),
       defer: compaction.defer,
       cancel: compaction.cancel,
       clearSession: compaction.clearSession,

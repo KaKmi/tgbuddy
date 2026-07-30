@@ -1,5 +1,5 @@
 /**
- * 会话存储公共契约。
+ * legacy JSONL 会话导入契约。
  *
  * ## 线性，不是树
  *
@@ -10,7 +10,10 @@
  *   - **编辑并重发** → `truncate` entry（软删除，可撤销）
  *   - **以此为起点新建会话** → 新会话的 meta 里记一个 `originRef` 扁平指针
  *
- * ## 磁盘布局
+ * K05 起生产消息历史由 pi Session backend 持久化；这里的线性结构只用于 K06
+ * 一次性导入、导出和兼容诊断，不再是 canonical storage。
+ *
+ * ## legacy 磁盘布局
  *
  * ```
  * ~/.tgbuddy/
@@ -48,7 +51,7 @@ export interface SessionMeta {
   updatedAt: number
 }
 
-/** 存储格式版本。改了 entry 结构就 +1，并在读取端写迁移 */
+/** legacy JSONL 格式版本。改了 entry 结构就 +1，并在导入端写迁移。 */
 export const SESSION_FORMAT_VERSION = 2
 
 /** JSONL 首行，不参与消息重放 */

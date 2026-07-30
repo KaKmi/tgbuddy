@@ -12,15 +12,17 @@ function createDependencies(calls: string[]): RuntimeDependencies {
     },
     sessions: {
       list: () => [],
-      create: () => ({
+      create: async () => ({
         id: 'session-1',
         title: '新会话',
         createdAt: 1,
         updatedAt: 1,
       }),
-      delete: () => calls.push('session.delete'),
-      messages: () => [],
-      compactedMessages: () => [],
+      delete: async () => {
+        calls.push('session.delete')
+      },
+      messages: async () => [],
+      compactedMessages: async () => [],
       updateMeta: () => calls.push('session.updateMeta'),
     },
     runs: {
@@ -75,11 +77,11 @@ function createDependencies(calls: string[]): RuntimeDependencies {
 }
 
 describe('TgBuddyRuntime 门面', () => {
-  test('删除会话保持旧实现的清理顺序', () => {
+  test('删除会话保持旧实现的清理顺序', async () => {
     const calls: string[] = []
     const runtime = createTgBuddyRuntime(createDependencies(calls))
 
-    runtime.sessions.delete('session-1')
+    await runtime.sessions.delete('session-1')
 
     expect(calls).toEqual(['context.clear', 'session.delete', 'permission.expire'])
   })
