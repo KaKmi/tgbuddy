@@ -11,6 +11,10 @@ import {
   assertPackagedRuntime,
   resolvePackagedExecutable,
 } from '../scripts/sqlite-spike-runtime.ts'
+import {
+  assertContinuousPrefix,
+  validateCheckpointResult,
+} from '../scripts/sqlite-spike-scenarios.ts'
 
 describe('SQLite Spike legacy importer', () => {
   test('逐行诊断并映射所有当前类型', async () => {
@@ -260,4 +264,40 @@ describe('SQLite Spike packaged runtime', () => {
       'C:\\out\\TgBuddySQLiteSpike-win32-x64\\TgBuddySQLiteSpike.exe',
     )
   })
+
+  test('连续前缀拒绝空洞和重复', () => {
+    const messages = [
+      {
+        type: 'message',
+        id: 'a',
+        parentId: null,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        message: user('crash-0'),
+      },
+      {
+        type: 'message',
+        id: 'b',
+        parentId: 'a',
+        timestamp: '2026-01-01T00:00:01.000Z',
+        message: user('crash-2'),
+      },
+    ] satisfies import('@earendil-works/pi-agent-core').SessionTreeEntry[]
+    expect(() => assertContinuousPrefix(messages, 'crash-', 1, 10)).toThrow(
+      '业务序号不是连续前缀',
+    )
+  })
+
+  test('checkpoint 必须无 busy 且完成 checkpoint', () => {
+    expect(() =>
+      validateCheckpointResult({ busy: 1, log: 10, checkpointed: 4 }),
+    ).toThrow('WAL checkpoint busy=1')
+  })
 })
+
+function user(text: string) {
+  return {
+    role: 'user' as const,
+    content: [{ type: 'text' as const, text }],
+    timestamp: 1,
+  }
+}

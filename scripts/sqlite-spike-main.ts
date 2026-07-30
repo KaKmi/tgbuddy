@@ -12,6 +12,7 @@ import {
 import {
   runBootstrapScenario,
   runRuntimeScenario,
+  runStorageScenarios,
   type ScenarioContext,
 } from './sqlite-spike-scenarios.ts'
 
@@ -81,6 +82,13 @@ async function executeScenarios(
 ): Promise<ScenarioResult[]> {
   if (args.scenario === 'runtime') {
     return [await runRuntimeScenario(context), await runBootstrapScenario(context)]
+  }
+  if (args.scenario === 'storage') {
+    return [
+      await runRuntimeScenario(context),
+      await runBootstrapScenario(context),
+      ...(await runStorageScenarios(context)),
+    ]
   }
   throw new Error(`scenario 尚未实现: ${args.scenario}`)
 }
