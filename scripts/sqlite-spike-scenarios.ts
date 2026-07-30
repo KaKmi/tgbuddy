@@ -6,19 +6,23 @@ import { isDeepStrictEqual } from 'node:util'
 import { AppDatabase } from '../src/infrastructure/sqlite/app-database.ts'
 import { SqliteSessionRepository } from '../src/infrastructure/sqlite/repositories/sqlite-session-repository.ts'
 import { createPiSessionStore } from '../src/kernel/pi/pi-session-store.ts'
+import { createPiLegacySessionImporter } from '../src/kernel/pi/pi-legacy-importer.ts'
+import { importLegacySessions } from '../src/main/bootstrap/import-legacy-sessions.ts'
 import { createSessionCommands } from '../src/runtime/sessions/session-commands.ts'
 import { createSessionMessageHistory } from '../src/runtime/sessions/session-message-history.ts'
+import { KERNEL_ID } from '../src/shared/contracts/message.ts'
 import type {
   PersistedSessionEntry,
   SessionMessage,
 } from '../src/shared/contracts/message.ts'
 import type { SessionMeta } from '../src/shared/contracts/session.ts'
 import {
-  importLegacySession,
+  decideLegacyImport,
   legacySqliteSessionId,
   mapLegacyEntries,
   parseLegacySession,
-} from './sqlite-spike-import.ts'
+  type LegacyParseResult,
+} from '../src/infrastructure/sqlite/legacy-importer.ts'
 import {
   assertCondition,
   cleanupSession,
@@ -986,11 +990,15 @@ export async function runLegacyImportScenario(
   })
   const databasePath = join(context.rootDir, 'legacy', 'sessions.db')
   const created = createSpikeRepo(databasePath, parsed.header.cwd)
+  const importer = createPiLegacySessionImporter({
+    databasePath,
+    cwd: parsed.header.cwd,
+  })
   let entryCount = 0
   try {
     const before = await created.repo.list()
     assertCondition(before.length === 0, 'legacy 导入前 repo 必须为空')
-    const first = await importLegacySession(created.repo, parsed)
+    const first = await importParsedLegacySession(importer, parsed)
     assertCondition(first.action === 'created', 'legacy 首次导入必须 created')
     assertCondition(first.importedEntries > 0, 'legacy 首次导入必须新增 entries')
     const afterFirst = await created.repo.list()
@@ -1003,7 +1011,7 @@ export async function runLegacyImportScenario(
       await cleanupSession(firstSession)
     }
 
-    const second = await importLegacySession(created.repo, parsed)
+    const second = await importParsedLegacySession(importer, parsed)
     assertCondition(second.action === 'skipped', 'legacy 第二次导入必须 skipped')
     assertCondition(second.importedEntries === 0, 'legacy skipped 不得新增 entry')
     const afterSecond = await created.repo.list()
@@ -1018,7 +1026,7 @@ export async function runLegacyImportScenario(
     } finally {
       await cleanupSession(secondSession)
     }
-    const badLines = second.diagnostics
+    const badLines = mapLegacyEntries(parsed).diagnostics
       .filter((item) => item.category === 'syntax' || item.category === 'schema')
       .map((item) => [item.line, item.category])
     assertCondition(
@@ -1051,12 +1059,73 @@ export async function runLegacyImportScenario(
     } finally {
       await cleanupSession(partialSession)
     }
-    const rebuilt = await importLegacySession(created.repo, partialParsed)
+    const rebuilt = await importParsedLegacySession(importer, partialParsed)
     assertCondition(rebuilt.action === 'rebuilt', 'legacy 半成品必须 rebuilt')
     assertCondition(
       rebuilt.importedEntries === partialMapped.entries.length,
       'legacy rebuild 必须恢复全部 entries',
     )
+
+    const corruptParsed = parseLegacySession({
+      sessionId: 'legacy-corrupt-prefix',
+      relativePath: 'sessions/legacy-a.jsonl',
+      indexMeta: { ...indexEntry, id: 'legacy-corrupt-prefix' },
+      text: sessionText,
+    })
+    const corruptMapped = mapLegacyEntries(corruptParsed)
+    const expectedFirstEntry = corruptMapped.entries[0]
+    assertCondition(
+      expectedFirstEntry?.type === 'message',
+      'legacy corrupt fixture 首条必须是 message',
+    )
+    const corruptId = legacySqliteSessionId(corruptParsed.sessionId)
+    const corruptSession = await created.repo.create({
+      id: corruptId,
+      cwd: corruptParsed.header.cwd,
+      metadata: {
+        importer: 'tgbuddy-jsonl-v1',
+        legacySessionId: corruptParsed.sessionId,
+        fingerprint: corruptParsed.fingerprint,
+        entryDigest: corruptMapped.entryDigest,
+        entryCount: corruptMapped.entries.length,
+      },
+    })
+    const corruptedEntry: PersistedSessionEntry = {
+      ...expectedFirstEntry,
+      message: {
+        role: 'user',
+        content: '同 ID/type 但 payload 已损坏',
+        timestamp: 1_700_000_040_000,
+      },
+    }
+    try {
+      await corruptSession.getStorage().appendEntry(corruptedEntry)
+    } finally {
+      await cleanupSession(corruptSession)
+    }
+    let corruptMessage = ''
+    try {
+      await importParsedLegacySession(importer, corruptParsed)
+    } catch (error) {
+      corruptMessage = error instanceof Error ? error.message : String(error)
+    }
+    assertCondition(
+      corruptMessage.includes('拒绝覆盖'),
+      '同 ID/type 但 payload 损坏的前缀必须 conflict',
+    )
+    const corruptMetadata = (await created.repo.list()).find(
+      (item) => item.id === corruptId,
+    )
+    assertCondition(corruptMetadata, '损坏前缀 conflict 不得删除原 Session')
+    const unchangedCorrupt = await created.repo.open(corruptMetadata)
+    try {
+      assertCondition(
+        isDeepStrictEqual(await unchangedCorrupt.getEntries(), [corruptedEntry]),
+        '损坏前缀 conflict 不得覆盖原 payload',
+      )
+    } finally {
+      await cleanupSession(unchangedCorrupt)
+    }
 
     const conflictParsed = parseLegacySession({
       sessionId: 'legacy-conflict',
@@ -1077,7 +1146,7 @@ export async function runLegacyImportScenario(
     }
     let conflictMessage = ''
     try {
-      await importLegacySession(created.repo, conflictParsed)
+      await importParsedLegacySession(importer, conflictParsed)
     } catch (error) {
       conflictMessage = error instanceof Error ? error.message : String(error)
     }
@@ -1099,16 +1168,230 @@ export async function runLegacyImportScenario(
     }
     entryCount = first.importedEntries + rebuilt.importedEntries + 1
   } finally {
-    await created.env.cleanup()
+    try {
+      await importer.dispose()
+    } finally {
+      await created.env.cleanup()
+    }
+  }
+
+  const productionDatabasePath = join(
+    context.rootDir,
+    'legacy-production',
+    'tgbuddy.db',
+  )
+  const appDatabase = AppDatabase.open(productionDatabasePath)
+  const catalog = new SqliteSessionRepository(appDatabase)
+  try {
+    const firstStartup = await importLegacySessions({
+      legacyDataDir: inputRoot,
+      databasePath: productionDatabasePath,
+      repository: catalog,
+    })
+    assertCondition(
+      firstStartup.outcomes.length === 1
+        && firstStartup.outcomes[0]?.action === 'created',
+      '生产启动导入首次必须 created',
+    )
+    assertCondition(firstStartup.failures.length === 0, '有效 fixture 首次导入不得失败')
+    assertCondition(
+      firstStartup.diagnostics.some((item) => item.category === 'syntax'),
+      '生产启动导入必须保留坏行诊断',
+    )
+    assertCondition(catalog.get('legacy-a')?.title === '旧会话', '导入后 catalog 缺少原会话')
+
+    const postMigrationStore = createPiSessionStore({
+      databasePath: productionDatabasePath,
+      cwd: parsed.header.cwd,
+    })
+    try {
+      const importedSession = await postMigrationStore.open('legacy-a', KERNEL_ID)
+      assertCondition(importedSession, '生产导入历史必须能通过 kernel 版本护栏打开')
+      try {
+        const entries = await importedSession.entries()
+        await importedSession.append({
+          type: 'message',
+          id: 'post-migration-message',
+          parentId: entries.at(-1)?.id ?? null,
+          timestamp: new Date(1_700_000_020_000).toISOString(),
+          message: {
+            role: 'user',
+            content: [{ type: 'text', text: '迁移后的新消息' }],
+            timestamp: 1_700_000_020_000,
+          },
+        })
+      } finally {
+        await importedSession.close()
+      }
+    } finally {
+      await postMigrationStore.dispose()
+    }
+
+    const secondStartup = await importLegacySessions({
+      legacyDataDir: inputRoot,
+      databasePath: productionDatabasePath,
+      repository: catalog,
+    })
+    assertCondition(
+      secondStartup.outcomes.length === 1
+        && secondStartup.outcomes[0]?.action === 'skipped',
+      '生产第二次启动必须幂等 skipped',
+    )
+    assertCondition(catalog.list().length === 1, '重复启动不得新增 catalog Session')
+
+    const productionStore = createPiSessionStore({
+      databasePath: productionDatabasePath,
+      cwd: parsed.header.cwd,
+    })
+    try {
+      const importedSession = await productionStore.open('legacy-a', KERNEL_ID)
+      assertCondition(importedSession, '生产导入历史必须能通过 kernel 版本护栏打开')
+      try {
+        const entries = await importedSession.entries()
+        assertCondition(
+          entries.length === mapLegacyEntries(parsed).entries.length + 1,
+          '二次启动必须保留 legacy 前缀和迁移后的新消息',
+        )
+        assertCondition(
+          entries.at(-1)?.id === 'post-migration-message',
+          '二次启动不得覆盖迁移后的消息 tail',
+        )
+        entryCount += entries.length
+      } finally {
+        await importedSession.close()
+      }
+    } finally {
+      await productionStore.dispose()
+    }
+
+    const truncatedParsed = parseLegacySession({
+      sessionId: 'legacy-truncated-compaction',
+      relativePath: 'sessions/legacy-truncated-compaction.jsonl',
+      indexMeta: {},
+      text: [
+        '{"type":"session","version":2,"kernel":"pi@0.82","cwd":"C:\\\\fixture","createdAt":1}',
+        '{"type":"message","id":"tm1","timestamp":2,"message":{"kind":"kernel","id":"tm1","createdAt":2,"message":{"role":"user","content":"旧","timestamp":2}}}',
+        '{"type":"message","id":"tm2","timestamp":3,"message":{"kind":"kernel","id":"tm2","createdAt":3,"message":{"role":"user","content":"边界","timestamp":3}}}',
+        '{"type":"compaction","id":"tc1","timestamp":4,"summary":"摘要","firstKeptEntryId":"tm2","tokensBefore":100,"compactedCount":1}',
+        '{"type":"truncate","id":"tt1","timestamp":5,"fromId":"tm2"}',
+      ].join('\n'),
+    })
+    const truncatedImporter = createPiLegacySessionImporter({
+      databasePath: productionDatabasePath,
+      cwd: truncatedParsed.header.cwd,
+    })
+    let truncatedSessionId = ''
+    try {
+      truncatedSessionId = (
+        await importParsedLegacySession(truncatedImporter, truncatedParsed)
+      ).sessionId
+    } finally {
+      await truncatedImporter.dispose()
+    }
+    const truncatedStore = createPiSessionStore({
+      databasePath: productionDatabasePath,
+      cwd: truncatedParsed.header.cwd,
+    })
+    try {
+      const history = createSessionMessageHistory({
+        store: truncatedStore,
+        createId: () => 'unused',
+        now: Date.now,
+      })
+      assertCondition(
+        (await history.messages(truncatedSessionId)).map((message) => message.id)
+          .join(',') === 'tc1',
+        '生产 SessionMessageHistory 必须把无边界 compaction 回放为摘要',
+      )
+      await history.append(truncatedSessionId, {
+        kind: 'kernel',
+        id: 'post-truncate-message',
+        createdAt: 1_700_000_030_000,
+        message: {
+          role: 'user',
+          content: '迁移后继续',
+          timestamp: 1_700_000_030_000,
+        },
+      })
+      assertCondition(
+        (await history.messages(truncatedSessionId)).map((message) => message.id)
+          .join(',') === 'tc1,post-truncate-message',
+        '无边界 compaction 后必须继续回放迁移后的新消息',
+      )
+    } finally {
+      await truncatedStore.dispose()
+    }
+  } finally {
+    appDatabase.close()
+  }
+
+  const catalogConflictDatabasePath = join(
+    context.rootDir,
+    'legacy-catalog-conflict',
+    'tgbuddy.db',
+  )
+  const conflictAppDatabase = AppDatabase.open(catalogConflictDatabasePath)
+  const conflictCatalog = new SqliteSessionRepository(conflictAppDatabase)
+  try {
+    conflictCatalog.create({
+      id: 'legacy-a',
+      title: '另一个同 ID 会话',
+      createdAt: parsed.header.createdAt + 1,
+      updatedAt: parsed.header.createdAt + 2,
+    })
+    const conflictReport = await importLegacySessions({
+      legacyDataDir: inputRoot,
+      databasePath: catalogConflictDatabasePath,
+      repository: conflictCatalog,
+    })
+    assertCondition(conflictReport.outcomes.length === 0, 'catalog 身份冲突不得导入 history')
+    assertCondition(
+      conflictReport.failures.some((failure) => failure.code === 'CATALOG_ID_CONFLICT'),
+      'catalog 身份冲突必须产生稳定诊断 code',
+    )
+    const conflictStore = createPiSessionStore({
+      databasePath: catalogConflictDatabasePath,
+      cwd: parsed.header.cwd,
+    })
+    try {
+      assertCondition(
+        !await conflictStore.open('legacy-a', KERNEL_ID),
+        'catalog 身份冲突不得创建 pi history',
+      )
+    } finally {
+      await conflictStore.dispose()
+    }
+  } finally {
+    conflictAppDatabase.close()
   }
 
   return passedScenario(
     'legacy-import',
     startedAt,
-    16,
+    34,
     entryCount,
     await fileBytes(databasePath),
     await fileBytes(`${databasePath}-wal`),
+  )
+}
+
+async function importParsedLegacySession(
+  importer: ReturnType<typeof createPiLegacySessionImporter>,
+  parsed: LegacyParseResult,
+  targetSessionId = legacySqliteSessionId(parsed.sessionId),
+) {
+  const mapped = mapLegacyEntries(parsed)
+  return importer.importSession(
+    {
+      targetSessionId,
+      legacySessionId: parsed.sessionId,
+      cwd: parsed.header.cwd,
+      fingerprint: parsed.fingerprint,
+      entryDigest: mapped.entryDigest,
+      entries: mapped.entries,
+      activeMessageIds: mapped.activeMessageIds,
+    },
+    decideLegacyImport,
   )
 }
 

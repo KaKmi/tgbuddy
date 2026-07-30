@@ -39,6 +39,8 @@ interface NoticeDetails {
 
 interface CompactionDetails {
   compactedCount?: unknown
+  legacyFirstKeptEntryId?: unknown
+  legacyTruncated?: unknown
 }
 
 class DefaultSessionMessageHistory implements SessionMessageHistory {
@@ -82,8 +84,9 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
       if (!compaction || compaction.type !== 'compaction') return []
 
       const before = rawMessages(entries.slice(0, compactionIndex))
+      const firstKeptEntryId = compactionBoundaryId(compaction)
       const boundaryIndex = before.findIndex(
-        (message) => message.id === compaction.firstKeptEntryId,
+        (message) => message.id === firstKeptEntryId,
       )
       return boundaryIndex === -1 ? before : before.slice(0, boundaryIndex)
     })
@@ -249,8 +252,20 @@ function replayActiveMessages(
   const marker = toSessionMessage(compactionEntry)
   if (!marker || marker.kind !== 'compaction') return rawMessages(entries)
 
+  if (isLegacyTruncatedCompaction(compactionEntry)) {
+    const leafIndex = entries.findLastIndex(
+      (entry) =>
+        entry.type === 'leaf'
+        && entry.targetId === compactionEntry.id,
+    )
+    return [
+      marker,
+      ...rawMessages(leafIndex === -1 ? [] : entries.slice(leafIndex + 1)),
+    ]
+  }
+
   const messages: SessionMessage[] = [marker]
-  let reachedBoundary = !compactionEntry.firstKeptEntryId
+  let reachedBoundary = false
   for (const entry of entries) {
     if (entry.id === compactionEntry.firstKeptEntryId) reachedBoundary = true
     const message = toSessionMessage(entry)
@@ -306,10 +321,15 @@ function toSessionMessage(
       display: entry.display,
     }
   }
-  if (entry.type === 'compaction' && entry.firstKeptEntryId) {
+  if (entry.type === 'compaction') {
     const details = isRecord(entry.details)
       ? entry.details as CompactionDetails
       : undefined
+    const firstKeptEntryId =
+      typeof details?.legacyFirstKeptEntryId === 'string'
+        ? details.legacyFirstKeptEntryId
+        : entry.firstKeptEntryId
+    if (!firstKeptEntryId) return undefined
     return {
       kind: 'compaction',
       id: entry.id,
@@ -320,10 +340,34 @@ function toSessionMessage(
           ? details.compactedCount
           : 0,
       tokensBefore: entry.tokensBefore,
-      firstKeptEntryId: entry.firstKeptEntryId,
+      firstKeptEntryId,
     }
   }
   return undefined
+}
+
+function legacyCompactionBoundaryId(
+  entry: Extract<PersistedSessionEntry, { type: 'compaction' }>,
+): string | undefined {
+  if (!isRecord(entry.details)) return undefined
+  const details = entry.details as CompactionDetails
+  return typeof details.legacyFirstKeptEntryId === 'string'
+    ? details.legacyFirstKeptEntryId
+    : undefined
+}
+
+function compactionBoundaryId(
+  entry: Extract<PersistedSessionEntry, { type: 'compaction' }>,
+): string | undefined {
+  return legacyCompactionBoundaryId(entry) ?? entry.firstKeptEntryId
+}
+
+function isLegacyTruncatedCompaction(
+  entry: Extract<PersistedSessionEntry, { type: 'compaction' }>,
+): boolean {
+  if (!isRecord(entry.details)) return false
+  const details = entry.details as CompactionDetails
+  return details.legacyTruncated === true
 }
 
 function countArtifacts(messages: SessionMessage[]): number {

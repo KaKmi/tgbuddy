@@ -1,12 +1,15 @@
 import { describe, expect, test } from 'bun:test'
-import { readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   canonicalJson,
   decideLegacyImport,
   legacyReplayMessageIds,
+  loadLegacySessionCandidates,
   mapLegacyEntries,
   parseLegacySession,
-} from '../scripts/sqlite-spike-import.ts'
+} from '../src/infrastructure/sqlite/legacy-importer.ts'
 import {
   assertCompleteSpikeReport,
   assertPackagedRuntime,
@@ -21,6 +24,81 @@ import {
 } from '../scripts/sqlite-spike-scenarios.ts'
 
 describe('SQLite Spike legacy importer', () => {
+  test('逐会话加载，坏索引项和缺失文件不阻塞有效会话', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tgbuddy-legacy-loader-'))
+    const sessionsRoot = join(root, 'sessions')
+    try {
+      await mkdir(sessionsRoot, { recursive: true })
+      await writeFile(
+        join(root, 'sessions.json'),
+        JSON.stringify({
+          sessions: [
+            {
+              id: 'legacy-a',
+              title: '可导入会话',
+              pinned: true,
+              createdAt: 1700000000000,
+              updatedAt: 1700000009000,
+            },
+            {
+              id: 'legacy-missing',
+              title: '文件缺失',
+              createdAt: 1700000010000,
+              updatedAt: 1700000011000,
+            },
+            { id: 'invalid-meta' },
+            {
+              id: '../outside',
+              title: '越界路径',
+              createdAt: 1700000020000,
+              updatedAt: 1700000021000,
+            },
+          ],
+        }),
+        'utf8',
+      )
+      await writeFile(
+        join(sessionsRoot, 'legacy-a.jsonl'),
+        await readFile('tests/fixtures/legacy-session.jsonl', 'utf8'),
+        'utf8',
+      )
+
+      const loaded = await loadLegacySessionCandidates(root)
+
+      expect(loaded.found).toBe(true)
+      expect(loaded.candidates).toHaveLength(1)
+      expect(loaded.candidates[0]?.meta).toMatchObject({
+        id: 'legacy-a',
+        title: '可导入会话',
+        pinned: true,
+      })
+      expect(
+        loaded.candidates[0]?.mapped.diagnostics
+          .filter((item) => item.category === 'syntax' || item.category === 'schema')
+          .map((item) => [item.line, item.category]),
+      ).toEqual([[12, 'syntax'], [13, 'schema']])
+      expect(loaded.failures).toHaveLength(3)
+      expect(loaded.failures).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sessionId: 'legacy-missing',
+            relativePath: 'sessions/legacy-missing.jsonl',
+            line: 0,
+            code: 'READ_SESSION_FAILED',
+          }),
+          expect.objectContaining({
+            relativePath: 'sessions.json',
+            line: 0,
+            code: 'INVALID_SESSION_META',
+          }),
+        ]),
+      )
+      expect(loaded.failures.every((item) => item.reason.length > 0)).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test('逐行诊断并映射所有当前类型', async () => {
     const text = await readFile('tests/fixtures/legacy-session.jsonl', 'utf8')
     const parsed = parseLegacySession({
@@ -196,8 +274,18 @@ describe('SQLite Spike legacy importer', () => {
     expect(mapped.entries.at(-1)).toMatchObject({ type: 'leaf', targetId: 'c1' })
     expect(mapped.entries.find((entry) => entry.id === 'c1')).toMatchObject({
       type: 'compaction',
-      firstKeptEntryId: undefined,
+      details: {
+        legacyFirstKeptEntryId: 'm2',
+        legacyTruncated: true,
+      },
     })
+    expect(mapped.entries).toContainEqual(
+      expect.objectContaining({
+        type: 'custom',
+        customType: 'legacy.truncated_compaction_boundary',
+        parentId: null,
+      }),
+    )
   })
 
   test('多次 compaction 只让最后一次进入 active context', () => {

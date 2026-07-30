@@ -9,6 +9,7 @@ import {
   createApplication,
   type TgBuddyApplication,
 } from './bootstrap/create-application.ts'
+import { DATA_DIR } from './channel-store.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const isDev = !app.isPackaged
@@ -62,10 +63,11 @@ async function loadDevUrlWithRetry(win: BrowserWindow, attempts = 20): Promise<v
   console.error(`[main] 连不上 vite dev server（${DEV_URL}），请确认 bun run dev:vite 在跑`)
 }
 
-app.whenReady().then(() => {
-  application = createApplication({
+app.whenReady().then(async () => {
+  application = await createApplication({
     getWindow: () => mainWindow,
     databasePath: join(app.getPath('userData'), 'tgbuddy.db'),
+    legacyDataDir: DATA_DIR,
   })
   createWindow()
 

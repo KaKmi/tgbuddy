@@ -1,15 +1,16 @@
 import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import {
-  buildSessionContext,
-  type Session,
-  type SessionTreeEntry,
-} from '@earendil-works/pi-agent-core'
+  toKernelMessages,
+  type PersistedSessionEntry,
+} from '../../shared/contracts/message.ts'
+import type { ContextUsage } from '../../shared/contracts/context.ts'
 import type {
-  SqliteSessionMetadata,
-  SqliteSessionRepo,
-} from '@earendil-works/pi-storage-sqlite-node'
-import { toKernelMessages } from '../src/shared/types/message.ts'
-import type { SessionEntry, SessionHeader } from '../src/shared/types/session.ts'
+  SessionEntry,
+  SessionHeader,
+  SessionMeta,
+} from '../../shared/contracts/session.ts'
 
 export interface LegacyParseInput {
   sessionId: string
@@ -38,10 +39,31 @@ export interface LegacyParseResult {
 }
 
 export interface LegacyMapResult {
-  entries: SessionTreeEntry[]
+  entries: PersistedSessionEntry[]
   diagnostics: LegacyDiagnostic[]
   activeMessageIds: string[]
   entryDigest: string
+}
+
+export interface LegacySessionCandidate {
+  meta: SessionMeta
+  parsed: LegacyParseResult
+  mapped: LegacyMapResult
+}
+
+export interface LegacyLoadFailure {
+  sessionId?: string
+  relativePath: string
+  line: number
+  category: 'io' | 'schema' | 'conflict' | 'runtime'
+  code: string
+  reason: string
+}
+
+export interface LegacyLoadResult {
+  found: boolean
+  candidates: LegacySessionCandidate[]
+  failures: LegacyLoadFailure[]
 }
 
 export interface LegacyImportExpectation {
@@ -58,13 +80,6 @@ export interface ExistingLegacyImport extends LegacyImportExpectation {
 export type LegacyImportDecision =
   | { action: 'create' | 'skip' | 'rebuild' }
   | { action: 'conflict'; reason: string }
-
-export interface LegacyImportOutcome {
-  action: 'created' | 'skipped' | 'rebuilt'
-  metadata: SqliteSessionMetadata
-  importedEntries: number
-  diagnostics: LegacyDiagnostic[]
-}
 
 interface ParsedEntry {
   entry: SessionEntry
@@ -430,7 +445,10 @@ export function legacyReplayMessageIds(parsed: LegacyParseResult): string[] {
   return ids.slice(0, cut)
 }
 
-function mappedEntry(entry: SessionEntry, parentId: string | null): SessionTreeEntry {
+function mappedEntry(
+  entry: SessionEntry,
+  parentId: string | null,
+): PersistedSessionEntry {
   const timestamp = new Date(entry.timestamp).toISOString()
   switch (entry.type) {
     case 'message': {
@@ -494,11 +512,11 @@ function mappedEntry(entry: SessionEntry, parentId: string | null): SessionTreeE
   }
 }
 
-function activeMessageIdsFromMapped(entries: SessionTreeEntry[]): string[] {
+function activeMessageIdsFromMapped(entries: PersistedSessionEntry[]): string[] {
   const leaf = [...entries].reverse().find((entry) => entry.type === 'leaf')
   let current = leaf?.type === 'leaf' ? leaf.targetId : entries.at(-1)?.id ?? null
   const byId = new Map(entries.map((entry) => [entry.id, entry]))
-  const path: SessionTreeEntry[] = []
+  const path: PersistedSessionEntry[] = []
   while (current) {
     const entry = byId.get(current)
     if (!entry) break
@@ -509,7 +527,7 @@ function activeMessageIdsFromMapped(entries: SessionTreeEntry[]): string[] {
   const compaction = [...path]
     .reverse()
     .find(
-      (entry): entry is Extract<SessionTreeEntry, { type: 'compaction' }> =>
+      (entry): entry is Extract<PersistedSessionEntry, { type: 'compaction' }> =>
         entry.type === 'compaction',
     )
   let active = path
@@ -535,7 +553,7 @@ function activeMessageIdsFromMapped(entries: SessionTreeEntry[]): string[] {
 }
 
 export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
-  const entries: SessionTreeEntry[] = []
+  const entries: PersistedSessionEntry[] = []
   const diagnostics = [...parsed.diagnostics]
   const lastCompactionId = [...parsed.entries]
     .reverse()
@@ -543,7 +561,7 @@ export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
   let parentId: string | null = null
 
   for (const entry of parsed.entries) {
-    const mapped: SessionTreeEntry =
+    const mapped: PersistedSessionEntry =
       entry.type === 'compaction' && entry.id !== lastCompactionId
         ? ({
             type: 'custom',
@@ -552,7 +570,7 @@ export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
             timestamp: new Date(entry.timestamp).toISOString(),
             customType: 'legacy.compaction',
             data: entry,
-          } satisfies SessionTreeEntry)
+          } satisfies PersistedSessionEntry)
         : mappedEntry(entry, parentId)
     entries.push(mapped)
     parentId = mapped.id
@@ -610,20 +628,37 @@ export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
     const compaction = [...entries]
       .reverse()
       .find(
-        (entry): entry is Extract<SessionTreeEntry, { type: 'compaction' }> =>
+        (entry): entry is Extract<PersistedSessionEntry, { type: 'compaction' }> =>
           entry.type === 'compaction',
       )
     if (
       compaction?.firstKeptEntryId &&
       !expectedActive.includes(compaction.firstKeptEntryId)
     ) {
+      const legacyFirstKeptEntryId = compaction.firstKeptEntryId
+      const syntheticBoundaryId = hash(
+        `${parsed.sessionId}:truncate-compaction-boundary`,
+      ).slice(0, 16)
+      const mappedCompactionIndex = entries.findIndex(
+        (entry) => entry.id === compaction.id,
+      )
+      entries.splice(mappedCompactionIndex, 0, {
+        type: 'custom',
+        id: syntheticBoundaryId,
+        parentId: null,
+        timestamp: compaction.timestamp,
+        customType: 'legacy.truncated_compaction_boundary',
+        data: { legacyFirstKeptEntryId },
+      })
+      compaction.parentId = syntheticBoundaryId
       compaction.details = {
         ...(isRecord(compaction.details) ? compaction.details : {}),
-        legacyFirstKeptEntryId: compaction.firstKeptEntryId,
+        legacyFirstKeptEntryId,
+        legacyTruncated: true,
       }
-      compaction.firstKeptEntryId = undefined
+      compaction.firstKeptEntryId = syntheticBoundaryId
     }
-    const compactionIndex = compaction
+    const legacyCompactionIndex = compaction
       ? parsed.entries.findIndex((entry) => entry.id === compaction.id)
       : -1
     const lastExpected = expectedActive.at(-1)
@@ -631,7 +666,9 @@ export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
       ? parsed.entries.findIndex((entry) => entry.id === lastExpected)
       : -1
     const targetId =
-      compaction && lastExpectedIndex <= compactionIndex ? compaction.id : (lastExpected ?? null)
+      compaction && lastExpectedIndex <= legacyCompactionIndex
+        ? compaction.id
+        : (lastExpected ?? null)
     const leafId = hash(`${parsed.sessionId}:truncate-leaf`).slice(0, 16)
     entries.push({
       type: 'leaf',
@@ -683,162 +720,221 @@ export function legacySqliteSessionId(sessionId: string): string {
   return `legacy-${hash(sessionId).slice(0, 32)}`
 }
 
-function entryIdentityDigest(entries: readonly SessionTreeEntry[]): string {
-  return hash(
-    entries.map((entry) => canonicalJson({ id: entry.id, type: entry.type })).join('\n'),
-  )
-}
-
-function existingImportMetadata(metadata: SqliteSessionMetadata): ExistingLegacyImport {
-  const value = metadata.metadata ?? {}
-  return {
-    marker: typeof value.importer === 'string' ? value.importer : undefined,
-    sessionId: typeof value.legacySessionId === 'string' ? value.legacySessionId : '',
-    fingerprint: typeof value.fingerprint === 'string' ? value.fingerprint : '',
-    entryDigest: typeof value.entryDigest === 'string' ? value.entryDigest : '',
-    entryCount: typeof value.entryCount === 'number' ? value.entryCount : -1,
-  }
-}
-
-function contextProjection(messages: readonly unknown[]): string {
-  return canonicalJson(
-    messages.map((message) => {
-      const value = isRecord(message) ? message : {}
-      return {
-        role: value.role,
-        content: value.content,
-        summary: value.summary,
-      }
-    }),
-  )
-}
-
-async function cleanupImportedSession(session: Session<SqliteSessionMetadata>): Promise<void> {
-  const storage = session.getStorage()
-  const cleanup = 'cleanup' in storage ? storage.cleanup : undefined
-  if (typeof cleanup !== 'function') throw new Error('SQLite SessionStorage 缺少 cleanup()')
-  await cleanup.call(storage)
-}
-
-async function verifyImportedSession(
-  repo: SqliteSessionRepo,
-  metadata: SqliteSessionMetadata,
-  mapped: LegacyMapResult,
-): Promise<void> {
-  const session = await repo.open(metadata)
+/**
+ * 只负责读取和验证 legacy 文件，不写 SQLite。
+ * 每个 Session 独立失败，单个坏文件不能阻塞其它会话或应用启动。
+ */
+export async function loadLegacySessionCandidates(
+  legacyDataDir: string,
+): Promise<LegacyLoadResult> {
+  const indexRelativePath = 'sessions.json'
+  const indexPath = join(legacyDataDir, indexRelativePath)
+  let indexText: string
   try {
-    const actualEntries = await session.getEntries()
-    if (
-      actualEntries.length !== mapped.entries.length ||
-      entryIdentityDigest(actualEntries) !== mapped.entryDigest
-    ) {
-      throw new Error(`legacy Session 持久化 identity 校验失败: ${metadata.id}`)
+    indexText = await readFile(indexPath, 'utf8')
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') {
+      return { found: false, candidates: [], failures: [] }
     }
-    const byId = new Map(mapped.entries.map((entry) => [entry.id, entry]))
-    const activeEntries = mapped.activeMessageIds.map((id) => {
-      const entry = byId.get(id)
-      if (!entry) throw new Error(`legacy active entry 缺失: ${id}`)
-      return entry
-    })
-    const expectedContext = buildSessionContext(activeEntries)
-    const actualContext = await session.buildContext()
-    if (
-      contextProjection(actualContext.messages) !==
-      contextProjection(expectedContext.messages)
-    ) {
-      throw new Error(`legacy Session active context 校验失败: ${metadata.id}`)
-    }
-  } finally {
-    await cleanupImportedSession(session)
-  }
-}
-
-async function createImportedSession(
-  repo: SqliteSessionRepo,
-  id: string,
-  parsed: LegacyParseResult,
-  mapped: LegacyMapResult,
-): Promise<SqliteSessionMetadata> {
-  const session = await repo.create({
-    id,
-    cwd: parsed.header.cwd,
-    metadata: {
-      importer: 'tgbuddy-jsonl-v1',
-      legacySessionId: parsed.sessionId,
-      fingerprint: parsed.fingerprint,
-      entryDigest: mapped.entryDigest,
-      entryCount: mapped.entries.length,
-    },
-  })
-  try {
-    for (const entry of mapped.entries) {
-      await session.getStorage().appendEntry(entry)
-    }
-    return await session.getMetadata()
-  } finally {
-    // append 中途失败时保留已提交的半成品，由下一次幂等导入安全 rebuild。
-    await cleanupImportedSession(session)
-  }
-}
-
-export async function importLegacySession(
-  repo: SqliteSessionRepo,
-  parsed: LegacyParseResult,
-): Promise<LegacyImportOutcome> {
-  const mapped = mapLegacyEntries(parsed)
-  const id = legacySqliteSessionId(parsed.sessionId)
-  const expected: LegacyImportExpectation = {
-    sessionId: parsed.sessionId,
-    fingerprint: parsed.fingerprint,
-    entryDigest: mapped.entryDigest,
-    entryCount: mapped.entries.length,
-  }
-  let existing = (await repo.list()).find((metadata) => metadata.id === id)
-  let decision = decideLegacyImport(
-    existing ? existingImportMetadata(existing) : undefined,
-    expected,
-  )
-
-  if (decision.action === 'conflict') {
-    throw new Error(`${decision.reason}: ${id}`)
-  }
-  if (decision.action === 'skip' && existing) {
-    const session = await repo.open(existing)
-    try {
-      const actualEntries = await session.getEntries()
-      if (
-        actualEntries.length !== expected.entryCount ||
-        entryIdentityDigest(actualEntries) !== expected.entryDigest
-      ) {
-        decision = { action: 'rebuild' }
-      }
-    } finally {
-      await cleanupImportedSession(session)
-    }
-  }
-
-  if (decision.action === 'skip' && existing) {
-    await verifyImportedSession(repo, existing, mapped)
     return {
-      action: 'skipped',
-      metadata: existing,
-      importedEntries: 0,
-      diagnostics: mapped.diagnostics,
+      found: true,
+      candidates: [],
+      failures: [{
+        relativePath: indexRelativePath,
+        line: 0,
+        category: 'io',
+        code: 'READ_INDEX_FAILED',
+        reason: errorMessage(error),
+      }],
     }
   }
 
-  const outcomeAction = decision.action === 'rebuild' ? 'rebuilt' : 'created'
-  if (decision.action === 'rebuild') {
-    if (!existing) throw new Error(`rebuild 缺少已有 Session: ${id}`)
-    await repo.delete(existing)
-    existing = undefined
+  let indexValue: unknown
+  try {
+    indexValue = JSON.parse(indexText)
+  } catch {
+    return {
+      found: true,
+      candidates: [],
+      failures: [{
+        relativePath: indexRelativePath,
+        line: 0,
+        category: 'schema',
+        code: 'INVALID_INDEX_JSON',
+        reason: 'Session 索引 JSON 语法错误',
+      }],
+    }
   }
-  const metadata = await createImportedSession(repo, id, parsed, mapped)
-  await verifyImportedSession(repo, metadata, mapped)
+  const records = legacyIndexRecords(indexValue)
+  if (!records) {
+    return {
+      found: true,
+      candidates: [],
+      failures: [{
+        relativePath: indexRelativePath,
+        line: 0,
+        category: 'schema',
+        code: 'INVALID_INDEX_SCHEMA',
+        reason: 'Session 索引必须是数组或包含 sessions 数组',
+      }],
+    }
+  }
+
+  const candidates: LegacySessionCandidate[] = []
+  const failures: LegacyLoadFailure[] = []
+  for (const record of records) {
+    const meta = parseLegacySessionMeta(record)
+    if (!meta) {
+      failures.push({
+        relativePath: indexRelativePath,
+        line: 0,
+        category: 'schema',
+        code: 'INVALID_SESSION_META',
+        reason: '跳过结构无效的 SessionMeta',
+      })
+      continue
+    }
+    const relativePath = `sessions/${meta.id}.jsonl`
+    let text: string
+    try {
+      text = await readFile(join(legacyDataDir, 'sessions', `${meta.id}.jsonl`), 'utf8')
+    } catch (error) {
+      failures.push({
+        sessionId: meta.id,
+        relativePath,
+        line: 0,
+        category: 'io',
+        code: 'READ_SESSION_FAILED',
+        reason: errorMessage(error),
+      })
+      continue
+    }
+    try {
+      const parsed = parseLegacySession({
+        sessionId: meta.id,
+        relativePath,
+        indexMeta: record,
+        text,
+      })
+      candidates.push({
+        meta,
+        parsed,
+        mapped: mapLegacyEntries(parsed),
+      })
+    } catch (error) {
+      failures.push({
+        sessionId: meta.id,
+        relativePath,
+        line: errorLine(error),
+        category: 'schema',
+        code: 'PARSE_SESSION_FAILED',
+        reason: errorMessage(error),
+      })
+    }
+  }
+  return { found: true, candidates, failures }
+}
+
+function legacyIndexRecords(value: unknown): unknown[] | undefined {
+  if (Array.isArray(value)) return value
+  if (isRecord(value) && Array.isArray(value.sessions)) return value.sessions
+  return undefined
+}
+
+function parseLegacySessionMeta(value: unknown): SessionMeta | undefined {
+  if (
+    !isRecord(value)
+    || typeof value.id !== 'string'
+    || !/^[A-Za-z0-9_-]+$/.test(value.id)
+    || typeof value.title !== 'string'
+    || !isFiniteNumber(value.createdAt)
+    || !isFiniteNumber(value.updatedAt)
+  ) {
+    return undefined
+  }
+  const permissionMode =
+    value.permissionMode === 'plan'
+    || value.permissionMode === 'auto'
+    || value.permissionMode === 'bypass'
+      ? value.permissionMode
+      : undefined
+  const status =
+    value.status === 'idle'
+    || value.status === 'running'
+    || value.status === 'done'
+    || value.status === 'failed'
+      ? value.status
+      : undefined
+  const contextUsage = isContextUsage(value.contextUsage)
+    ? value.contextUsage
+    : undefined
+  const originRef = isRecord(value.originRef)
+    && typeof value.originRef.sessionId === 'string'
+    && typeof value.originRef.messageId === 'string'
+    ? {
+        sessionId: value.originRef.sessionId,
+        messageId: value.originRef.messageId,
+      }
+    : undefined
+
   return {
-    action: outcomeAction,
-    metadata,
-    importedEntries: mapped.entries.length,
-    diagnostics: mapped.diagnostics,
+    id: value.id,
+    title: value.title,
+    ...(optionalString(value.workspaceId, 'workspaceId')),
+    ...(optionalString(value.channelId, 'channelId')),
+    ...(optionalString(value.modelId, 'modelId')),
+    ...(optionalString(value.expertId, 'expertId')),
+    ...(typeof value.pinned === 'boolean' ? { pinned: value.pinned } : {}),
+    ...(typeof value.archived === 'boolean' ? { archived: value.archived } : {}),
+    ...(permissionMode ? { permissionMode } : {}),
+    ...(status ? { status } : {}),
+    ...(optionalString(value.statusDetail, 'statusDetail')),
+    ...(optionalString(value.lastActivity, 'lastActivity')),
+    ...(isFiniteNumber(value.artifactCount)
+      ? { artifactCount: value.artifactCount }
+      : {}),
+    ...(contextUsage ? { contextUsage } : {}),
+    ...(originRef ? { originRef } : {}),
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
   }
+}
+
+function optionalString<Key extends string>(
+  value: unknown,
+  key: Key,
+): Partial<Record<Key, string>> {
+  return typeof value === 'string' ? { [key]: value } as Record<Key, string> : {}
+}
+
+function isContextUsage(value: unknown): value is ContextUsage {
+  if (!isRecord(value) || !isRecord(value.breakdown)) return false
+  return (
+    [
+      value.usedTokens,
+      value.contextWindow,
+      value.percent,
+      value.outputTokens,
+      value.costUsd,
+      value.updatedAt,
+      value.breakdown.systemPrompt,
+      value.breakdown.tools,
+      value.breakdown.messages,
+      value.breakdown.skills,
+      value.breakdown.mcp,
+    ].every(isFiniteNumber)
+  )
+}
+
+function errorCode(error: unknown): string | undefined {
+  return isRecord(error) && typeof error.code === 'string' ? error.code : undefined
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function errorLine(error: unknown): number {
+  const match = errorMessage(error).match(/:(\d+)\s/)
+  return match ? Number(match[1]) : 0
 }

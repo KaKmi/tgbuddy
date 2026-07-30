@@ -104,6 +104,25 @@ SQLite、kernel、bundle 和 UI Slice 再按计划追加 `spike:sqlite`、`probe
   - Mirror: 保持消息 contract 和组件树，不引入新视觉或第二套渲染。
   - Deviations: K05 无需修改 Renderer；异步 SQLite 边界由原有 preload Promise 吸收。
 
+### K06: legacy JSONL 一次性导入
+
+- Reference: `scripts/sqlite-spike-import.ts`
+  - Why analogous: Spike 已验证逐行诊断、fingerprint、entry digest、active context 和 create/skip/rebuild/conflict 决策。
+  - Mirror: 将纯解析/映射逻辑原样迁入 infrastructure；真实 pi Session 写入单独收进 `kernel/pi`。
+  - Deviations: 生产导入使用原 Session ID，确保 SQLite catalog 与 pi history 共用一个 ID；Spike 的 hash ID 只保留给冲突隔离场景。
+- Reference: `src/main/bootstrap/create-application.ts`
+  - Why analogous: Composition Root 是同时持有 app catalog 与 pi backend 工厂的唯一装配点。
+  - Mirror: 在 Runtime 接受流量前完成一次导入；每个 Session 独立失败，诊断只记录、不阻塞应用启动。
+  - Deviations: history 先提交、catalog 后提交；catalog 是用户可见 commit point，进程中断后下次启动会 skip 已完成 history 并补 catalog。
+- Reference: `scripts/sqlite-spike-scenarios.ts`
+  - Why analogous: 只有 packaged Electron Node 22 能真实加载 `node:sqlite` 与 pi SQLite backend。
+  - Mirror: 覆盖首次启动、二次启动、迁移后新增 tail、坏行、catalog/history 冲突 ID、半成品重建、truncate 后无原边界 compaction 和 `pi@0.82` 护栏。
+  - Deviations: Bun 测试只负责文件加载隔离与纯决策，不伪装执行 backend。
+- Review correction:
+  - 幂等判断逐字段校验 importer 拥有的完整 payload 前缀；只允许完全一致的短前缀 rebuild，前缀后的新消息属于正常产品数据，任何后续启动都不得 rebuild。
+  - truncate 删除 compaction 原边界时写入独立 synthetic boundary 和 leaf；production `SessionMessageHistory` 通过 marker 只回放摘要及迁移后的新 tail。
+  - catalog 已有同 ID 时用不可漂移的 `id + createdAt` 验证身份；不能证明同源则诊断冲突，不创建 history。
+
 ## Waves
 
 M1 的 K01–K17 存在严格数据/装配依赖，并共享 Composition Root、Runtime contract 或 compatibility owner，因此全部顺序执行：

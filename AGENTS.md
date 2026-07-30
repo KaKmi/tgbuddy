@@ -212,7 +212,7 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 |---:|---|---|---|---|
 | 0 | SQLite packaged spike | B00 | ✅ 完成 | 打包、恢复、备份、legacy import |
 | 1 | 仓库边界与 Runtime 门面 | B01 | ✅ 完成 | contracts、Runtime、Composition Root、checker |
-| 2 | M1 可恢复 Agent 内核 | K01–K17 | ▶ K01 下一步 | 会话、消息、流式、停止、工具、恢复、压缩 |
+| 2 | M1 可恢复 Agent 内核 | K01–K17 | ▶ K01–K06 完成；K07 下一步 | 会话、消息、流式、停止、工具、恢复、压缩 |
 | 3 | M2 Workspace 与安全 | S01–S11 | 待开始 | mount、ExecutionEnv、权限、Plan、ask_user |
 | 4 | M3 通用能力系统 | C01–C12 | 待开始 | Channel、Profile、Tool、Skill、MCP |
 | 5 | M4 附件与结果 | A01–A09 | 待开始 | Blob、附件、长输出、Artifact、结果区 |
