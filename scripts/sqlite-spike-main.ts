@@ -10,6 +10,7 @@ import {
   type SpikeReport,
 } from './sqlite-spike-runtime.ts'
 import {
+  runAppDatabaseScenario,
   runBootstrapScenario,
   runCompaction,
   runCrashChild,
@@ -115,11 +116,16 @@ async function executeScenarios(
   context: ScenarioContext,
 ): Promise<ScenarioResult[]> {
   if (args.scenario === 'runtime') {
-    return [await runRuntimeScenario(context), await runBootstrapScenario(context)]
+    return [
+      await runRuntimeScenario(context),
+      await runAppDatabaseScenario(context),
+      await runBootstrapScenario(context),
+    ]
   }
   if (args.scenario === 'storage') {
     return [
       await runRuntimeScenario(context),
+      await runAppDatabaseScenario(context),
       await runBootstrapScenario(context),
       ...(await runStorageScenarios(context)),
     ]
@@ -127,6 +133,7 @@ async function executeScenarios(
   if (args.scenario === 'crash') {
     return [
       await runRuntimeScenario(context),
+      await runAppDatabaseScenario(context),
       await runBootstrapScenario(context),
       await runCrashRecoveryScenario(context),
     ]
@@ -134,6 +141,7 @@ async function executeScenarios(
   if (args.scenario === 'legacy') {
     return [
       await runRuntimeScenario(context),
+      await runAppDatabaseScenario(context),
       await runBootstrapScenario(context),
       await runLegacyImportScenario(context),
     ]
@@ -141,6 +149,7 @@ async function executeScenarios(
   if (args.scenario === 'full') {
     return [
       await runRuntimeScenario(context),
+      await runAppDatabaseScenario(context),
       await runBootstrapScenario(context),
       await runOrderedEntries(context),
       await runSessionIsolation(context),

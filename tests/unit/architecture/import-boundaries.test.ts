@@ -70,9 +70,11 @@ describe('仓库 import 边界', () => {
         export interface TgBuddyRuntime {}
       `,
       'src/kernel/pi/pi-agent-engine.ts':
-        "import type { AgentEngine } from '@runtime/ports'\nimport type { Agent } from '@earendil-works/pi-agent-core'",
+        "import type { AgentEngine } from '@runtime/ports'\nimport './pi-message-adapter.ts'\nimport type { Agent } from '@earendil-works/pi-agent-core'",
+      'src/kernel/pi/pi-message-adapter.ts': 'export const adapter = true',
       'src/infrastructure/sqlite/repository.ts':
-        "import type { AgentEngine } from '../../runtime/ports/index.ts'\nimport { readFileSync } from 'node:fs'",
+        "import type { AgentEngine } from '../../runtime/ports/index.ts'\nimport migration from './migrations/001.sql'\nimport { readFileSync } from 'node:fs'\nexport { migration }",
+      'src/infrastructure/sqlite/migrations/001.sql': 'SELECT 1;',
       'src/main/bootstrap/create-application.ts':
         "import type { TgBuddyRuntime } from '../../runtime/index.ts'\nimport { app } from 'electron'",
       'src/main/ipc/register-ipc.ts':

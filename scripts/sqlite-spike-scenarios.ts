@@ -2,6 +2,7 @@ import type { SessionTreeEntry } from '@earendil-works/pi-agent-core'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { AppDatabase } from '../src/infrastructure/sqlite/app-database.ts'
 import {
   importLegacySession,
   legacySqliteSessionId,
@@ -113,6 +114,61 @@ export async function runRuntimeScenario(
   } finally {
     memory.close()
   }
+}
+
+export async function runAppDatabaseScenario(
+  context: ScenarioContext,
+): Promise<ScenarioResult> {
+  const startedAt = Date.now()
+  const databasePath = join(context.rootDir, 'app-database', 'tgbuddy.db')
+  const renamedPath = join(context.rootDir, 'app-database', 'tgbuddy-renamed.db')
+  let assertions = 0
+
+  const first = AppDatabase.open(databasePath)
+  first.close()
+  assertions++
+
+  const second = AppDatabase.open(databasePath)
+  second.close()
+  assertions++
+
+  if (!nodeSqlite) throw new Error('app-database 场景只能在 Electron Node 22 运行')
+  const audit = new nodeSqlite.DatabaseSync(databasePath)
+  try {
+    const migrations = audit
+      .prepare('SELECT id AS value FROM app_schema_migrations ORDER BY id')
+      .all() as unknown as ScalarRow[]
+    assertCondition(
+      migrations.length === 1 && migrations[0]?.value === '001_app_bootstrap.sql',
+      'app migration 必须恰好包含 001_app_bootstrap.sql',
+    )
+    assertions++
+
+    const tables = audit
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all() as unknown as NamedRow[]
+    assertCondition(
+      JSON.stringify(tables.map((row) => row.name)) ===
+        JSON.stringify(['app_schema_migrations']),
+      `K01 不得创建业务表或 pi 私有表: ${tables.map((row) => row.name).join(',')}`,
+    )
+    assertions++
+  } finally {
+    audit.close()
+  }
+
+  await rename(databasePath, renamedPath)
+  await rename(renamedPath, databasePath)
+  assertions++
+
+  return passedScenario(
+    'app-database',
+    startedAt,
+    assertions,
+    1,
+    await fileBytes(databasePath),
+    await fileBytes(`${databasePath}-wal`),
+  )
 }
 
 export async function runBootstrapScenario(

@@ -405,6 +405,9 @@ rg -n "const decisions = \\[" "tgbuddy-mockup/TgBuddy 交互原型.dc.html"
 
 已验证的通用规则：
 
+- 前端组件优先复用 AI Elements；先检查现有 `src/renderer/components/ai-elements/**` 和 AI Elements 可用组件，确实没有对应能力时才创建项目自有组件。
+- Markdown、流式正文和对话滚动优先参考并复用现有 `Response`、`Conversation`、streamdown 和相关样式，不重建第二套渲染链路。
+- 组件的结构、状态和交互来自原型；复用 AI Elements 时也必须按原型调整组合与样式，不能用组件默认效果替代产品设计。
 - 颜色标记异常，不标记常态；成功态保持灰蓝，不让整屏发绿。
 - 安静状态用文字，失败和等待授权才用明显颜色。
 - 结构与状态分开；不能为了弱化成功色把 Tool 容器也去掉。

@@ -325,7 +325,7 @@ describe('SQLite Spike packaged runtime', () => {
     const evidence = renderEvidence(report)
     expect(evidence).not.toContain('C:\\Users\\Alice')
     expect(evidence).toContain('- ASAR: true')
-    expect(evidence.match(/\| passed \|/g)?.length).toBe(9)
+    expect(evidence.match(/\| passed \|/g)?.length).toBe(10)
   })
 })
 
@@ -346,6 +346,7 @@ function validRuntime(): RuntimeSnapshot {
 function completeReport(): SpikeReport {
   const names = [
     'runtime',
+    'app-database',
     'bootstrap',
     'ordered-entries',
     'session-isolation',

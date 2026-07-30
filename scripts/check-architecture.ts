@@ -374,13 +374,17 @@ function internalViolation(
         ? undefined
         : 'runtime 只能依赖 shared 和 runtime'
     case 'kernel-pi':
-      return layer === 'shared' || (layer === 'runtime' && isRuntimePort(target))
+      return layer === 'kernel-pi'
+        || layer === 'shared'
+        || (layer === 'runtime' && isRuntimePort(target))
         ? undefined
-        : 'kernel/pi 只能依赖 shared 与 runtime port contract'
+        : 'kernel/pi 只能依赖本层、shared 与 runtime port contract'
     case 'infrastructure':
-      return layer === 'shared' || (layer === 'runtime' && isRuntimePort(target))
+      return layer === 'infrastructure'
+        || layer === 'shared'
+        || (layer === 'runtime' && isRuntimePort(target))
         ? undefined
-        : 'infrastructure 只能依赖 shared 与 runtime port contract'
+        : 'infrastructure 只能依赖本层、shared 与 runtime port contract'
     case 'main-bootstrap':
       if (layer === 'shared' || target.startsWith('src/main/')) return undefined
       if (target === 'src/runtime/index.ts') return undefined
