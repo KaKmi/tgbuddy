@@ -38,6 +38,18 @@ export interface SpikeReport {
   finishedAt: string
 }
 
+export const REQUIRED_SCENARIOS = [
+  'runtime',
+  'bootstrap',
+  'ordered-entries',
+  'session-isolation',
+  'crash-recovery',
+  'compaction',
+  'delete-cleanup',
+  'wal-backup-restore',
+  'legacy-import',
+] as const
+
 export interface SpikeRepoContext {
   env: NodeExecutionEnv
   repo: SqliteSessionRepo
@@ -113,6 +125,86 @@ export function assertPackagedRuntime(snapshot: RuntimeSnapshot): void {
   assertCondition(snapshot.sqlite === '3.51.2', `SQLite 版本不匹配: ${snapshot.sqlite}`)
   assertCondition(snapshot.hasDatabaseSync, 'node:sqlite 缺少 DatabaseSync')
   assertCondition(snapshot.hasBackup, 'node:sqlite 缺少 backup()')
+}
+
+function assertScenarioMetrics(scenario: ScenarioResult): void {
+  const metrics = [
+    scenario.durationMs,
+    scenario.assertions,
+    scenario.entryCount,
+    scenario.databaseBytes,
+    scenario.walBytes,
+  ]
+  assertCondition(
+    metrics.every((value) => Number.isFinite(value) && value >= 0),
+    `场景指标无效: ${scenario.name}`,
+  )
+  assertCondition(
+    scenario.status === 'failed' || scenario.error === undefined,
+    `passed 场景不得包含 error: ${scenario.name}`,
+  )
+}
+
+export function assertCompleteSpikeReport(report: SpikeReport): void {
+  assertPackagedRuntime(report.runtime)
+  for (const critical of ['crash-recovery', 'legacy-import']) {
+    if (!report.scenarios.some((scenario) => scenario.name === critical)) {
+      throw new Error(`缺少必需场景: ${critical}`)
+    }
+  }
+  for (const name of REQUIRED_SCENARIOS) {
+    const count = report.scenarios.filter((scenario) => scenario.name === name).length
+    if (count === 0) throw new Error(`缺少必需场景: ${name}`)
+    if (count !== 1) throw new Error(`必需场景必须恰好出现一次: ${name}`)
+  }
+  const names = report.scenarios.map((scenario) => scenario.name)
+  assertCondition(
+    JSON.stringify(names) === JSON.stringify(REQUIRED_SCENARIOS),
+    `场景顺序不一致: ${names.join(',')}`,
+  )
+  for (const scenario of report.scenarios) {
+    assertScenarioMetrics(scenario)
+    assertCondition(scenario.status === 'passed', `场景未通过: ${scenario.name}`)
+  }
+  assertCondition(report.status === 'passed', '完整 Spike report status 必须为 passed')
+}
+
+export function renderEvidence(report: SpikeReport): string {
+  const rows = report.scenarios
+    .map(
+      (item) =>
+        `| ${item.name} | ${item.status} | ${item.durationMs} | ${item.entryCount} | ${item.databaseBytes} | ${item.walBytes} |`,
+    )
+    .join('\n')
+  return `# SQLite Packaged Electron Spike Evidence
+
+## Baseline
+- Git: 4735c9da87d5a8a65e074175b34562efaff4dd83
+- Command: bun run spike:sqlite
+
+## Runtime
+- app.isPackaged: ${report.runtime.isPackaged}
+- ASAR: ${report.runtime.appPath.endsWith('app.asar')}
+- Electron: ${report.runtime.electron}
+- Node: ${report.runtime.node}
+- SQLite: ${report.runtime.sqlite}
+- pi storage: 0.82.1
+
+## Scenarios
+| Scenario | Result | Duration | Entries | DB bytes | WAL bytes |
+|---|---|---:|---:|---:|---:|
+${rows}
+
+## Compatibility warnings
+- model_change.channelId 以 legacy.model_change 保存，未伪装为 provider。
+- truncate 按现有最早截断点语义恢复 active context。
+
+## Verification
+- bun run typecheck
+- bun test
+- bun run build
+- bun run spike:sqlite
+`
 }
 
 export function resolvePackagedExecutable(

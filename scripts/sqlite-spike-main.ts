@@ -5,6 +5,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   assertPackagedRuntime,
+  REQUIRED_SCENARIOS,
   type RuntimeSnapshot,
   type ScenarioResult,
   type SpikeReport,
@@ -132,6 +133,20 @@ async function executeScenarios(
       await runBootstrapScenario(context),
       await runLegacyImportScenario(context),
     ]
+  }
+  if (args.scenario === 'full') {
+    const runtime = await runRuntimeScenario(context)
+    const bootstrap = await runBootstrapScenario(context)
+    const storage = await runStorageScenarios(context)
+    const crash = await runCrashRecoveryScenario(context)
+    const legacy = await runLegacyImportScenario(context)
+    const results = [runtime, bootstrap, ...storage, crash, legacy]
+    const byName = new Map(results.map((result) => [result.name, result]))
+    return REQUIRED_SCENARIOS.map((name) => {
+      const result = byName.get(name)
+      if (!result) throw new Error(`full scenario 缺少结果: ${name}`)
+      return result
+    })
   }
   throw new Error(`scenario 尚未实现: ${args.scenario}`)
 }

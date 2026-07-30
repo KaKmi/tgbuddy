@@ -14,7 +14,9 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import {
+  assertCompleteSpikeReport,
   assertPackagedRuntime,
+  renderEvidence,
   resolvePackagedExecutable,
   type SpikeReport,
 } from './sqlite-spike-runtime.ts'
@@ -113,6 +115,7 @@ async function spawnPackaged(
 ): Promise<SpawnResult> {
   const env = { ...process.env }
   delete env.ELECTRON_RUN_AS_NODE
+  env.NODE_NO_WARNINGS = '1'
   return new Promise((resolvePromise, reject) => {
     const child = spawn(executablePath, args, {
       env,
@@ -251,6 +254,18 @@ export async function packageAndRunSpike(
       throw new Error(
         `packaged Spike 失败（temp=${spikeRoot}, exit=${spawned.exitCode}）\n${spawned.stdout}\n${spawned.stderr}`,
       )
+    }
+    if (options.scenario === 'full') {
+      assertCompleteSpikeReport(report)
+      const evidenceDirectory = join(
+        repoRoot,
+        '.ship',
+        'tasks',
+        'sqlite-packaged-electron-spike',
+        'evidence',
+      )
+      await mkdir(evidenceDirectory, { recursive: true })
+      await writeFile(join(evidenceDirectory, 'README.md'), renderEvidence(report), 'utf8')
     }
     succeeded = true
     return {

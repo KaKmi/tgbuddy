@@ -8,8 +8,12 @@ import {
   parseLegacySession,
 } from '../scripts/sqlite-spike-import.ts'
 import {
+  assertCompleteSpikeReport,
   assertPackagedRuntime,
+  renderEvidence,
   resolvePackagedExecutable,
+  type RuntimeSnapshot,
+  type SpikeReport,
 } from '../scripts/sqlite-spike-runtime.ts'
 import {
   assertContinuousPrefix,
@@ -292,7 +296,81 @@ describe('SQLite Spike packaged runtime', () => {
       validateCheckpointResult({ busy: 1, log: 10, checkpointed: 4 }),
     ).toThrow('WAL checkpoint busy=1')
   })
+
+  test('完整报告缺少 crash 或 import 场景时失败', () => {
+    expect(() =>
+      assertCompleteSpikeReport({
+        runtime: validRuntime(),
+        scenarios: [
+          {
+            name: 'runtime',
+            durationMs: 1,
+            assertions: 1,
+            entryCount: 0,
+            databaseBytes: 0,
+            walBytes: 0,
+            status: 'passed',
+          },
+        ],
+        status: 'passed',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        finishedAt: '2026-01-01T00:00:01.000Z',
+      }),
+    ).toThrow('缺少必需场景: crash-recovery')
+  })
+
+  test('evidence 不泄漏 runtime 绝对路径', () => {
+    const report = completeReport()
+    assertCompleteSpikeReport(report)
+    const evidence = renderEvidence(report)
+    expect(evidence).not.toContain('C:\\Users\\Alice')
+    expect(evidence).toContain('- ASAR: true')
+    expect(evidence.match(/\| passed \|/g)?.length).toBe(9)
+  })
 })
+
+function validRuntime(): RuntimeSnapshot {
+  return {
+    isPackaged: true,
+    defaultApp: false,
+    appPath: 'C:\\Users\\Alice\\App\\resources\\app.asar',
+    electron: '39.8.10',
+    node: '22.22.1',
+    sqlite: '3.51.2',
+    hasDatabaseSync: true,
+    hasBackup: true,
+    electronRunAsNode: false,
+  }
+}
+
+function completeReport(): SpikeReport {
+  const names = [
+    'runtime',
+    'bootstrap',
+    'ordered-entries',
+    'session-isolation',
+    'crash-recovery',
+    'compaction',
+    'delete-cleanup',
+    'wal-backup-restore',
+    'legacy-import',
+  ]
+  return {
+    runtime: validRuntime(),
+    scenarios: names.map((name) => ({
+      name,
+      durationMs: 1,
+      assertions: 1,
+      entryCount: 0,
+      databaseBytes: 1,
+      walBytes: 0,
+      status: 'passed',
+    })),
+    status: 'passed',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    finishedAt: '2026-01-01T00:00:01.000Z',
+  }
+}
 
 function user(text: string) {
   return {
