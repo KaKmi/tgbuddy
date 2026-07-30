@@ -12,7 +12,8 @@ import {
 import { DATA_DIR } from './channel-store.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const isDev = !app.isPackaged
+// Electron E2E 使用已构建的 Renderer，避免再启动一套 Vite 服务。
+const isDev = !app.isPackaged && process.env.TGBUDDY_E2E !== '1'
 const DEV_URL = 'http://localhost:5173'
 
 let mainWindow: BrowserWindow | null = null

@@ -148,6 +148,7 @@ export function App() {
               {group.items.map((s) => (
                 <button
                   key={s.id}
+                  data-testid="session-item"
                   onClick={() => selectSession(s.id)}
                   className={`mb-0.5 block w-full rounded-md px-3 py-2 text-left transition-colors ${
                     s.id === currentId ? 'bg-accent' : 'hover:bg-accent/60'
@@ -540,6 +541,7 @@ function MessageView({
         <div className="flex justify-end">
           <div className="flex w-full max-w-[80%] flex-col gap-2 rounded-2xl bg-card p-3">
             <textarea
+              aria-label="编辑消息"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               rows={Math.max(2, Math.min(8, draft.split('\n').length))}

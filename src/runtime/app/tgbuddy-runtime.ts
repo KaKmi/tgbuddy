@@ -183,8 +183,9 @@ export function createTgBuddyRuntime(dependencies: RuntimeDependencies): TgBuddy
       send(input) {
         void dependencies.runs.send(input, events.emit)
       },
-      stop: dependencies.runs.stop,
-      isRunning: dependencies.runs.isRunning,
+      // Coordinator 使用私有字段维护运行注册表，不能把实例方法裸转交后再换接收者调用。
+      stop: (sessionId) => dependencies.runs.stop(sessionId),
+      isRunning: (sessionId) => dependencies.runs.isRunning(sessionId),
     },
     permissions: {
       respond(response) {

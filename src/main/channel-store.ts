@@ -12,7 +12,13 @@ import { join } from 'node:path'
 import type { Channel } from '../shared/types/channel.ts'
 import { deepseekChannel } from '../shared/channel-presets.ts'
 
-export const DATA_DIR = join(homedir(), '.tgbuddy')
+/**
+ * E2E 与便携运行可以显式隔离应用数据；默认位置仍保持向后兼容。
+ *
+ * 这个入口必须在模块加载时确定，因为权限、渠道和 Workspace 共享同一数据根。
+ */
+export const DATA_DIR =
+  process.env.TGBUDDY_DATA_DIR ?? join(homedir(), '.tgbuddy')
 const CHANNELS_FILE = join(DATA_DIR, 'channels.json')
 
 export function ensureDataDir(): void {

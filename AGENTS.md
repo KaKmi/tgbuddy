@@ -118,7 +118,7 @@ TgBuddy 是按用户自有功能设计打造的、基于 **pi 内核**的通用�
 
 #### M1 · 可恢复 Agent 内核
 
-状态：**K01–K17 开发完成；集中 review、E2E、QA 待执行**
+状态：**K01–K17、集中 review 与 Electron E2E 已完成；QA 执行中**
 
 当前基座已经完成：
 
@@ -138,19 +138,20 @@ TgBuddy 是按用户自有功能设计打造的、基于 **pi 内核**的通用�
 
 最近验证：
 
-- M1 review fix round：`bun test` **114/114**，331 assertions；architecture、typecheck、build 通过；
+- M1 review + E2E fix round：`bun test` **115/115**，333 assertions；architecture、typecheck、build 通过；
 - `bun run spike:sqlite`：packaged Electron 39.8.10 / Node 22.22.1 / SQLite 3.51.2 的 12 个场景通过；
 - `bun run probe`：真实文本流、ToolPolicy、工具事件、多轮恢复和 AbortSignal 通过；
 - `bun run probe:compaction`：真实摘要调用通过；
 - `bun run dev`：Vite 与 Electron 启动、legacy 幂等迁移和 Renderer 加载通过；
-- 整个 M1 的集中 review 已 clean；E2E 与 QA 证据在当前流水线完成后更新。
+- 整个 M1 的集中 review 已 clean；Playwright Electron E2E **5/5** 通过，覆盖恢复、停止、工具、压缩、编辑重发和克隆；
+- E2E 发现并修复 Runtime 裸转交 `RunCoordinator.stop/isRunning` 导致实例接收者丢失的问题；QA 证据在当前流水线完成后更新。
 
 ### 3.2 当前下一步
 
-**先完成整个 M1 的集中 `$ship:review`，修复并 fresh review；再依次执行 `$ship:e2e`、`$ship:qa`。通过后从 S01 开始 M2，不重做 M1、Phase 0 或 Story 1A。**
+**执行整个 M1 的 `$ship:qa`；通过后从 S01 开始 M2，不重做 M1、Phase 0 或 Story 1A。**
 
 ```text
-M1 集中 review -> E2E -> QA
+M1 review ✅ -> E2E ✅ -> QA
   -> S01–S11 Workspace 与安全
     -> C01–C12 Tool / Skill / MCP 通用能力
       -> A01–A09 Blob / 附件 / Artifact
@@ -241,7 +242,7 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 |---:|---|---|---|---|
 | 0 | SQLite packaged spike | B00 | ✅ 完成 | 打包、恢复、备份、legacy import |
 | 1 | 仓库边界与 Runtime 门面 | B01 | ✅ 完成 | contracts、Runtime、Composition Root、checker |
-| 2 | M1 可恢复 Agent 内核 | K01–K17 | ◉ 开发完成；review/E2E/QA 中 | 会话、消息、流式、停止、工具、恢复、压缩 |
+| 2 | M1 可恢复 Agent 内核 | K01–K17 | ◉ 开发、review、E2E 完成；QA 中 | 会话、消息、流式、停止、工具、恢复、压缩 |
 | 3 | M2 Workspace 与安全 | S01–S11 | 待开始 | mount、ExecutionEnv、权限、Plan、ask_user |
 | 4 | M3 通用能力系统 | C01–C12 | 待开始 | Channel、Profile、Tool、Skill、MCP |
 | 5 | M4 附件与结果 | A01–A09 | 待开始 | Blob、附件、长输出、Artifact、结果区 |

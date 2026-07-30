@@ -90,6 +90,32 @@ function createDependencies(calls: string[]): RuntimeDependencies {
 }
 
 describe('TgBuddyRuntime 门面', () => {
+  test('Run 方法通过原 owner 调用，保留 Coordinator 的实例接收者', () => {
+    const calls: string[] = []
+    const dependencies = createDependencies(calls)
+    const owner = {
+      active: true,
+      send: dependencies.runs.send,
+      stop(this: { active: boolean }, sessionId: string) {
+        calls.push(`run.stop:${sessionId}:${this.active}`)
+      },
+      isRunning(this: { active: boolean }, sessionId: string) {
+        calls.push(`run.isRunning:${sessionId}:${this.active}`)
+        return this.active
+      },
+    }
+    dependencies.runs = owner
+    const runtime = createTgBuddyRuntime(dependencies)
+
+    runtime.runs.stop('session-1')
+
+    expect(runtime.runs.isRunning('session-1')).toBe(true)
+    expect(calls).toEqual([
+      'run.stop:session-1:true',
+      'run.isRunning:session-1:true',
+    ])
+  })
+
   test('删除会话保持旧实现的清理顺序', async () => {
     const calls: string[] = []
     const runtime = createTgBuddyRuntime(createDependencies(calls))
