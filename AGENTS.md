@@ -118,7 +118,7 @@ TgBuddy 是按用户自有功能设计打造的、基于 **pi 内核**的通用�
 
 #### M1 · 可恢复 Agent 内核
 
-状态：**K01–K12 完成，K13 下一步**
+状态：**K01–K17 开发完成；集中 review、E2E、QA 待执行**
 
 当前基座已经完成：
 
@@ -131,21 +131,26 @@ TgBuddy 是按用户自有功能设计打造的、基于 **pi 内核**的通用�
 - Runtime 通过每个 Run 独立的 `AbortSignal` 级联停止 AgentHarness；停止后 Session 回到 idle，迟到事件在 Runtime 与 Renderer 双重丢弃；
 - 生产 PiAgentEngine 已装入内置 Tool 和显式 ToolPolicy 端口；工具等待、执行、成功/失败、停止后 unknown 与历史回放进入同一事件链；
 - 启动恢复会把 SQLite 中遗留的 running Session 幂等标记为 interrupted，并向 pi Session 追加可回放系统标记；历史不丢且下一 Run 可继续；
-- 生产发送路径不再进入 `src/main/orchestrator.ts`；旧文件只等待 K17 物理删除。
+- Runtime 统一负责手动压缩、85% 自动压缩、3 秒延迟、排队输入与取消恢复；
+- 用户可从任意历史用户消息“编辑并重发”或“从此新建会话”；前者移动线性 active leaf，后者复制 active prefix 并保留 `originRef`；
+- `src/main/session-store.ts`、裸 `orchestrator.ts`、旧 compaction owner 和 `src/kernel/*.ts` 旧适配已物理删除；
+- Session/Run/Context 的 canonical owner 已收口到 Runtime、SQLite adapter 与 `kernel/pi`。
 
 最近验证：
 
-- `bun run probe`：真实模型文本流、生产工具调用、多轮 Session 恢复、错误监听、ToolPolicy 和 AbortSignal 停止 probe 通过；
-- `bun run spike:sqlite`：packaged Electron 的 12 个场景通过，含 interrupted schema 迁移与既有 crash recovery；
-- `bun test`：**97/97**，271 assertions；
-- architecture、typecheck、build：通过。
+- K17：`bun test` **113/113**，325 assertions；architecture、typecheck、build 通过；
+- `bun run spike:sqlite`：packaged Electron 39.8.10 / Node 22.22.1 / SQLite 3.51.2 的 12 个场景通过；
+- `bun run probe`：真实文本流、ToolPolicy、工具事件、多轮恢复和 AbortSignal 通过；
+- `bun run probe:compaction`：真实摘要调用通过；
+- `bun run dev`：Vite 与 Electron 启动、legacy 幂等迁移和 Renderer 加载通过；
+- 整个 M1 的集中 review、E2E 与 QA 证据在当前流水线完成后更新。
 
 ### 3.2 当前下一步
 
-**从 Slice K13 继续，不重做 K01–K12、Phase 0 或 Story 1A。**
+**先完成整个 M1 的集中 `$ship:review`，修复并 fresh review；再依次执行 `$ship:e2e`、`$ship:qa`。通过后从 S01 开始 M2，不重做 M1、Phase 0 或 Story 1A。**
 
 ```text
-K10–K17 完成可恢复 Agent 内核
+M1 集中 review -> E2E -> QA
   -> S01–S11 Workspace 与安全
     -> C01–C12 Tool / Skill / MCP 通用能力
       -> A01–A09 Blob / 附件 / Artifact
@@ -198,10 +203,10 @@ shared <- renderer
 
 | 旧 owner | 删除 Story |
 |---|---|
-| `src/main/session-store.ts` | K17；K02–K06 逐项收缩 |
-| `src/main/orchestrator.ts` | K17；K07–K12 逐项收缩 |
-| `src/main/compaction-service.ts` | K14 |
-| `src/kernel/*.ts` 旧适配 | K17，迁入 `src/kernel/pi/**` |
+| `src/main/session-store.ts` | ✅ K17 已删除 |
+| `src/main/orchestrator.ts` | ✅ K17 已删除 |
+| `src/main/compaction-service.ts` | ✅ K14 已删除 |
+| `src/kernel/*.ts` 旧适配 | ✅ K17 已删除，生产适配只在 `src/kernel/pi/**` |
 | `src/main/permission-service.ts` | S11 |
 | `src/main/plan-service.ts` | S09 |
 | `src/main/ask-user-service.ts` | S10 |
@@ -236,7 +241,7 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 |---:|---|---|---|---|
 | 0 | SQLite packaged spike | B00 | ✅ 完成 | 打包、恢复、备份、legacy import |
 | 1 | 仓库边界与 Runtime 门面 | B01 | ✅ 完成 | contracts、Runtime、Composition Root、checker |
-| 2 | M1 可恢复 Agent 内核 | K01–K17 | ▶ K01–K12 完成；K13 下一步 | 会话、消息、流式、停止、工具、恢复、压缩 |
+| 2 | M1 可恢复 Agent 内核 | K01–K17 | ◉ 开发完成；review/E2E/QA 中 | 会话、消息、流式、停止、工具、恢复、压缩 |
 | 3 | M2 Workspace 与安全 | S01–S11 | 待开始 | mount、ExecutionEnv、权限、Plan、ask_user |
 | 4 | M3 通用能力系统 | C01–C12 | 待开始 | Channel、Profile、Tool、Skill、MCP |
 | 5 | M4 附件与结果 | A01–A09 | 待开始 | Blob、附件、长输出、Artifact、结果区 |

@@ -17,8 +17,8 @@ import {
   createPiSessionStore,
 } from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
-import * as store from '../session-store.ts'
 import { buildBuiltinTools } from '../tools/index.ts'
+import { createId } from './create-id.ts'
 import { createLegacyRuntime } from './create-legacy-runtime.ts'
 import {
   importLegacySessions,
@@ -66,17 +66,16 @@ export async function createApplication(
     messageStore = createdMessageStore
     const messageHistory = createSessionMessageHistory({
       store: createdMessageStore,
-      createId: store.newId,
+      createId,
       now: Date.now,
     })
     recovery = await recoverInterruptedRuns({
       sessions: sessionRepository,
       history: messageHistory,
-      createId: store.newId,
+      createId,
       now: Date.now,
     })
     reportInterruptedRunRecovery(recovery)
-    store.configureSessionRepository(sessionRepository)
     runtime = createLegacyRuntime({
       agentEngine: createPiAgentEngine({
         sessions: createdMessageStore,
@@ -88,7 +87,7 @@ export async function createApplication(
       sessions: createSessionCommands({
         repository: sessionRepository,
         history: messageHistory,
-        createId: store.newId,
+        createId,
         now: Date.now,
         resolveCwd: () => process.cwd(),
         onHistoryDeleteError(sessionId, error) {
@@ -99,7 +98,6 @@ export async function createApplication(
     })
     unsubscribe = registerIpc(runtime, options.getWindow)
   } catch (error) {
-    store.configureSessionRepository(undefined)
     void messageStore?.dispose().catch((disposeError: unknown) => {
       console.error('[application] PiSessionStore 初始化回滚失败', disposeError)
     })
@@ -119,7 +117,6 @@ export async function createApplication(
       try {
         await runtime.dispose()
       } finally {
-        store.configureSessionRepository(undefined)
         appDatabase.close()
       }
     },

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -194,13 +194,25 @@ describe('仓库 import 边界', () => {
 
   test('每个 legacy 豁免都绑定实际删除 Story', () => {
     expect(LEGACY_COMPATIBILITY).toEqual([
-      { prefix: 'src/kernel/', deleteIn: 'Story 1C' },
-      { prefix: 'src/main/orchestrator.ts', deleteIn: 'Story 1C' },
       { prefix: 'src/main/tools/sandbox.ts', deleteIn: 'Story 2' },
       { prefix: 'src/main/tools/sandboxed-env.ts', deleteIn: 'Story 2' },
       { prefix: 'src/main/tools/index.ts', deleteIn: 'Story 4' },
       { prefix: 'src/main/tools/plan-mode.ts', deleteIn: 'Story 4' },
       { prefix: 'src/main/tools/ask-user.ts', deleteIn: 'Story 4' },
     ])
+  })
+
+  test('M1 结束后 Session 和 Run 的 legacy owner 已物理删除', () => {
+    const projectRoot = join(import.meta.dir, '../../..')
+    const removedOwners = [
+      'src/main/session-store.ts',
+      'src/main/orchestrator.ts',
+      'src/main/compaction-service.ts',
+      'src/kernel/normalize.ts',
+    ]
+
+    for (const owner of removedOwners) {
+      expect(existsSync(join(projectRoot, owner))).toBe(false)
+    }
   })
 })

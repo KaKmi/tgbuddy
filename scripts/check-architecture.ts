@@ -46,8 +46,6 @@ const SOURCE_EXTENSIONS = ['.ts', '.tsx']
  * 悄悄演变成允许 Main 长期直接调用 pi 的第二套规则。
  */
 export const LEGACY_COMPATIBILITY = [
-  { prefix: 'src/kernel/', deleteIn: 'Story 1C' },
-  { prefix: 'src/main/orchestrator.ts', deleteIn: 'Story 1C' },
   { prefix: 'src/main/tools/sandbox.ts', deleteIn: 'Story 2' },
   { prefix: 'src/main/tools/sandboxed-env.ts', deleteIn: 'Story 2' },
   { prefix: 'src/main/tools/index.ts', deleteIn: 'Story 4' },

@@ -10,10 +10,12 @@ TgBuddy 是一个基于 **pi 内核**的本地优先 Agent Workbench，使用 El
 
 ## 当前状态
 
-项目正在进行一次**架构迁移式的二次开发**，不是从零重写。
+项目正在进行一次**架构迁移式的二次开发**，不是从零重写。M1 可恢复 Agent
+内核的 K01–K17 已完成开发，当前进入整段 review、E2E 和 QA。
 
-现有代码已经验证了核心交互闭环，可以作为后续开发的基座；但早期实现中的裸 `Agent`、
-JSONL canonical storage、全局 Sandbox 和“Workspace 等于目录”等设计，需要迁移到新架构。
+Session/Run/Context 已迁入 Runtime、SQLite 和 pi `AgentHarness`；旧裸 `Agent`、
+JSONL canonical owner 与 Main compaction owner 已删除。全局 Sandbox、Workspace
+等于目录、旧权限与能力 owner 会在后续 M2/M3 Slice 继续迁移。
 
 ### 已有基座
 
@@ -21,8 +23,9 @@ JSONL canonical storage、全局 Sandbox 和“Workspace 等于目录”等设�
 - pi Provider 接入、流式消息、工具调用和多轮上下文。
 - 内置文件工具、权限挂起、计划模式和 `ask_user`。
 - 多 Session generation 守卫、停止运行和挂起请求清理。
-- 线性 JSONL 会话、坏行跳过、原子索引和压缩恢复的原型实现。
-- 上下文用量统计、自动/手动压缩和对应测试。
+- SQLite canonical Session、pi 消息历史、legacy JSONL 一次性幂等导入。
+- Run 单飞、并行、停止、崩溃恢复与 durable `message_end`。
+- 上下文用量统计、自动/手动压缩、编辑重发和扁平派生会话。
 - 工具卡片、权限卡片、计划审批和压缩状态等 UI 基础组件。
 
 这些代码不会整体推倒。迁移过程中优先保留已经验证的 Provider、事件、UI 和测试能力，
@@ -32,8 +35,8 @@ JSONL canonical storage、全局 Sandbox 和“Workspace 等于目录”等设�
 
 | 领域 | 当前基座 | 目标 |
 |---|---|---|
-| Agent Runtime | `src/main/orchestrator.ts` 直接创建裸 `Agent` | 使用 pi `AgentHarness` 管理 Session、save point、Tool 生命周期和 settled |
-| 会话存储 | `sessions.json` + 线性 JSONL | SQLite canonical storage；JSONL 只做导入、导出、审计和恢复 |
+| Agent Runtime | Runtime + pi `AgentHarness` 已接管 | M2/M3 接入 Workspace、Policy、Tool、Skill 与 MCP |
+| 会话存储 | SQLite catalog + pi SQLite Session backend | 后续增加 Blob、Artifact 和导出能力；JSONL 只做兼容导入 |
 | Workspace | 自动创建 `~/.tgbuddy/workspaces/{id}` | 逻辑 `WorkspaceRecord` + 可重新定位的 `WorkspaceMount` |
 | Sandbox | 全局配置 + 文件路径校验 | 每个 Run 独立的 `Sandboxed ExecutionEnv` + canonical path 校验 |
 | 大对象 | 消息内截断或剥离 | BlobStore 保存附件、完整工具输出、预览和非工作区产物 |
@@ -84,7 +87,7 @@ Milestone
       -> 验收测试
 ```
 
-近期顺序如下，详细 Story 和文件级改动仍需通过 `$ship:design` 生成：
+近期顺序如下；实际开发以 `AGENTS.md` 中已拆分的 Slice 计划为准：
 
 | 顺序 | Wave | 目标 |
 |---:|---|---|

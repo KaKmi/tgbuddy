@@ -367,9 +367,12 @@ function replayActiveMessages(
         entry.type === 'leaf'
         && entry.targetId === compactionEntry.id,
     )
+    // pi 的 getBranch() 可能只返回 leaf 指向的有效路径，不包含 leaf entry 本身。
+    // 此时 compaction 后的消息仍是有效 tail，不能因为看不到内部指针而被丢弃。
+    const tailIndex = leafIndex === -1 ? lastCompactionIndex : leafIndex
     return [
       marker,
-      ...rawMessages(leafIndex === -1 ? [] : entries.slice(leafIndex + 1)),
+      ...rawMessages(entries.slice(tailIndex + 1)),
     ]
   }
 

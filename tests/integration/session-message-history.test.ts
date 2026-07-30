@@ -570,16 +570,9 @@ describe('SessionMessageHistory', () => {
         data: { fromId: 'message-2' },
       },
       {
-        type: 'leaf',
-        id: 'legacy-leaf',
-        parentId: 'truncate-1',
-        timestamp: new Date(1_700_000_000_005).toISOString(),
-        targetId: 'compaction-1',
-      },
-      {
         type: 'message',
         id: 'new-message',
-        parentId: 'legacy-leaf',
+        parentId: 'compaction-1',
         timestamp: new Date(1_700_000_000_006).toISOString(),
         message: userMessage('new-message', 1_700_000_000_006).message,
       },
