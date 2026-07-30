@@ -43,6 +43,8 @@ export {
   createRunCoordinator,
   type CreateRunCoordinatorOptions,
   type RunCoordinator,
-  type RunExecutionContext,
-  type RunExecutor,
 } from './runs/run-coordinator.ts'
+export type {
+  AgentEngine,
+  AgentInvocation,
+} from './runs/agent-engine.ts'

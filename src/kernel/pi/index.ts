@@ -1,4 +1,11 @@
 export {
+  createPiAgentEngine,
+  piEventToAgentEvent,
+  type CreatePiAgentEngineOptions,
+  type PersistedPiMessage,
+  type PiAgentSessionProvider,
+} from './pi-agent-engine.ts'
+export {
   createPiSessionStore,
   PiSessionStore,
   type CreatePiSessionStoreOptions,

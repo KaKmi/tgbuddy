@@ -18,6 +18,7 @@ export interface PiSessionAdapter {
   metadata(): Promise<Record<string, unknown> | undefined>
   listEntries(): Promise<PersistedSessionEntry[]>
   appendEntry(entry: PersistedSessionEntry): Promise<void>
+  harnessSession(): Session
   close(): Promise<void>
 }
 
@@ -81,6 +82,10 @@ class SqlitePiSessionAdapter implements PiSessionAdapter {
 
   appendEntry(entry: PersistedSessionEntry): Promise<void> {
     return this.#session.getStorage().appendEntry(entry)
+  }
+
+  harnessSession(): Session {
+    return this.#session
   }
 
   async close(): Promise<void> {
@@ -161,6 +166,11 @@ class ManagedMessageSession implements MessageSession {
   append(entry: PersistedSessionEntry): Promise<void> {
     this.#requireOpen()
     return this.#track(this.#session.appendEntry(entry))
+  }
+
+  harnessSession(): Session {
+    this.#requireOpen()
+    return this.#session.harnessSession()
   }
 
   close(): Promise<void> {
@@ -269,6 +279,24 @@ export class PiSessionStore implements MessageStore {
         return this.#acceptSession(sessionId, kernel, session)
       }),
     )
+  }
+
+  /**
+   * AgentHarness 与消息查询必须复用同一个 Session handle。
+   *
+   * 若另开 repository/connection，Harness 写入与 Runtime 回放之间会出现两个 leaf
+   * 视图；共享 handle 才能保证 `message_end` 后立即读到同一条持久化 entry。
+   */
+  async openHarnessSession(
+    sessionId: string,
+    kernel: string,
+  ): Promise<Session | undefined> {
+    const session = await this.open(sessionId, kernel)
+    if (!session) return undefined
+    if (!(session instanceof ManagedMessageSession)) {
+      throw new Error(`Session ${sessionId} 不是 pi Session`)
+    }
+    return session.harnessSession()
   }
 
   delete(sessionId: string): Promise<void> {

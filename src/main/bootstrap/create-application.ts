@@ -8,7 +8,10 @@ import {
   AppDatabase,
   SqliteSessionRepository,
 } from '../../infrastructure/sqlite/index.ts'
-import { createPiSessionStore } from '../../kernel/pi/index.ts'
+import {
+  createPiAgentEngine,
+  createPiSessionStore,
+} from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
 import * as store from '../session-store.ts'
 import { createLegacyRuntime } from './create-legacy-runtime.ts'
@@ -61,6 +64,9 @@ export async function createApplication(
     })
     store.configureSessionRepository(sessionRepository)
     runtime = createLegacyRuntime({
+      agentEngine: createPiAgentEngine({
+        sessions: createdMessageStore,
+      }),
       history: messageHistory,
       sessions: createSessionCommands({
         repository: sessionRepository,

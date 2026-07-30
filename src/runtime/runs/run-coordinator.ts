@@ -1,28 +1,21 @@
-import type { StreamFrame } from '../../shared/contracts/events.ts'
+import type {
+  AgentEvent,
+  StreamFrame,
+} from '../../shared/contracts/events.ts'
 import type { SendInput } from '../../shared/contracts/ipc.ts'
+import type {
+  AgentEngine,
+  AgentInvocation,
+} from './agent-engine.ts'
 import {
   RunRegistry,
   type ActiveRun,
 } from './run-registry.ts'
 
-export interface RunExecutionContext {
-  sessionId: string
-  runId: number
-  emit(frame: StreamFrame): void
-  isRunning(): boolean
-}
-
-export interface RunExecutor {
-  execute(
-    input: SendInput,
-    context: RunExecutionContext,
-  ): Promise<void>
-  stop(sessionId: string): void
-}
-
 export interface CreateRunCoordinatorOptions {
   now(): number
-  executor: RunExecutor
+  engine: AgentEngine
+  createInvocation(input: SendInput): Promise<AgentInvocation>
 }
 
 export interface RunCoordinator {
@@ -34,13 +27,17 @@ export interface RunCoordinator {
 
 class DefaultRunCoordinator implements RunCoordinator {
   readonly #registry: RunRegistry
-  readonly #executor: RunExecutor
+  readonly #engine: AgentEngine
+  readonly #createInvocation: (
+    input: SendInput,
+  ) => Promise<AgentInvocation>
   readonly #inFlight = new Set<Promise<void>>()
   #disposePromise: Promise<void> | undefined
 
   constructor(options: CreateRunCoordinatorOptions) {
     this.#registry = new RunRegistry({ now: options.now })
-    this.#executor = options.executor
+    this.#engine = options.engine
+    this.#createInvocation = options.createInvocation
   }
 
   send(
@@ -75,7 +72,7 @@ class DefaultRunCoordinator implements RunCoordinator {
 
   stop(sessionId: string): void {
     if (this.#registry.isRunning(sessionId)) {
-      this.#executor.stop(sessionId)
+      this.#engine.abort(sessionId)
     }
   }
 
@@ -86,8 +83,8 @@ class DefaultRunCoordinator implements RunCoordinator {
   dispose(): Promise<void> {
     if (this.#disposePromise) return this.#disposePromise
     const active = this.#registry.dispose()
-    for (const run of active) this.#executor.stop(run.sessionId)
-    this.#disposePromise = this.#waitForInFlight()
+    for (const run of active) this.#engine.abort(run.sessionId)
+    this.#disposePromise = this.#dispose()
     return this.#disposePromise
   }
 
@@ -97,19 +94,44 @@ class DefaultRunCoordinator implements RunCoordinator {
     emit: (frame: StreamFrame) => void,
   ): Promise<void> {
     try {
-      await this.#executor.execute(input, {
+      const invocation = await this.#createInvocation(input)
+      for await (const event of this.#engine.run(invocation)) {
+        this.#emitAgentEvent(run, event, emit)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      emit({
         sessionId: run.sessionId,
         runId: run.runId,
-        emit,
-        isRunning: () => this.#registry.isRunning(run.sessionId),
+        payload: {
+          channel: 'host',
+          event: {
+            type: 'host_error',
+            message,
+            recoverable: false,
+          },
+        },
       })
     } finally {
       this.#registry.settle(run)
     }
   }
 
-  async #waitForInFlight(): Promise<void> {
+  #emitAgentEvent(
+    run: ActiveRun,
+    event: AgentEvent,
+    emit: (frame: StreamFrame) => void,
+  ): void {
+    emit({
+      sessionId: run.sessionId,
+      runId: run.runId,
+      payload: { channel: 'agent', event },
+    })
+  }
+
+  async #dispose(): Promise<void> {
     await Promise.allSettled([...this.#inFlight])
+    await this.#engine.dispose()
   }
 }
 

@@ -15,9 +15,17 @@
  *   DEEPSEEK_BASE_URL=...            （走中转网关时）
  */
 
-import { Agent, type AgentTool } from '@earendil-works/pi-agent-core'
+import {
+  Agent,
+  InMemorySessionRepo,
+  type AgentTool,
+} from '@earendil-works/pi-agent-core'
 import { Type } from '@earendil-works/pi-ai'
-import { buildModels } from '../src/kernel/models.ts'
+import {
+  createPiAgentEngine,
+} from '../src/kernel/pi/pi-agent-engine.ts'
+import { buildModels } from '../src/kernel/pi/pi-models.ts'
+import type { AgentInvocation } from '../src/runtime/index.ts'
 import { deepseekChannel } from '../src/shared/channel-presets.ts'
 
 const API_KEY = process.env.DEEPSEEK_API_KEY ?? process.env.TGBUDDY_API_KEY
@@ -37,6 +45,23 @@ if (!model) {
   console.error(`模型未注册：${channel.id}/${MODEL_ID}`)
   console.error(`可用：${channel.models.map((m) => m.id).join(', ')}`)
   process.exit(1)
+}
+
+const probeSessionId = 'probe-agent-engine'
+const sessionRepository = new InMemorySessionRepo()
+const harnessSession = await sessionRepository.create({ id: probeSessionId })
+const agentEngine = createPiAgentEngine({
+  sessions: {
+    async openHarnessSession(sessionId) {
+      return sessionId === probeSessionId ? harnessSession : undefined
+    },
+  },
+})
+const engineInvocation: Omit<AgentInvocation, 'text'> = {
+  sessionId: probeSessionId,
+  channel,
+  modelId: MODEL_ID,
+  systemPrompt: '你是一个测试助手。回答简短。',
 }
 
 // ── 一个最小工具，用来验证工具调用链路 ──────────────────────────────
@@ -100,6 +125,29 @@ const agent = new Agent({
 // 你的监听器慢 = agent 慢。往渲染进程发 IPC 时不要 await 渲染完成。
 let sawError = false
 
+async function runProductionEngine(text: string): Promise<void> {
+  for await (const event of agentEngine.run({
+    ...engineInvocation,
+    text,
+  })) {
+    if (event.type === 'text_delta') process.stdout.write(event.delta)
+    if (event.type === 'thinking_delta') {
+      process.stdout.write(`\x1b[90m${event.delta}\x1b[0m`)
+    }
+    if (event.type === 'error') {
+      sawError = true
+      console.error(`\n\x1b[31m  [错误] ${event.reason}：${event.message}\x1b[0m`)
+    }
+    if (event.type === 'turn_end' && event.usage) {
+      console.log(
+        `\n  [用量] in=${event.usage.input} out=${event.usage.output} `
+        + `cacheRead=${event.usage.cacheRead} 共 ${event.usage.totalTokens} tokens，`
+        + `成本 $${event.usage.cost.total.toFixed(6)}`,
+      )
+    }
+  }
+}
+
 agent.subscribe((event) => {
   switch (event.type) {
     case 'message_update': {
@@ -143,7 +191,7 @@ console.log(`\n端点：${channel.baseUrl}`)
 console.log(`模型：${MODEL_ID}（${channel.protocol} 协议）\n`)
 console.log('─'.repeat(60))
 console.log('\n【第 1 轮】纯文本，验证流式输出\n')
-await agent.prompt('用一句话介绍你自己。')
+await runProductionEngine('用一句话介绍你自己。')
 
 console.log('\n\n' + '─'.repeat(60))
 console.log('\n【第 2 轮】触发工具调用，验证 beforeToolCall 挂起\n')
@@ -151,11 +199,12 @@ await agent.prompt('现在几点了？')
 
 console.log('\n\n' + '─'.repeat(60))
 console.log('\n【第 3 轮】验证多轮上下文（消息数组就是全部状态）\n')
-await agent.prompt('我刚才问你的第一个问题是什么？')
+await runProductionEngine('我刚才问你的第一个问题是什么？')
 
 console.log('\n\n' + '─'.repeat(60))
 
 if (sawError) {
+  await agentEngine.dispose()
   console.error('\n\x1b[31m✗ 有请求失败了。常见原因：\x1b[0m')
   console.error('  · API Key 无效或额度不足')
   console.error('  · 模型 id 不对（0.82.1 的目录里只有 deepseek-v4-flash / deepseek-v4-pro）')
@@ -164,6 +213,9 @@ if (sawError) {
   process.exit(1)
 }
 
-console.log(`\n✓ 会话消息数：${agent.state.messages.length}`)
-console.log('✓ 这个数组就是全部状态 —— JSON.stringify 存盘，赋值回去就能续接')
-console.log('  （会话状态由宿主维护，可直接检查和持久化）\n')
+const persistedMessages = (await harnessSession.getEntries())
+  .filter((entry) => entry.type === 'message')
+await agentEngine.dispose()
+console.log(`\n✓ Harness 会话消息数：${persistedMessages.length}`)
+console.log('✓ 生产 PiAgentEngine 已通过同一 Session 恢复多轮上下文')
+console.log('✓ message_end 在 Harness 持久化完成后进入 Runtime\n')

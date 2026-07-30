@@ -16,7 +16,7 @@ import type { Api, Message, Model, Models } from '@earendil-works/pi-ai'
 import type { CompactionSourceEntry } from '../shared/types/session.ts'
 import type { Channel } from '../shared/types/channel.ts'
 import { toKernelMessages } from '../shared/types/message.ts'
-import { buildModels } from './models.ts'
+import { buildModels } from './pi/pi-models.ts'
 
 const SUMMARY_MAX_CHARS = 16_000
 const AUTO_THRESHOLD = 0.85

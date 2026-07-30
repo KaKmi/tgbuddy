@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  InMemorySessionStorage,
+  Session,
+} from '@earendil-works/pi-agent-core'
+import {
   PiSessionStore,
   type PiSessionAdapter,
   type PiSessionRepositoryAdapter,
@@ -8,6 +12,7 @@ import type { PersistedSessionEntry } from '../../../src/shared/contracts/messag
 
 class MemoryPiSession implements PiSessionAdapter {
   readonly entries: PersistedSessionEntry[] = []
+  readonly harness = new Session(new InMemorySessionStorage())
   closeCount = 0
   metadataError: Error | undefined
   readonly #beforeAppend: (() => Promise<void>) | undefined
@@ -33,6 +38,10 @@ class MemoryPiSession implements PiSessionAdapter {
   async appendEntry(entry: PersistedSessionEntry): Promise<void> {
     await this.#beforeAppend?.()
     this.entries.push(entry)
+  }
+
+  harnessSession(): Session {
+    return this.harness
   }
 
   async close(): Promise<void> {
@@ -211,6 +220,21 @@ describe('PiSessionStore', () => {
     expect(repository.openCount).toBe(1)
     await store.dispose()
     expect(session.closeCount).toBe(1)
+  })
+
+  test('AgentHarness 与消息历史复用同一个 pi Session handle', async () => {
+    const repository = new MemoryPiRepository()
+    const session = new MemoryPiSession()
+    repository.sessions.set('session-a', session)
+    const store = new PiSessionStore(repository)
+
+    const first = await store.openHarnessSession('session-a', 'pi@0.82')
+    const second = await store.openHarnessSession('session-a', 'pi@0.82')
+
+    expect(first).toBe(session.harness)
+    expect(second).toBe(first)
+    expect(repository.openCount).toBe(1)
+    await store.dispose()
   })
 
   test('dispose 等待在途 open，并关闭其返回的迟到 handle', async () => {

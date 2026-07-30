@@ -15,11 +15,8 @@ import { Agent, type AgentMessage } from '@earendil-works/pi-agent-core'
 import type { SendInput } from '../shared/ipc.ts'
 import type { StreamFrame, StreamPayload } from '../shared/types/event.ts'
 import { toKernelMessages } from '../shared/types/message.ts'
-import type {
-  RunExecutionContext,
-  SessionMessageHistory,
-} from '../runtime/index.ts'
-import { buildModels } from '../kernel/models.ts'
+import type { SessionMessageHistory } from '../runtime/index.ts'
+import { buildModels } from '../kernel/pi/pi-models.ts'
 import { eventFromPi } from '../kernel/normalize.ts'
 import { buildContextUsage } from '../kernel/context-usage.ts'
 import { convertStoredMessagesToLlm } from '../kernel/compaction.ts'
@@ -38,12 +35,19 @@ import { join } from 'node:path'
 
 export type FrameSender = (frame: StreamFrame) => void
 
+interface LegacyRunExecutionContext {
+  sessionId: string
+  runId: number
+  emit(frame: StreamFrame): void
+  isRunning(): boolean
+}
+
 const runningAgents = new Map<string, Agent>()
 const stoppedByUser = new Set<string>()
 
 export async function execute(
   input: SendInput,
-  context: RunExecutionContext,
+  context: LegacyRunExecutionContext,
   history: SessionMessageHistory,
 ): Promise<void> {
   const { sessionId } = input

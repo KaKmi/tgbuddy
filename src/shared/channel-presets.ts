@@ -10,7 +10,7 @@
  * 我们不直接用 pi 的 `deepseekProvider()` 工厂，是因为：
  *   1. 用户的渠道可能指向中转网关，baseUrl 和官方不一样
  *   2. 它的 auth 走 DEEPSEEK_API_KEY 环境变量，而 GUI 启动的 Electron
- *      读不到 shell 环境变量（见 kernel/models.ts 的说明）
+ *      读不到 shell 环境变量（见 kernel/pi/pi-models.ts 的说明）
  *   3. 引入内置 provider 会把它的模型目录一起拖进打包产物
  */
 

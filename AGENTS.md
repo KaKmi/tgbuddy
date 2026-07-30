@@ -116,12 +116,31 @@ TgBuddy 是按用户自有功能设计打造的、基于 **pi 内核**的通用�
 - `83a9782 fix(architecture): close boundary checker gaps`
 - `8f694c9 docs(ship): record story 1a completion`
 
+#### M1 · 可恢复 Agent 内核
+
+状态：**K01–K08 完成，K09 下一步**
+
+当前基座已经完成：
+
+- App catalog 与 pi Session backend 共用同一 SQLite 物理文件、独立 schema；
+- Session catalog、消息回放和 legacy JSONL 一次性导入进入生产 Composition Root；
+- Runtime 持有 RunRegistry，支持同 Session 单飞与跨 Session 并行；
+- `PiAgentEngine` 通过 pi `AgentHarness` 输出 thinking/text/error/message_end；
+- `message_end` 只在 Harness 已提交对应 Session entry 后发布，信封 ID 与重启回放一致；
+- 生产发送路径不再进入 `src/main/orchestrator.ts`；旧文件只等待 K17 物理删除。
+
+最近验证：
+
+- `bun run probe`：真实模型文本流、多轮 Session 恢复、错误监听与工具权限 probe 通过；
+- `bun test`：**82/82**，217 assertions；
+- architecture、typecheck、build：通过。
+
 ### 3.2 当前下一步
 
-**只从 Slice K01 开始，不重做 Phase 0 或 Story 1A。**
+**从 Slice K09 继续，不重做 K01–K08、Phase 0 或 Story 1A。**
 
 ```text
-K01–K17 可恢复 Agent 内核
+K09–K17 完成可恢复 Agent 内核
   -> S01–S11 Workspace 与安全
     -> C01–C12 Tool / Skill / MCP 通用能力
       -> A01–A09 Blob / 附件 / Artifact
@@ -212,7 +231,7 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 |---:|---|---|---|---|
 | 0 | SQLite packaged spike | B00 | ✅ 完成 | 打包、恢复、备份、legacy import |
 | 1 | 仓库边界与 Runtime 门面 | B01 | ✅ 完成 | contracts、Runtime、Composition Root、checker |
-| 2 | M1 可恢复 Agent 内核 | K01–K17 | ▶ K01–K07 完成；K08 下一步 | 会话、消息、流式、停止、工具、恢复、压缩 |
+| 2 | M1 可恢复 Agent 内核 | K01–K17 | ▶ K01–K08 完成；K09 下一步 | 会话、消息、流式、停止、工具、恢复、压缩 |
 | 3 | M2 Workspace 与安全 | S01–S11 | 待开始 | mount、ExecutionEnv、权限、Plan、ask_user |
 | 4 | M3 通用能力系统 | C01–C12 | 待开始 | Channel、Profile、Tool、Skill、MCP |
 | 5 | M4 附件与结果 | A01–A09 | 待开始 | Blob、附件、长输出、Artifact、结果区 |

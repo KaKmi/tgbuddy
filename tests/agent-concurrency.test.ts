@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test'
 import {
   createRunCoordinator,
   RunRegistry,
-  type RunExecutionContext,
+  type AgentEngine,
+  type AgentInvocation,
 } from '../src/runtime/index.ts'
 import type { SendInput } from '../src/shared/contracts/ipc.ts'
 import type { StreamFrame } from '../src/shared/contracts/events.ts'
@@ -32,6 +33,34 @@ function deferred(): Deferred {
     resolve = done
   })
   return { promise, resolve }
+}
+
+function createInvocation(input: SendInput): Promise<AgentInvocation> {
+  return Promise.resolve({
+    sessionId: input.sessionId,
+    text: input.text,
+    channel: {
+      id: 'test',
+      name: 'Test',
+      protocol: 'openai',
+      baseUrl: 'https://example.test/v1',
+      apiKey: 'test-key',
+      models: [{
+        id: 'test-model',
+        name: 'Test Model',
+        contextWindow: 4096,
+        maxTokens: 1024,
+      }],
+    },
+    modelId: 'test-model',
+    systemPrompt: '测试',
+  })
+}
+
+async function flushCoordinator(): Promise<void> {
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
 }
 
 describe('Agent 并发状态', () => {
@@ -126,26 +155,31 @@ describe('RunRegistry', () => {
 describe('RunCoordinator', () => {
   test('拒绝同 Session 重入，同时允许不同 Session 执行并在 settled 后释放', async () => {
     const pending = new Map<string, Deferred>()
-    const started: Array<{ input: SendInput; context: RunExecutionContext }> = []
+    const started: AgentInvocation[] = []
     const frames: StreamFrame[] = []
+    const engine: AgentEngine = {
+      async *run(invocation) {
+        started.push(invocation)
+        yield { type: 'run_start' }
+        const gate = deferred()
+        pending.set(invocation.sessionId, gate)
+        await gate.promise
+        yield { type: 'run_end', stopReason: 'stop' }
+      },
+      abort() {},
+      async dispose() {},
+    }
     const coordinator = createRunCoordinator({
       now: () => 100,
-      executor: {
-        async execute(input, context) {
-          started.push({ input, context })
-          const gate = deferred()
-          pending.set(input.sessionId, gate)
-          await gate.promise
-        },
-        stop() {},
-      },
+      engine,
+      createInvocation,
     })
 
     const first = coordinator.send(
       { sessionId: 'session-1', text: '一' },
       (frame) => frames.push(frame),
     )
-    await Promise.resolve()
+    await flushCoordinator()
     await coordinator.send(
       { sessionId: 'session-1', text: '重复' },
       (frame) => frames.push(frame),
@@ -154,12 +188,17 @@ describe('RunCoordinator', () => {
       { sessionId: 'session-2', text: '二' },
       (frame) => frames.push(frame),
     )
-    await Promise.resolve()
+    await flushCoordinator()
 
-    expect(started.map((item) => [item.input.sessionId, item.context.runId])).toEqual([
-      ['session-1', 1],
-      ['session-2', 2],
+    expect(started.map((item) => item.sessionId)).toEqual([
+      'session-1',
+      'session-2',
     ])
+    expect(
+      frames
+        .filter((frame) => frame.payload.channel === 'agent')
+        .map((frame) => frame.runId),
+    ).toEqual([1, 2])
     expect(frames).toContainEqual({
       sessionId: 'session-1',
       runId: 0,
@@ -180,8 +219,16 @@ describe('RunCoordinator', () => {
       { sessionId: 'session-1', text: '三' },
       (frame) => frames.push(frame),
     )
-    await Promise.resolve()
-    expect(started.at(-1)?.context.runId).toBe(3)
+    await flushCoordinator()
+    expect(started.at(-1)?.sessionId).toBe('session-1')
+    expect(
+      frames.findLast(
+        (frame) =>
+          frame.sessionId === 'session-1'
+          && frame.payload.channel === 'agent'
+          && frame.payload.event.type === 'run_start',
+      )?.runId,
+    ).toBe(3)
 
     pending.get('session-1')?.resolve()
     pending.get('session-2')?.resolve()
@@ -191,23 +238,26 @@ describe('RunCoordinator', () => {
   test('dispose 停止并等待所有 active executor 后清空状态', async () => {
     const pending = new Map<string, Deferred>()
     const stopped: string[] = []
+    const engine: AgentEngine = {
+      async *run(invocation) {
+        const gate = deferred()
+        pending.set(invocation.sessionId, gate)
+        await gate.promise
+      },
+      abort(sessionId) {
+        stopped.push(sessionId)
+        pending.get(sessionId)?.resolve()
+      },
+      async dispose() {},
+    }
     const coordinator = createRunCoordinator({
       now: () => 100,
-      executor: {
-        async execute(input) {
-          const gate = deferred()
-          pending.set(input.sessionId, gate)
-          await gate.promise
-        },
-        stop(sessionId) {
-          stopped.push(sessionId)
-          pending.get(sessionId)?.resolve()
-        },
-      },
+      engine,
+      createInvocation,
     })
     void coordinator.send({ sessionId: 'session-1', text: '一' }, () => {})
     void coordinator.send({ sessionId: 'session-2', text: '二' }, () => {})
-    await Promise.resolve()
+    await flushCoordinator()
 
     await coordinator.dispose()
 

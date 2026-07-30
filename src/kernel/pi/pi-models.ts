@@ -17,7 +17,11 @@ import {
 } from '@earendil-works/pi-ai'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy'
-import type { Channel, ChannelModel, ChannelProtocol } from '../shared/types/channel.ts'
+import type {
+  Channel,
+  ChannelModel,
+  ChannelProtocol,
+} from '../../shared/contracts/channel.ts'
 
 /** 我们的协议名 → pi 的 api 标识 */
 const API_BY_PROTOCOL = {

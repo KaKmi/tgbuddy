@@ -2,7 +2,7 @@
  * 渠道公共契约（Channel）—— 用户配置的一个模型接入点。
  *
  * 一个渠道 = 一个 baseUrl + 一个 apiKey + 若干模型。
- * 这一层是我们自己的类型，不是 pi 的——kernel/models.ts 负责翻译成 pi 的 Provider/Model。
+ * 这一层是我们自己的类型，不是 pi 的——kernel/pi/pi-models.ts 负责翻译成 pi 的 Provider/Model。
  */
 
 /** 端点协议。pi 支持 9 种，我们精简版只接这两种，覆盖国内绝大多数网关。 */

@@ -1,7 +1,7 @@
 /** 直接验证压缩摘要调用，因为它不经过普通 Agent.getApiKey 鉴权链。 */
 
 import { generateSummaryWithUsage } from '@earendil-works/pi-agent-core'
-import { buildModels } from '../src/kernel/models.ts'
+import { buildModels } from '../src/kernel/pi/pi-models.ts'
 import { listChannels } from '../src/main/channel-store.ts'
 
 const channels = listChannels()
