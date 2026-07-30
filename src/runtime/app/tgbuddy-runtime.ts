@@ -41,6 +41,10 @@ export interface SessionCommands {
     sessionId: string,
     fromMessageId: string,
   ): Promise<SessionMessage[]>
+  clonePrefix(input: {
+    sourceSessionId: string
+    throughMessageId: string
+  }): Promise<SessionMeta>
   updateMeta(
     sessionId: string,
     patch: Partial<SessionMeta>,
@@ -164,6 +168,12 @@ export function createTgBuddyRuntime(dependencies: RuntimeDependencies): TgBuddy
         }
         dependencies.context.clearSession(sessionId)
         return dependencies.sessions.truncate(sessionId, fromMessageId)
+      },
+      async clonePrefix(input) {
+        if (dependencies.runs.isRunning(input.sourceSessionId)) {
+          throw new Error('任务运行中，暂时不能从历史创建新会话')
+        }
+        return dependencies.sessions.clonePrefix(input)
       },
     },
     runs: {

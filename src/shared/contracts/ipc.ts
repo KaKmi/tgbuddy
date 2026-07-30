@@ -35,6 +35,7 @@ export const IPC = {
   SESSION_MESSAGES: 'session:messages',
   SESSION_COMPACTED_MESSAGES: 'session:compacted-messages',
   SESSION_TRUNCATE: 'session:truncate',
+  SESSION_CLONE_PREFIX: 'session:clone-prefix',
   SESSION_UPDATE_META: 'session:update-meta',
 
   // Agent 运行
@@ -105,6 +106,10 @@ export interface IpcCommandMap {
     { sessionId: string; fromMessageId: string },
     SessionMessage[]
   >
+  'session:clone-prefix': IpcCommand<
+    { sourceSessionId: string; throughMessageId: string },
+    SessionMeta
+  >
   'session:update-meta': IpcCommand<
     { sessionId: string; patch: Partial<SessionMeta> },
     void
@@ -151,6 +156,10 @@ export interface TgBuddyAPI {
       id: IpcRequest<'session:truncate'>['sessionId'],
       fromMessageId: IpcRequest<'session:truncate'>['fromMessageId'],
     ): Promise<IpcResponse<'session:truncate'>>
+    clonePrefix(
+      sourceSessionId: IpcRequest<'session:clone-prefix'>['sourceSessionId'],
+      throughMessageId: IpcRequest<'session:clone-prefix'>['throughMessageId'],
+    ): Promise<IpcResponse<'session:clone-prefix'>>
     updateMeta(
       id: IpcRequest<'session:update-meta'>['sessionId'],
       patch: IpcRequest<'session:update-meta'>['patch'],

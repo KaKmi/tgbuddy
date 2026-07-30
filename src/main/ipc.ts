@@ -61,6 +61,14 @@ export function registerIpc(
       runtime.sessions.truncate(input.sessionId, input.fromMessageId),
   )
   ipcMain.handle(
+    IPC.SESSION_CLONE_PREFIX,
+    (
+      _event,
+      input: IpcRequest<'session:clone-prefix'>,
+    ): Promise<IpcResponse<'session:clone-prefix'>> =>
+      runtime.sessions.clonePrefix(input),
+  )
+  ipcMain.handle(
     IPC.SESSION_UPDATE_META,
     (
       _event,

@@ -112,6 +112,23 @@ export function App() {
     await window.tgbuddy.agent.send({ sessionId, text })
   }
 
+  async function cloneFromMessage(messageId: string) {
+    if (!currentId || stream.running) return
+    const created = await window.tgbuddy.session.clonePrefix(
+      currentId,
+      messageId,
+    )
+    const [nextSessions, nextMessages] = await Promise.all([
+      window.tgbuddy.session.list(),
+      window.tgbuddy.session.messages(created.id),
+    ])
+    setMessagesMap((current) =>
+      new Map(current).set(created.id, nextMessages),
+    )
+    setSessions(nextSessions)
+    setCurrentId(created.id)
+  }
+
   return (
     <div className="flex h-screen bg-background text-foreground">
       {/* ── 侧边栏 ────────────────────────────────────────── */}
@@ -189,6 +206,7 @@ export function App() {
                   liveToolIds={liveToolIds}
                   canEdit={!stream.running && !stream.compaction}
                   onEditAndResend={editAndResend}
+                  onClonePrefix={cloneFromMessage}
                 />
               ))}
 
@@ -456,6 +474,7 @@ function MessageView({
   liveToolIds,
   canEdit,
   onEditAndResend,
+  onClonePrefix,
 }: {
   sessionId: string
   message: SessionMessage
@@ -463,11 +482,13 @@ function MessageView({
   liveToolIds: Set<string>
   canEdit: boolean
   onEditAndResend(messageId: string, text: string): Promise<void>
+  onClonePrefix(messageId: string): Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [editError, setEditError] = useState<string>()
   const [submitting, setSubmitting] = useState(false)
+  const [cloning, setCloning] = useState(false)
 
   if (message.kind === 'notice' && message.notice === 'session_resumed') {
     return (
@@ -560,17 +581,38 @@ function MessageView({
           {text}
         </div>
         {canEdit && (
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(text)
-              setEditError(undefined)
-              setEditing(true)
-            }}
-            className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#777780] opacity-0 transition-opacity hover:bg-white/[.06] hover:text-[#b6b6be] group-hover:opacity-100 focus:opacity-100"
-          >
-            编辑并重发
-          </button>
+          <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(text)
+                setEditError(undefined)
+                setEditing(true)
+              }}
+              disabled={cloning}
+              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#777780] hover:bg-white/[.06] hover:text-[#b6b6be] disabled:opacity-40"
+            >
+              编辑并重发
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCloning(true)
+                setEditError(undefined)
+                void onClonePrefix(message.id).catch((error: unknown) => {
+                  setEditError(error instanceof Error ? error.message : String(error))
+                  setCloning(false)
+                })
+              }}
+              disabled={cloning}
+              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#777780] hover:bg-white/[.06] hover:text-[#b6b6be] disabled:opacity-40"
+            >
+              {cloning ? '创建中…' : '从此新建会话'}
+            </button>
+          </div>
+        )}
+        {editError && (
+          <div className="text-[11px] text-[#dfa39d]">{editError}</div>
         )}
       </div>
     )

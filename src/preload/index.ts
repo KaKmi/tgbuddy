@@ -28,6 +28,11 @@ const api = {
         sessionId: id,
         fromMessageId,
       }),
+    clonePrefix: (sourceSessionId, throughMessageId) =>
+      ipcRenderer.invoke(IPC.SESSION_CLONE_PREFIX, {
+        sourceSessionId,
+        throughMessageId,
+      }),
     updateMeta: (id, patch) =>
       ipcRenderer.invoke(IPC.SESSION_UPDATE_META, { sessionId: id, patch }),
   },

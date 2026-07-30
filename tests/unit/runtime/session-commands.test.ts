@@ -54,6 +54,9 @@ describe('SessionCommands', () => {
         calls.push(`truncate:${sessionId}:${fromMessageId}`)
         return []
       },
+      async clonePrefix() {
+        return []
+      },
       async delete(sessionId: string) {
         calls.push(`delete:${sessionId}`)
       },
@@ -125,6 +128,7 @@ describe('SessionCommands', () => {
         messages: async () => [],
         compactedMessages: async () => [],
         truncate: async () => [],
+        clonePrefix: async () => [],
         delete: async () => undefined,
       },
       createId: () => 'unused',
@@ -134,6 +138,63 @@ describe('SessionCommands', () => {
 
     expect(() => commands.updateMeta('missing', { title: '忽略' })).not.toThrow()
     expect(repository.list()).toEqual([])
+  })
+
+  test('从历史点新建扁平 Session，继承运行配置并记录 originRef', async () => {
+    const repository = new MemorySessionRepository()
+    const cloneCalls: string[] = []
+    const ids = ['session-source', 'session-clone']
+    const commands = createSessionCommands({
+      repository,
+      history: {
+        create: async () => undefined,
+        messages: async () => [],
+        compactedMessages: async () => [],
+        truncate: async () => [],
+        clonePrefix: async (sourceId, targetId, messageId, cwd) => {
+          cloneCalls.push(`${sourceId}:${targetId}:${messageId}:${cwd}`)
+          return []
+        },
+        delete: async () => undefined,
+      },
+      createId: () => ids.shift() ?? 'unused',
+      now: () => 100,
+      resolveCwd: () => 'C:\\workspace',
+    })
+    await commands.create({
+      title: '原会话',
+      channelId: 'channel-1',
+      modelId: 'model-1',
+    })
+    commands.updateMeta('session-source', {
+      workspaceId: 'workspace-1',
+      expertId: 'expert-1',
+      permissionMode: 'plan',
+    })
+
+    const cloned = await commands.clonePrefix({
+      sourceSessionId: 'session-source',
+      throughMessageId: 'message-2',
+    })
+
+    expect(cloned).toMatchObject({
+      id: 'session-clone',
+      title: '原会话',
+      workspaceId: 'workspace-1',
+      channelId: 'channel-1',
+      modelId: 'model-1',
+      expertId: 'expert-1',
+      permissionMode: 'plan',
+      originRef: {
+        sessionId: 'session-source',
+        messageId: 'message-2',
+      },
+    })
+    expect(cloneCalls).toEqual([
+      'session-source:session-clone:message-2:C:\\workspace',
+    ])
+    expect(repository.get('session-source')).toBeDefined()
+    expect(repository.get('session-clone')).toEqual(cloned)
   })
 
   test('消息后端创建失败时回滚 catalog，避免半会话', async () => {
@@ -147,6 +208,7 @@ describe('SessionCommands', () => {
         messages: async () => [],
         compactedMessages: async () => [],
         truncate: async () => [],
+        clonePrefix: async () => [],
         delete: async () => undefined,
       },
       createId: () => 'session-failed',
@@ -168,6 +230,7 @@ describe('SessionCommands', () => {
         messages: async () => [],
         compactedMessages: async () => [],
         truncate: async () => [],
+        clonePrefix: async () => [],
         delete: async (sessionId) => {
           calls.push(`history.delete:${sessionId}`)
         },
@@ -194,6 +257,7 @@ describe('SessionCommands', () => {
         messages: async () => [],
         compactedMessages: async () => [],
         truncate: async () => [],
+        clonePrefix: async () => [],
         delete: async () => {
           throw new Error('history busy')
         },

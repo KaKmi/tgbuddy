@@ -27,6 +27,12 @@ export interface SessionMessageHistory {
     sessionId: string,
     fromMessageId: string,
   ): Promise<SessionMessage[]>
+  clonePrefix(
+    sourceSessionId: string,
+    targetSessionId: string,
+    throughMessageId: string,
+    cwd: string,
+  ): Promise<SessionMessage[]>
   countArtifacts(sessionId: string): Promise<number>
   delete(sessionId: string): Promise<void>
 }
@@ -190,6 +196,44 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
     })
   }
 
+  async clonePrefix(
+    sourceSessionId: string,
+    targetSessionId: string,
+    throughMessageId: string,
+    cwd: string,
+  ): Promise<SessionMessage[]> {
+    return this.#withSessionLock(sourceSessionId, async () => {
+      const source = await this.#requireSession(sourceSessionId)
+      const branch = await source.activeEntries()
+      const activeMessages = replayActiveMessages(branch)
+      const targetIndex = activeMessages.findIndex(
+        (message) => message.id === throughMessageId,
+      )
+      if (targetIndex === -1) {
+        throw new Error(`消息不在当前有效历史中：${throughMessageId}`)
+      }
+      const prefix = activeMessages.slice(0, targetIndex + 1)
+      const idMap = new Map(
+        prefix.map((message) => [message.id, this.#createId()]),
+      )
+
+      return this.#withSessionLock(targetSessionId, async () => {
+        const target = await this.#store.create({
+          sessionId: targetSessionId,
+          cwd,
+          kernel: KERNEL_ID,
+        })
+        let parentId: string | null = null
+        for (const message of prefix) {
+          const cloned = cloneMessage(message, idMap)
+          await target.append(toPersistedEntry(cloned, parentId))
+          parentId = cloned.id
+        }
+        return replayActiveMessages(await target.activeEntries())
+      })
+    })
+  }
+
   async countArtifacts(sessionId: string): Promise<number> {
     return this.#withSessionLock(sessionId, async () => {
       const session = await this.#store.open(sessionId, KERNEL_ID)
@@ -275,6 +319,31 @@ function toPersistedEntry(
     tokensBefore: message.tokensBefore,
     details: { compactedCount: message.compactedCount },
   }
+}
+
+function cloneMessage(
+  message: SessionMessage,
+  idMap: Map<string, string>,
+): SessionMessage {
+  const cloned = structuredClone(message)
+  if (cloned.kind === 'compaction') {
+    return {
+      ...cloned,
+      id: requireMappedId(idMap, message.id),
+      firstKeptEntryId:
+        idMap.get(cloned.firstKeptEntryId) ?? cloned.firstKeptEntryId,
+    }
+  }
+  return {
+    ...cloned,
+    id: requireMappedId(idMap, message.id),
+  }
+}
+
+function requireMappedId(idMap: Map<string, string>, sourceId: string): string {
+  const mapped = idMap.get(sourceId)
+  if (!mapped) throw new Error(`复制消息 ID 失败：${sourceId}`)
+  return mapped
 }
 
 function replayActiveMessages(

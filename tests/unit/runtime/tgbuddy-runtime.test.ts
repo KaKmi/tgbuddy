@@ -27,6 +27,15 @@ function createDependencies(calls: string[]): RuntimeDependencies {
         calls.push('session.truncate')
         return []
       },
+      clonePrefix: async () => {
+        calls.push('session.clonePrefix')
+        return {
+          id: 'session-clone',
+          title: '新会话',
+          createdAt: 2,
+          updatedAt: 2,
+        }
+      },
       updateMeta: () => calls.push('session.updateMeta'),
     },
     runs: {
@@ -134,10 +143,21 @@ describe('TgBuddyRuntime 门面', () => {
     expect(calls).toEqual(['context.clear', 'session.truncate'])
 
     calls.length = 0
+    expect(await runtime.sessions.clonePrefix({
+      sourceSessionId: 'session-1',
+      throughMessageId: 'message-1',
+    })).toMatchObject({ id: 'session-clone' })
+    expect(calls).toEqual(['session.clonePrefix'])
+
+    calls.length = 0
     dependencies.runs.isRunning = () => true
     await expect(
       runtime.sessions.truncate('session-1', 'message-1'),
     ).rejects.toThrow('任务运行中')
+    await expect(runtime.sessions.clonePrefix({
+      sourceSessionId: 'session-1',
+      throughMessageId: 'message-1',
+    })).rejects.toThrow('任务运行中')
     expect(calls).toEqual([])
   })
 })

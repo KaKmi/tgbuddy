@@ -423,6 +423,104 @@ describe('SessionMessageHistory', () => {
     ).toEqual(['message-1', result.id])
   })
 
+  test('从历史点复制独立前缀，新旧 Session 重启后仍互不影响', async () => {
+    const store = new MemoryMessageStore()
+    const generatedIds = ['clone-message-1', 'clone-message-2']
+    const history = createSessionMessageHistory({
+      store,
+      createId: () => generatedIds.shift() ?? 'unused',
+      now: Date.now,
+    })
+    await history.create('session-source', 'C:\\workspace')
+    await history.append('session-source', userMessage('message-1', 1))
+    await history.append('session-source', userMessage('message-2', 2))
+    await history.append('session-source', userMessage('message-3', 3))
+    const sourceBefore = await history.messages('session-source')
+
+    const cloned = await history.clonePrefix(
+      'session-source',
+      'session-clone',
+      'message-2',
+      'C:\\workspace',
+    )
+
+    expect(cloned.map((message) => message.id)).toEqual([
+      'clone-message-1',
+      'clone-message-2',
+    ])
+    expect(
+      cloned.map((message) =>
+        message.kind === 'kernel' ? message.message.content : undefined,
+      ),
+    ).toEqual([
+      [{ type: 'text', text: 'message-1' }],
+      [{ type: 'text', text: 'message-2' }],
+    ])
+    expect((await history.messages('session-source')).map((message) => message.id))
+      .toEqual(['message-1', 'message-2', 'message-3'])
+    const firstSource = sourceBefore[0]
+    const firstClone = cloned[0]
+    if (
+      firstSource?.kind !== 'kernel'
+      || firstClone?.kind !== 'kernel'
+    ) {
+      throw new Error('测试消息类型错误')
+    }
+    expect(firstClone.message).not.toBe(firstSource.message)
+
+    const reopened = createSessionMessageHistory({
+      store,
+      createId: () => 'unused',
+      now: Date.now,
+    })
+    expect(
+      (await reopened.messages('session-clone')).map((message) => message.id),
+    ).toEqual(['clone-message-1', 'clone-message-2'])
+    expect(store.kernels.get('session-clone')).toBe(KERNEL_ID)
+  })
+
+  test('从压缩后的历史新建会话时复制摘要与保留消息，而不是恢复原文', async () => {
+    const store = new MemoryMessageStore()
+    const generatedIds = [
+      'source-compaction',
+      'clone-compaction',
+      'clone-kept',
+    ]
+    const history = createSessionMessageHistory({
+      store,
+      createId: () => generatedIds.shift() ?? 'unused',
+      now: () => 10,
+    })
+    await history.create('session-source', 'C:\\workspace')
+    await history.append('session-source', userMessage('message-1', 1))
+    await history.append('session-source', userMessage('message-2', 2))
+    await history.append('session-source', userMessage('message-3', 3))
+    await history.appendCompaction('session-source', {
+      summary: '前两条摘要',
+      firstKeptEntryId: 'message-3',
+      tokensBefore: 10_000,
+    })
+
+    const cloned = await history.clonePrefix(
+      'session-source',
+      'session-clone',
+      'message-3',
+      'C:\\workspace',
+    )
+
+    expect(cloned.map((message) => message.id)).toEqual([
+      'clone-compaction',
+      'clone-kept',
+    ])
+    expect(cloned[0]).toMatchObject({
+      kind: 'compaction',
+      summary: '前两条摘要',
+      firstKeptEntryId: 'clone-kept',
+    })
+    expect((await history.messages('session-source')).map((message) => message.id))
+      .toEqual(['source-compaction', 'message-3'])
+  })
+
   test('legacy truncate 移除压缩边界后只回放摘要和迁移后的新消息', async () => {
     const store = new MemoryMessageStore()
     store.kernels.set('session-1', KERNEL_ID)

@@ -281,6 +281,7 @@ export async function runSessionCatalogScenario(
       messages: async () => [],
       compactedMessages: async () => [],
       truncate: async () => [],
+      clonePrefix: async () => [],
       delete: async (sessionId) => {
         historyDeletes.push(sessionId)
       },
@@ -329,6 +330,7 @@ export async function runSessionCatalogScenario(
       messages: async () => [],
       compactedMessages: async () => [],
       truncate: async () => [],
+      clonePrefix: async () => [],
       delete: async (sessionId) => {
         historyDeletes.push(sessionId)
       },

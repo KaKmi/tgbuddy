@@ -7,6 +7,12 @@ export interface SessionHistoryAdapter {
   messages(sessionId: string): Promise<SessionMessage[]>
   compactedMessages(sessionId: string, compactionId: string): Promise<SessionMessage[]>
   truncate(sessionId: string, fromMessageId: string): Promise<SessionMessage[]>
+  clonePrefix(
+    sourceSessionId: string,
+    targetSessionId: string,
+    throughMessageId: string,
+    cwd: string,
+  ): Promise<SessionMessage[]>
   delete(sessionId: string): Promise<void>
 }
 
@@ -63,6 +69,43 @@ export function createSessionCommands(
       options.history.compactedMessages(sessionId, compactionId),
     truncate: (sessionId, fromMessageId) =>
       options.history.truncate(sessionId, fromMessageId),
+    async clonePrefix(input) {
+      const source = options.repository.get(input.sourceSessionId)
+      if (!source) throw new Error(`Session 不存在: ${input.sourceSessionId}`)
+      const now = options.now()
+      const target = options.repository.create({
+        id: options.createId(),
+        title: source.title,
+        ...(source.workspaceId ? { workspaceId: source.workspaceId } : {}),
+        ...(source.channelId ? { channelId: source.channelId } : {}),
+        ...(source.modelId ? { modelId: source.modelId } : {}),
+        ...(source.expertId ? { expertId: source.expertId } : {}),
+        ...(source.permissionMode ? { permissionMode: source.permissionMode } : {}),
+        originRef: {
+          sessionId: source.id,
+          messageId: input.throughMessageId,
+        },
+        createdAt: now,
+        updatedAt: now,
+      })
+      try {
+        await options.history.clonePrefix(
+          source.id,
+          target.id,
+          input.throughMessageId,
+          options.resolveCwd(),
+        )
+        return target
+      } catch (error) {
+        options.repository.delete(target.id)
+        try {
+          await options.history.delete(target.id)
+        } catch {
+          // catalog 已回滚；残留消息后端不可见，交由启动清理处理。
+        }
+        throw error
+      }
+    },
     updateMeta(sessionId, patch) {
       const current = options.repository.get(sessionId)
       if (!current) return undefined
