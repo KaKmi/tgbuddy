@@ -83,6 +83,10 @@ export async function runBootstrapScenario(
     assertCondition(initial.length === 0, '新 SQLite repo 必须为空')
     assertions++
     const session = await first.repo.create({ id: 'bootstrap', cwd })
+    assertCondition(first.pragmaAudit.journalMode?.toLowerCase() === 'wal', 'backend journal_mode 必须为 WAL')
+    assertCondition(first.pragmaAudit.synchronous === 2, 'backend synchronous 必须为 FULL(2)')
+    assertCondition(first.pragmaAudit.busyTimeout === 5000, 'backend busy_timeout 必须为 5000')
+    assertions += 3
     await cleanupSession(session)
   } finally {
     await first.env.cleanup()

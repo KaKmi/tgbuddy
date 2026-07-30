@@ -1,6 +1,10 @@
 import type { Session } from '@earendil-works/pi-agent-core'
 import { NodeExecutionEnv } from '@earendil-works/pi-agent-core/node'
-import type { SqliteSessionRepo } from '@earendil-works/pi-storage-sqlite-node'
+import type {
+  SqliteDatabase,
+  SqliteDatabaseFactory,
+  SqliteSessionRepo,
+} from '@earendil-works/pi-storage-sqlite-node'
 import { join } from 'node:path'
 
 export interface RuntimeSnapshot {
@@ -37,6 +41,13 @@ export interface SpikeReport {
 export interface SpikeRepoContext {
   env: NodeExecutionEnv
   repo: SqliteSessionRepo
+  pragmaAudit: PragmaAudit
+}
+
+export interface PragmaAudit {
+  journalMode?: string
+  synchronous?: number
+  busyTimeout?: number
 }
 
 interface ClosableStorage {
@@ -52,6 +63,36 @@ const sqliteBackend: SqliteBackendModule | undefined =
   'bun' in process.versions
     ? undefined
     : ((await import('@earendil-works/pi-storage-sqlite-node')) as SqliteBackendModule)
+
+function auditedFactory(
+  base: SqliteDatabaseFactory,
+  audit: PragmaAudit,
+): SqliteDatabaseFactory {
+  return {
+    async open(path: string): Promise<SqliteDatabase> {
+      const database = await base.open(path)
+      return {
+        async exec(sql: string): Promise<void> {
+          await database.exec(sql)
+          const normalized = sql.trim().toLowerCase()
+          if (normalized === 'pragma journal_mode=wal') {
+            const row = await database.prepare('PRAGMA journal_mode').get<{ journal_mode: string }>()
+            audit.journalMode = row?.journal_mode
+          } else if (normalized === 'pragma synchronous=full') {
+            const row = await database.prepare('PRAGMA synchronous').get<{ synchronous: number }>()
+            audit.synchronous = row?.synchronous
+          } else if (normalized === 'pragma busy_timeout=5000') {
+            const row = await database.prepare('PRAGMA busy_timeout').get<{ timeout: number }>()
+            audit.busyTimeout = row?.timeout
+          }
+        },
+        prepare: (sql: string) => database.prepare(sql),
+        transaction: <T>(fn: () => Promise<T>) => database.transaction(fn),
+        close: () => database.close(),
+      }
+    },
+  }
+}
 
 export function assertCondition(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message)
@@ -89,13 +130,14 @@ export function createSpikeRepo(databasePath: string, cwd: string): SpikeRepoCon
   // Bun 目前没有 node:sqlite；pure tests 跳过 backend 加载，
   // 真正 backend 仍由 packaged Electron 的 ESM loader 加载。
   if (!sqliteBackend) throw new Error('SQLite backend 只能在 Electron Node 22 runtime 中使用')
+  const pragmaAudit: PragmaAudit = {}
   const env = new NodeExecutionEnv({ cwd })
   const repo = new sqliteBackend.SqliteSessionRepo({
     env,
-    sqlite: sqliteBackend.createNodeSqliteFactory(),
+    sqlite: auditedFactory(sqliteBackend.createNodeSqliteFactory(), pragmaAudit),
     databasePath,
   })
-  return { env, repo }
+  return { env, repo, pragmaAudit }
 }
 
 function isClosableStorage(value: unknown): value is ClosableStorage {
