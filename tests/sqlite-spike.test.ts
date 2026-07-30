@@ -188,6 +188,31 @@ describe('SQLite Spike legacy importer', () => {
     })
   })
 
+  test('多次 compaction 只让最后一次进入 active context', () => {
+    const parsed = parseLegacySession({
+      sessionId: 'multiple-compactions',
+      relativePath: 'archive/multiple-compactions.jsonl',
+      indexMeta: {},
+      text: [
+        '{"type":"session","version":2,"kernel":"pi@0.82","cwd":"C:\\\\fixture","createdAt":1}',
+        '{"type":"message","id":"m1","timestamp":2,"message":{"kind":"kernel","id":"m1","createdAt":2,"message":{"role":"user","content":"旧","timestamp":2}}}',
+        '{"type":"message","id":"m2","timestamp":3,"message":{"kind":"kernel","id":"m2","createdAt":3,"message":{"role":"user","content":"保留","timestamp":3}}}',
+        '{"type":"compaction","id":"c1","timestamp":4,"summary":"旧摘要","firstKeptEntryId":"m2","tokensBefore":80,"compactedCount":1}',
+        '{"type":"message","id":"m3","timestamp":5,"message":{"kind":"kernel","id":"m3","createdAt":5,"message":{"role":"user","content":"新","timestamp":5}}}',
+        '{"type":"compaction","id":"c2","timestamp":6,"summary":"新摘要","firstKeptEntryId":"m2","tokensBefore":100,"compactedCount":2}',
+      ].join('\n'),
+    })
+    const mapped = mapLegacyEntries(parsed)
+    expect(mapped.activeMessageIds).toEqual(['c2', 'm2', 'm3'])
+    expect(mapped.entries.find((entry) => entry.id === 'c1')).toMatchObject({
+      type: 'custom',
+      customType: 'legacy.compaction',
+    })
+    expect(mapped.diagnostics).toContainEqual(
+      expect.objectContaining({ line: 4, code: 'SUPERSEDED_COMPACTION_AS_CUSTOM' }),
+    )
+  })
+
   test('compatibility 诊断保留真实文件和行号', () => {
     const parsed = parseLegacySession({
       sessionId: 'model-change',

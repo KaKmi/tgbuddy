@@ -522,12 +522,35 @@ function activeMessageIdsFromMapped(entries: SessionTreeEntry[]): string[] {
 export function mapLegacyEntries(parsed: LegacyParseResult): LegacyMapResult {
   const entries: SessionTreeEntry[] = []
   const diagnostics = [...parsed.diagnostics]
+  const lastCompactionId = [...parsed.entries]
+    .reverse()
+    .find((entry) => entry.type === 'compaction')?.id
   let parentId: string | null = null
 
   for (const entry of parsed.entries) {
-    const mapped = mappedEntry(entry, parentId)
+    const mapped: SessionTreeEntry =
+      entry.type === 'compaction' && entry.id !== lastCompactionId
+        ? ({
+            type: 'custom',
+            id: entry.id,
+            parentId,
+            timestamp: new Date(entry.timestamp).toISOString(),
+            customType: 'legacy.compaction',
+            data: entry,
+          } satisfies SessionTreeEntry)
+        : mappedEntry(entry, parentId)
     entries.push(mapped)
     parentId = mapped.id
+    if (entry.type === 'compaction' && entry.id !== lastCompactionId) {
+      diagnostics.push({
+        sessionId: parsed.sessionId,
+        relativePath: parsed.relativePath,
+        line: parsed.entryLines[entry.id] ?? 0,
+        category: 'compatibility',
+        code: 'SUPERSEDED_COMPACTION_AS_CUSTOM',
+        reason: '被后续 compaction 取代的旧边界作为 audit custom entry 保存',
+      })
+    }
     if (entry.type === 'model_change') {
       diagnostics.push({
         sessionId: parsed.sessionId,
