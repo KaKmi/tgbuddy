@@ -863,6 +863,7 @@ function parseLegacySessionMeta(value: unknown): SessionMeta | undefined {
     || value.status === 'running'
     || value.status === 'done'
     || value.status === 'failed'
+    || value.status === 'interrupted'
       ? value.status
       : undefined
   const contextUsage = isContextUsage(value.contextUsage)

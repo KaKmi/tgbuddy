@@ -46,6 +46,13 @@ export {
   type RunSessionLifecycle,
   type RunSettlement,
 } from './runs/run-coordinator.ts'
+export {
+  recoverInterruptedRuns,
+  type InterruptedRunRecoveryReport,
+  type RecoverInterruptedRunsOptions,
+  type RunRecoveryFailure,
+  type RunRecoveryHistory,
+} from './runs/run-recovery.ts'
 export { createPermissiveToolPolicy } from './runs/agent-engine.ts'
 export type {
   AgentEngine,

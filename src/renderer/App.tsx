@@ -368,6 +368,9 @@ function ModeChip({ sessionId, mode }: { sessionId: string; mode: PermissionMode
 /** 侧边栏第二行：运行中显示实时活动，失败显示原因，完成显示产物数 */
 function sessionSubtitle(s: SessionMeta): string {
   if (s.status === 'running') return s.lastActivity ?? '进行中…'
+  if (s.status === 'interrupted') {
+    return `已中断 · ${s.statusDetail ?? '可继续发送'}`
+  }
   if (s.status === 'failed') return `失败 · ${s.statusDetail ?? '未知原因'}`
   if (s.artifactCount) return `已完成 · ${s.artifactCount} 个产物`
   if (s.status === 'done') return '已完成'
@@ -442,6 +445,16 @@ function MessageView({
   toolResults: ToolResultMap
   liveToolIds: Set<string>
 }) {
+  if (message.kind === 'notice' && message.notice === 'session_resumed') {
+    return (
+      <SystemMarker
+        glyph={MARKER_STYLE.session_resumed.glyph}
+        color={MARKER_STYLE.session_resumed.color}
+        text={message.text}
+      />
+    )
+  }
+
   if (roleOf(message) === 'notice') {
     return (
       <div className="py-1 text-center text-xs text-muted-foreground">

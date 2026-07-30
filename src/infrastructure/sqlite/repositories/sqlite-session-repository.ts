@@ -93,7 +93,13 @@ function parsePermissionMode(value: string | null, sessionId: string): Permissio
 
 function parseStatus(value: string | null, sessionId: string): SessionMeta['status'] {
   if (value === null) return undefined
-  if (value === 'idle' || value === 'running' || value === 'done' || value === 'failed') {
+  if (
+    value === 'idle'
+    || value === 'running'
+    || value === 'done'
+    || value === 'failed'
+    || value === 'interrupted'
+  ) {
     return value
   }
   throw new Error(`Session ${sessionId} 的 status 无效: ${value}`)

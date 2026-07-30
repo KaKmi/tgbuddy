@@ -154,8 +154,12 @@ export async function runAppDatabaseScenario(
       .all() as unknown as ScalarRow[]
     assertCondition(
       JSON.stringify(migrations.map((row) => row.value)) ===
-        JSON.stringify(['001_app_bootstrap.sql', '002_app_sessions.sql']),
-      'app migration 必须按顺序包含 001 和 002',
+        JSON.stringify([
+          '001_app_bootstrap.sql',
+          '002_app_sessions.sql',
+          '003_app_sessions_interrupted.sql',
+        ]),
+      'app migration 必须按顺序包含 001、002 和 003',
     )
     assertions++
 
@@ -298,7 +302,8 @@ export async function runSessionCatalogScenario(
   const updatedAOld: SessionMeta = {
     ...sessionAOld,
     title: 'Workspace A 已更新',
-    status: 'done',
+    status: 'interrupted',
+    statusDetail: '上次运行被意外中断',
     updatedAt: 300,
   }
   assertCondition(

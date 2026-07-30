@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import appBootstrapSql from './migrations/001_app_bootstrap.sql'
 import appSessionsSql from './migrations/002_app_sessions.sql'
+import appSessionsInterruptedSql from './migrations/003_app_sessions_interrupted.sql'
 
 interface SqliteModule {
   DatabaseSync: typeof import('node:sqlite').DatabaseSync
@@ -30,6 +31,10 @@ const APP_MIGRATIONS: readonly AppMigration[] = [
   {
     id: '002_app_sessions.sql',
     sql: appSessionsSql,
+  },
+  {
+    id: '003_app_sessions_interrupted.sql',
+    sql: appSessionsInterruptedSql,
   },
 ]
 

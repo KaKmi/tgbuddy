@@ -3,6 +3,8 @@ import {
   createPermissiveToolPolicy,
   createSessionCommands,
   createSessionMessageHistory,
+  recoverInterruptedRuns,
+  type InterruptedRunRecoveryReport,
   type TgBuddyRuntime,
 } from '../../runtime/index.ts'
 import {
@@ -31,6 +33,7 @@ export interface CreateApplicationOptions {
 export interface TgBuddyApplication {
   runtime: TgBuddyRuntime
   migration: LegacyMigrationReport
+  recovery: InterruptedRunRecoveryReport
   dispose(): Promise<void>
 }
 
@@ -47,6 +50,7 @@ export async function createApplication(
   let runtime: TgBuddyRuntime
   let unsubscribe: () => void
   let migration: LegacyMigrationReport
+  let recovery: InterruptedRunRecoveryReport
   try {
     migration = await importLegacySessions({
       legacyDataDir: options.legacyDataDir,
@@ -64,6 +68,13 @@ export async function createApplication(
       createId: store.newId,
       now: Date.now,
     })
+    recovery = await recoverInterruptedRuns({
+      sessions: sessionRepository,
+      history: messageHistory,
+      createId: store.newId,
+      now: Date.now,
+    })
+    reportInterruptedRunRecovery(recovery)
     store.configureSessionRepository(sessionRepository)
     runtime = createLegacyRuntime({
       agentEngine: createPiAgentEngine({
@@ -98,6 +109,7 @@ export async function createApplication(
   return {
     runtime,
     migration,
+    recovery,
     async dispose() {
       if (disposed) return
       disposed = true
@@ -109,6 +121,21 @@ export async function createApplication(
         appDatabase.close()
       }
     },
+  }
+}
+
+function reportInterruptedRunRecovery(
+  report: InterruptedRunRecoveryReport,
+): void {
+  if (report.recovered.length > 0) {
+    console.warn(
+      `[recovery] 已把 ${report.recovered.length} 个遗留运行标记为 interrupted`,
+    )
+  }
+  for (const failure of report.failures) {
+    console.warn(
+      `[recovery] Session ${failure.sessionId} ${failure.stage} 恢复失败：${failure.message}`,
+    )
   }
 }
 

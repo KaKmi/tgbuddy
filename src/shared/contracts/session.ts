@@ -41,7 +41,7 @@ export interface SessionMeta {
   pinned?: boolean
   archived?: boolean
   permissionMode?: PermissionMode
-  status?: 'idle' | 'running' | 'done' | 'failed'
+  status?: 'idle' | 'running' | 'done' | 'failed' | 'interrupted'
   statusDetail?: string
   lastActivity?: string
   artifactCount?: number
