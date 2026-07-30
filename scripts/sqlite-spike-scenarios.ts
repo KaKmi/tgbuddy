@@ -279,6 +279,24 @@ function indexedUser(prefix: 'A' | 'B' | 'crash', index: number) {
   }
 }
 
+function isTransientRenameError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const code = (error as NodeJS.ErrnoException).code
+  return code === 'EPERM' || code === 'EBUSY' || code === 'EACCES'
+}
+
+async function publishCommittedMarker(markerTempPath: string, markerPath: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      await rename(markerTempPath, markerPath)
+      return
+    } catch (error) {
+      if (!isTransientRenameError(error) || attempt === 99) throw error
+      await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 2))
+    }
+  }
+}
+
 export async function runCrashChild(options: CrashChildOptions): Promise<never> {
   assertCondition(options.minimumCommitted >= 1, 'minimumCommitted 必须为正整数')
   assertCondition(
@@ -293,7 +311,7 @@ export async function runCrashChild(options: CrashChildOptions): Promise<never> 
   for (let index = 0; index < options.maximumPlanned; index++) {
     await session.appendMessage(indexedUser('crash', index))
     await writeFile(markerTempPath, String(index), 'utf8')
-    await rename(markerTempPath, options.markerPath)
+    await publishCommittedMarker(markerTempPath, options.markerPath)
   }
 
   // child 必须保持 backend 和 WAL 打开，只有父进程的 OS 强杀能结束它。
