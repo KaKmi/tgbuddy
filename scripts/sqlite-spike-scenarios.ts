@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { AppDatabase } from '../src/infrastructure/sqlite/app-database.ts'
 import { SqliteSessionRepository } from '../src/infrastructure/sqlite/repositories/sqlite-session-repository.ts'
+import { createSessionCommands } from '../src/runtime/sessions/session-commands.ts'
 import type { SessionMeta } from '../src/shared/contracts/session.ts'
 import {
   importLegacySession,
@@ -258,6 +259,28 @@ export async function runSessionCatalogScenario(
   )
   assertions++
 
+  const historyDeletes: string[] = []
+  const firstCommands = createSessionCommands({
+    repository: firstRepository,
+    history: {
+      messages: () => [],
+      compactedMessages: () => [],
+      delete: (sessionId) => historyDeletes.push(sessionId),
+    },
+    createId: () => 'runtime-created',
+    now: () => 250,
+  })
+  assertCondition(
+    isDeepStrictEqual(firstCommands.create({ title: 'Runtime 新会话' }), {
+      id: 'runtime-created',
+      title: 'Runtime 新会话',
+      createdAt: 250,
+      updatedAt: 250,
+    }),
+    'Runtime SessionCommands 必须把新会话写入 SQLite catalog',
+  )
+  assertions++
+
   const updatedAOld: SessionMeta = {
     ...sessionAOld,
     title: 'Workspace A 已更新',
@@ -279,6 +302,21 @@ export async function runSessionCatalogScenario(
 
   const reopenedDatabase = AppDatabase.open(databasePath)
   const reopenedRepository = new SqliteSessionRepository(reopenedDatabase)
+  const reopenedCommands = createSessionCommands({
+    repository: reopenedRepository,
+    history: {
+      messages: () => [],
+      compactedMessages: () => [],
+      delete: (sessionId) => historyDeletes.push(sessionId),
+    },
+    createId: () => 'unused',
+    now: () => 400,
+  })
+  assertCondition(
+    reopenedCommands.list().some((session) => session.id === 'runtime-created'),
+    'Runtime reopen 后侧栏必须能列出先前创建的 Session',
+  )
+  assertions++
   assertCondition(
     isDeepStrictEqual(reopenedRepository.get(sessionANew.id), sessionANew),
     '跨 reopen 必须完整保留所有 SessionMeta 字段',
@@ -290,6 +328,19 @@ export async function runSessionCatalogScenario(
   )
   assertions++
   assertCondition(reopenedRepository.get('missing') === undefined, '未知 Session 必须返回 undefined')
+  assertions++
+  reopenedCommands.updateMeta('runtime-created', { title: 'Runtime 已更新' })
+  assertCondition(
+    reopenedRepository.get('runtime-created')?.title === 'Runtime 已更新',
+    'Runtime updateMeta 必须更新 SQLite catalog',
+  )
+  assertions++
+  reopenedCommands.delete('runtime-created')
+  assertCondition(
+    reopenedRepository.get('runtime-created') === undefined
+      && historyDeletes[0] === 'runtime-created',
+    'Runtime delete 必须同时删除 catalog 和当前消息后端',
+  )
   assertions++
   assertCondition(reopenedRepository.delete(sessionANew.id), '首次 delete 必须返回 true')
   assertions++

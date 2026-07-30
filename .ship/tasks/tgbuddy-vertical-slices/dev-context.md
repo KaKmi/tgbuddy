@@ -59,6 +59,21 @@ SQLite、kernel、bundle 和 UI Slice 再按计划追加 `spike:sqlite`、`probe
   - Mirror: 独立临时 DB、try/finally close、稳定 ScenarioResult 和完整报告顺序。
   - Deviations: K02 通过 `SessionRepository` port 验证产品 catalog，不使用 pi SessionRepo。
 
+### K03: 会话侧栏切换到 SQLite
+
+- Reference: `src/runtime/app/tgbuddy-runtime.ts`
+  - Why analogous: Renderer/IPC 已依赖稳定的 `SessionCommands`，无需感知 catalog 实现。
+  - Mirror: create/list/update/delete/messages/compactedMessages 契约保持不变。
+  - Deviations: `createSessionCommands()` 把 SQLite catalog 与暂留的 JSONL history 组合成同一纵向能力。
+- Reference: `src/main/bootstrap/create-application.ts`
+  - Why analogous: 唯一 Composition Root 负责打开/关闭进程级资源并注入 Runtime。
+  - Mirror: 显式 database path、失败回滚、幂等 dispose。
+  - Deviations: K03 首次把 `AppDatabase` 接入生产；退出顺序为停止 IPC/Runtime、解除 compatibility bridge、关闭数据库。
+- Reference: `src/main/session-store.ts`
+  - Why analogous: legacy orchestrator/compaction 仍从这里读取和更新 SessionMeta。
+  - Mirror: get/update 的既有 no-op 与强制 id/updatedAt 语义。
+  - Deviations: K03–K08 临时 bridge 转发到同一 SQLite repository；catalog 的 create/list/delete 不再由 production Runtime 委托给 JSON 索引。
+
 ## Waves
 
 M1 的 K01–K17 存在严格数据/装配依赖，并共享 Composition Root、Runtime contract 或 compatibility owner，因此全部顺序执行：

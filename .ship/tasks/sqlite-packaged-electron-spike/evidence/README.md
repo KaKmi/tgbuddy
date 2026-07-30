@@ -16,16 +16,16 @@
 | Scenario | Result | Duration | Entries | DB bytes | WAL bytes |
 |---|---|---:|---:|---:|---:|
 | runtime | passed | 1 | 0 | 0 | 0 |
-| app-database | passed | 445 | 2 | 24576 | 0 |
-| session-catalog | passed | 435 | 2 | 24576 | 0 |
-| bootstrap | passed | 29 | 0 | 81920 | 0 |
-| ordered-entries | passed | 1783 | 1000 | 888832 | 0 |
-| session-isolation | passed | 376 | 200 | 245760 | 0 |
-| crash-recovery | passed | 1568 | 289 | 327680 | 0 |
-| compaction | passed | 29 | 4 | 81920 | 0 |
-| delete-cleanup | passed | 20 | 100 | 245760 | 0 |
-| wal-backup-restore | passed | 1854 | 1001 | 884736 | 0 |
-| legacy-import | passed | 114 | 23 | 90112 | 0 |
+| app-database | passed | 462 | 2 | 24576 | 0 |
+| session-catalog | passed | 400 | 2 | 24576 | 0 |
+| bootstrap | passed | 282 | 0 | 81920 | 0 |
+| ordered-entries | passed | 2224 | 1000 | 888832 | 0 |
+| session-isolation | passed | 426 | 200 | 245760 | 0 |
+| crash-recovery | passed | 1440 | 195 | 253952 | 0 |
+| compaction | passed | 25 | 4 | 81920 | 0 |
+| delete-cleanup | passed | 19 | 100 | 245760 | 0 |
+| wal-backup-restore | passed | 1746 | 1001 | 884736 | 0 |
+| legacy-import | passed | 113 | 23 | 90112 | 0 |
 
 ## Compatibility warnings
 - model_change.channelId 以 legacy.model_change 保存，未伪装为 provider。

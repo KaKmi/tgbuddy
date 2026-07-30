@@ -16,6 +16,7 @@ import { randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SessionMeta } from '../shared/ipc.ts'
+import type { SessionRepository } from '../runtime/index.ts'
 import { KERNEL_ID, type CompactionMessage, type SessionMessage } from '../shared/types/message.ts'
 import {
   SESSION_FORMAT_VERSION,
@@ -34,6 +35,18 @@ const SESSIONS_DIR = join(DATA_DIR, 'sessions')
 interface SessionIndex {
   version: number
   sessions: SessionMeta[]
+}
+
+/**
+ * K03–K08 的 compatibility bridge：legacy orchestrator 仍从本模块取元数据，
+ * 但 canonical catalog 已经是 SQLite。K08 注入新 Run engine 后删除。
+ */
+let configuredSessionRepository: SessionRepository | undefined
+
+export function configureSessionRepository(
+  repository: SessionRepository | undefined,
+): void {
+  configuredSessionRepository = repository
 }
 
 /** 8 位 hex */
@@ -71,6 +84,7 @@ export function listSessions(): SessionMeta[] {
 }
 
 export function getSession(id: string): SessionMeta | undefined {
+  if (configuredSessionRepository) return configuredSessionRepository.get(id)
   return readIndex().sessions.find((s) => s.id === id)
 }
 
@@ -111,6 +125,18 @@ export function createSession(input: {
 }
 
 export function updateMeta(id: string, patch: Partial<SessionMeta>): void {
+  if (configuredSessionRepository) {
+    const current = configuredSessionRepository.get(id)
+    if (!current) return
+    configuredSessionRepository.update({
+      ...current,
+      ...patch,
+      id,
+      updatedAt: Date.now(),
+    })
+    return
+  }
+
   const index = readIndex()
   const i = index.sessions.findIndex((s) => s.id === id)
   if (i === -1) return
@@ -123,6 +149,11 @@ export function deleteSession(id: string): void {
   index.sessions = index.sessions.filter((s) => s.id !== id)
   writeIndex(index)
 
+  deleteSessionMessages(id)
+}
+
+/** K03 之后 catalog 删除由 SQLite 负责，这里只清理尚未迁移的 JSONL 历史。 */
+export function deleteSessionMessages(id: string): void {
   removeJsonFile(jsonlPath(id))
   try {
     rmSync(jsonlPath(id), { force: true })

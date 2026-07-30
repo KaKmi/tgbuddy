@@ -2,11 +2,15 @@
  * Compatibility adapter：把现有 Main service/store 委托给 Runtime 门面。
  *
  * 删除期限：
- * - Session/channel 存储委托在 Story 1B 切换 SQLite 时删除。
- * - orchestrator、permission、plan、question、compaction 委托在 Story 1C 删除。
+ * - Session catalog 已在 K03 改为注入；legacy 消息委托在 K05 删除。
+ * - orchestrator、permission、plan、question、compaction 委托按 M1 后续 Slice 删除。
  * - 该文件不得成为第二个长期应用门面。
  */
-import { createTgBuddyRuntime, type TgBuddyRuntime } from '../../runtime/index.ts'
+import {
+  createTgBuddyRuntime,
+  type SessionCommands,
+  type TgBuddyRuntime,
+} from '../../runtime/index.ts'
 import * as askUser from '../ask-user-service.ts'
 import { ensureDataDir, listChannels, saveChannels } from '../channel-store.ts'
 import * as compaction from '../compaction-service.ts'
@@ -15,21 +19,28 @@ import * as permission from '../permission-service.ts'
 import * as plan from '../plan-service.ts'
 import * as store from '../session-store.ts'
 
-export function createLegacyRuntime(): TgBuddyRuntime {
+export interface CreateLegacyRuntimeOptions {
+  sessions?: SessionCommands
+}
+
+export function createLegacyRuntime(
+  options: CreateLegacyRuntimeOptions = {},
+): TgBuddyRuntime {
   ensureDataDir()
+  const sessions = options.sessions ?? {
+    list: store.listSessions,
+    create: store.createSession,
+    delete: store.deleteSession,
+    messages: store.getMessages,
+    compactedMessages: store.getCompactedMessages,
+    updateMeta: store.updateMeta,
+  }
 
   return createTgBuddyRuntime({
     workspaces: {
       list: () => [],
     },
-    sessions: {
-      list: store.listSessions,
-      create: store.createSession,
-      delete: store.deleteSession,
-      messages: store.getMessages,
-      compactedMessages: store.getCompactedMessages,
-      updateMeta: store.updateMeta,
-    },
+    sessions,
     runs: {
       send: orchestrator.send,
       stop: orchestrator.stop,

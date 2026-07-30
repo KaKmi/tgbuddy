@@ -63,7 +63,10 @@ async function loadDevUrlWithRetry(win: BrowserWindow, attempts = 20): Promise<v
 }
 
 app.whenReady().then(() => {
-  application = createApplication({ getWindow: () => mainWindow })
+  application = createApplication({
+    getWindow: () => mainWindow,
+    databasePath: join(app.getPath('userData'), 'tgbuddy.db'),
+  })
   createWindow()
 
   app.on('activate', () => {

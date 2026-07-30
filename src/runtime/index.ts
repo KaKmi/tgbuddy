@@ -18,3 +18,8 @@ export type {
   RuntimeEventListener,
 } from './app/runtime-events.ts'
 export type { SessionRepository } from './sessions/session-repository.ts'
+export {
+  createSessionCommands,
+  type CreateSessionCommandsOptions,
+  type SessionHistoryAdapter,
+} from './sessions/session-commands.ts'
