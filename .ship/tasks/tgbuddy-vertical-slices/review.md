@@ -44,19 +44,45 @@
   typecheck、build 与 packaged SQLite 12 场景通过。
 - 状态：等待 fresh review。
 
+## Fresh Review 1
+
+### P2：重建压缩前缀后会把摘要覆盖范围内的产物计数归零
+
+- File: `src/runtime/sessions/session-message-history.ts:241`
+- Trigger: 会话在压缩前成功执行过 `write/edit`，压缩后对保留消息执行编辑重发，
+  下一 Run settled 时重新计算 `artifactCount`。
+- Observation: 第一轮修复把逻辑 active path 重建为摘要与保留 tail；但
+  `countArtifacts()` 仍只扫描 `activeEntries()` 的原始消息。摘要覆盖的成功
+  tool call 已转为 off-path audit history，因此不再被计数。
+- Impact: 侧边栏的产物数量错误回退，用户会误以为此前生成的文件已经不属于会话。
+- Fix: 计数时组合“当前 compaction 真正覆盖的原消息”和逻辑 active tail；
+  不能简单扫描所有 entries，否则会把截断点之后的无效产物重新算回来。
+
+## Fix Round 2
+
+- `countArtifacts()` 现在组合当前摘要真正覆盖的原消息与逻辑 active tail，
+  不扫描截断后的无效 suffix。
+- 回归覆盖“压缩前成功写文件 -> 压缩 -> 编辑保留消息 -> 产物仍为 1”。
+- 完整测试 **114/114**、331 assertions，architecture、typecheck、build 通过。
+
+## Fresh Review 2
+
+重新追踪两轮修复的 Session active path、compacted-message 展开、artifact 投影、
+Run 删除守卫及其调用方；未发现新的 P1/P2/P3 finding。M1 集中评审结论为 clean。
+
 ## [Review] Report Card
 
 | Field | Value |
 |---|---|
-| Status | FINDINGS |
-| Summary | 2 个 P2，均为跨 Run/active-history 的状态完整性问题 |
+| Status | DONE |
+| Summary | 3 个 P2 已经两轮修复，fresh review clean |
 
 ### Metrics
 
 | Metric | Value |
 |---|---:|
 | P1 | 0 |
-| P2 | 2 |
+| P2 | 0（3 个已修复） |
 | P3 | 0 |
 
 ### Artifacts

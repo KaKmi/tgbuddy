@@ -85,20 +85,7 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
     return this.#withSessionLock(sessionId, async () => {
       const session = await this.#store.open(sessionId, KERNEL_ID)
       if (!session) return []
-      const entries = await session.entries()
-      const compactionIndex = entries.findIndex(
-        (entry) => entry.type === 'compaction' && entry.id === compactionId,
-      )
-      if (compactionIndex === -1) return []
-      const compaction = entries[compactionIndex]
-      if (!compaction || compaction.type !== 'compaction') return []
-
-      const before = rawMessages(entries.slice(0, compactionIndex))
-      const firstKeptEntryId = compactionBoundaryId(compaction)
-      const boundaryIndex = before.findIndex(
-        (message) => message.id === firstKeptEntryId,
-      )
-      return boundaryIndex === -1 ? before : before.slice(0, boundaryIndex)
+      return compactedMessagesFor(await session.entries(), compactionId)
     })
   }
 
@@ -250,9 +237,17 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
   async countArtifacts(sessionId: string): Promise<number> {
     return this.#withSessionLock(sessionId, async () => {
       const session = await this.#store.open(sessionId, KERNEL_ID)
-      return session
-        ? countArtifacts(rawMessages(await session.activeEntries()))
-        : 0
+      if (!session) return 0
+      const activeMessages = replayActiveMessages(await session.activeEntries())
+      const marker = activeMessages[0]
+      if (!marker || marker.kind !== 'compaction') {
+        return countArtifacts(activeMessages)
+      }
+      const compacted = compactedMessagesFor(
+        await session.entries(),
+        marker.id,
+      )
+      return countArtifacts([...compacted, ...activeMessages])
     })
   }
 
@@ -442,6 +437,25 @@ function rawMessages(entries: PersistedSessionEntry[]): SessionMessage[] {
     const message = toSessionMessage(entry)
     return message && message.kind !== 'compaction' ? [message] : []
   })
+}
+
+function compactedMessagesFor(
+  entries: PersistedSessionEntry[],
+  compactionId: string,
+): SessionMessage[] {
+  const compactionIndex = entries.findIndex(
+    (entry) => entry.type === 'compaction' && entry.id === compactionId,
+  )
+  if (compactionIndex === -1) return []
+  const compaction = entries[compactionIndex]
+  if (!compaction || compaction.type !== 'compaction') return []
+
+  const before = rawMessages(entries.slice(0, compactionIndex))
+  const firstKeptEntryId = compactionBoundaryId(compaction)
+  const boundaryIndex = before.findIndex(
+    (message) => message.id === firstKeptEntryId,
+  )
+  return boundaryIndex === -1 ? before : before.slice(0, boundaryIndex)
 }
 
 function toSessionMessage(

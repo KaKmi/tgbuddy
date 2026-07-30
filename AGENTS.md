@@ -138,12 +138,12 @@ TgBuddy 是按用户自有功能设计打造的、基于 **pi 内核**的通用�
 
 最近验证：
 
-- M1 review fix round：`bun test` **114/114**，329 assertions；architecture、typecheck、build 通过；
+- M1 review fix round：`bun test` **114/114**，331 assertions；architecture、typecheck、build 通过；
 - `bun run spike:sqlite`：packaged Electron 39.8.10 / Node 22.22.1 / SQLite 3.51.2 的 12 个场景通过；
 - `bun run probe`：真实文本流、ToolPolicy、工具事件、多轮恢复和 AbortSignal 通过；
 - `bun run probe:compaction`：真实摘要调用通过；
 - `bun run dev`：Vite 与 Electron 启动、legacy 幂等迁移和 Renderer 加载通过；
-- 整个 M1 的集中 review、E2E 与 QA 证据在当前流水线完成后更新。
+- 整个 M1 的集中 review 已 clean；E2E 与 QA 证据在当前流水线完成后更新。
 
 ### 3.2 当前下一步
 

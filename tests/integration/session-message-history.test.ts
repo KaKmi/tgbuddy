@@ -330,9 +330,10 @@ describe('SessionMessageHistory', () => {
 
   test('压缩不会让边界前已经成功生成的产物从计数中消失', async () => {
     const store = new MemoryMessageStore()
+    const generatedIds = ['compaction-1', 'truncate-1', 'compaction-2']
     const history = createSessionMessageHistory({
       store,
-      createId: () => 'compaction-1',
+      createId: () => generatedIds.shift() ?? 'unused',
       now: () => 1_700_000_000_010,
     })
     await history.create('session-1', 'C:\\workspace')
@@ -350,6 +351,11 @@ describe('SessionMessageHistory', () => {
       'compaction-1',
       'kept-message',
     ])
+    expect(await history.countArtifacts('session-1')).toBe(1)
+
+    await history.truncate('session-1', 'kept-message')
+    expect((await history.messages('session-1')).map((message) => message.id))
+      .toEqual(['compaction-2'])
     expect(await history.countArtifacts('session-1')).toBe(1)
   })
 
