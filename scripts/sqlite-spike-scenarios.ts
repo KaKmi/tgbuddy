@@ -3,6 +3,12 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+  importLegacySession,
+  legacySqliteSessionId,
+  mapLegacyEntries,
+  parseLegacySession,
+} from './sqlite-spike-import.ts'
+import {
   assertCondition,
   cleanupSession,
   createSpikeRepo,
@@ -34,6 +40,12 @@ interface ChildExit {
   signal: NodeJS.Signals | null
 }
 
+interface LegacyIndexEntry {
+  id: string
+  cwd: string
+  [key: string]: unknown
+}
+
 export interface CrashChildOptions {
   databasePath: string
   cwd: string
@@ -49,6 +61,20 @@ async function fileBytes(path: string): Promise<number> {
   } catch {
     return 0
   }
+}
+
+function legacyIndexEntry(value: unknown, sessionId: string): LegacyIndexEntry {
+  assertCondition(Array.isArray(value), 'legacy sessions.json 必须是数组')
+  const entry = value.find(
+    (item): item is Record<string, unknown> =>
+      typeof item === 'object' &&
+      item !== null &&
+      'id' in item &&
+      item.id === sessionId,
+  )
+  assertCondition(entry, `legacy sessions.json 找不到 ${sessionId}`)
+  assertCondition(typeof entry.cwd === 'string', `legacy ${sessionId} 缺少 cwd`)
+  return { ...entry, id: sessionId, cwd: entry.cwd }
 }
 
 function passedScenario(
@@ -435,6 +461,150 @@ export async function runCrashRecoveryScenario(
     startedAt,
     10,
     recoveredCount + 1,
+    await fileBytes(databasePath),
+    await fileBytes(`${databasePath}-wal`),
+  )
+}
+
+export async function runLegacyImportScenario(
+  context: ScenarioContext,
+): Promise<ScenarioResult> {
+  const startedAt = Date.now()
+  const inputRoot = join(context.rootDir, 'legacy-input')
+  const indexPath = join(inputRoot, 'sessions.json')
+  const sessionPath = join(inputRoot, 'sessions', 'legacy-a.jsonl')
+  const indexValue: unknown = JSON.parse(await readFile(indexPath, 'utf8'))
+  const indexEntry = legacyIndexEntry(indexValue, 'legacy-a')
+  const sessionText = await readFile(sessionPath, 'utf8')
+  const parsed = parseLegacySession({
+    sessionId: indexEntry.id,
+    relativePath: 'sessions/legacy-a.jsonl',
+    indexMeta: indexEntry,
+    text: sessionText,
+  })
+  const databasePath = join(context.rootDir, 'legacy', 'sessions.db')
+  const created = createSpikeRepo(databasePath, parsed.header.cwd)
+  let entryCount = 0
+  try {
+    const before = await created.repo.list()
+    assertCondition(before.length === 0, 'legacy 导入前 repo 必须为空')
+    const first = await importLegacySession(created.repo, parsed)
+    assertCondition(first.action === 'created', 'legacy 首次导入必须 created')
+    assertCondition(first.importedEntries > 0, 'legacy 首次导入必须新增 entries')
+    const afterFirst = await created.repo.list()
+    assertCondition(afterFirst.length === 1, 'legacy 首次导入必须只创建一个 Session')
+    const firstSession = await created.repo.open(afterFirst[0]!)
+    let firstEntryCount = 0
+    try {
+      firstEntryCount = (await firstSession.getEntries()).length
+    } finally {
+      await cleanupSession(firstSession)
+    }
+
+    const second = await importLegacySession(created.repo, parsed)
+    assertCondition(second.action === 'skipped', 'legacy 第二次导入必须 skipped')
+    assertCondition(second.importedEntries === 0, 'legacy skipped 不得新增 entry')
+    const afterSecond = await created.repo.list()
+    assertCondition(afterSecond.length === afterFirst.length, 'legacy skipped 不得新增 Session')
+    assertCondition(afterSecond[0]?.id === afterFirst[0]?.id, 'legacy skipped 不得替换 Session')
+    const secondSession = await created.repo.open(afterSecond[0]!)
+    try {
+      assertCondition(
+        (await secondSession.getEntries()).length === firstEntryCount,
+        'legacy skipped 前后 entry 数必须不变',
+      )
+    } finally {
+      await cleanupSession(secondSession)
+    }
+    const badLines = second.diagnostics
+      .filter((item) => item.category === 'syntax' || item.category === 'schema')
+      .map((item) => [item.line, item.category])
+    assertCondition(
+      JSON.stringify(badLines) === JSON.stringify([[12, 'syntax'], [13, 'schema']]),
+      `legacy 坏行诊断不一致: ${JSON.stringify(badLines)}`,
+    )
+
+    const partialParsed = parseLegacySession({
+      sessionId: 'legacy-partial',
+      relativePath: 'sessions/legacy-a.jsonl',
+      indexMeta: { ...indexEntry, id: 'legacy-partial' },
+      text: sessionText,
+    })
+    const partialMapped = mapLegacyEntries(partialParsed)
+    const partialSession = await created.repo.create({
+      id: legacySqliteSessionId(partialParsed.sessionId),
+      cwd: partialParsed.header.cwd,
+      metadata: {
+        importer: 'tgbuddy-jsonl-v1',
+        legacySessionId: partialParsed.sessionId,
+        fingerprint: partialParsed.fingerprint,
+        entryDigest: partialMapped.entryDigest,
+        entryCount: partialMapped.entries.length,
+      },
+    })
+    try {
+      for (const entry of partialMapped.entries.slice(0, 2)) {
+        await partialSession.getStorage().appendEntry(entry)
+      }
+    } finally {
+      await cleanupSession(partialSession)
+    }
+    const rebuilt = await importLegacySession(created.repo, partialParsed)
+    assertCondition(rebuilt.action === 'rebuilt', 'legacy 半成品必须 rebuilt')
+    assertCondition(
+      rebuilt.importedEntries === partialMapped.entries.length,
+      'legacy rebuild 必须恢复全部 entries',
+    )
+
+    const conflictParsed = parseLegacySession({
+      sessionId: 'legacy-conflict',
+      relativePath: 'sessions/legacy-a.jsonl',
+      indexMeta: { ...indexEntry, id: 'legacy-conflict' },
+      text: sessionText,
+    })
+    const conflictMapped = mapLegacyEntries(conflictParsed)
+    const conflictId = legacySqliteSessionId(conflictParsed.sessionId)
+    const conflictSession = await created.repo.create({
+      id: conflictId,
+      cwd: conflictParsed.header.cwd,
+    })
+    try {
+      await conflictSession.getStorage().appendEntry(conflictMapped.entries[0]!)
+    } finally {
+      await cleanupSession(conflictSession)
+    }
+    let conflictMessage = ''
+    try {
+      await importLegacySession(created.repo, conflictParsed)
+    } catch (error) {
+      conflictMessage = error instanceof Error ? error.message : String(error)
+    }
+    assertCondition(
+      conflictMessage.includes(conflictId),
+      'legacy conflict 必须抛出包含 deterministic Session ID 的错误',
+    )
+    const conflictMetadata = (await created.repo.list()).find((item) => item.id === conflictId)
+    assertCondition(conflictMetadata, 'legacy conflict 不得删除原 Session')
+    const unchanged = await created.repo.open(conflictMetadata)
+    try {
+      const entries = await unchanged.getEntries()
+      assertCondition(
+        entries.length === 1 && entries[0]?.id === conflictMapped.entries[0]?.id,
+        'legacy conflict 不得覆盖原 entries',
+      )
+    } finally {
+      await cleanupSession(unchanged)
+    }
+    entryCount = first.importedEntries + rebuilt.importedEntries + 1
+  } finally {
+    await created.env.cleanup()
+  }
+
+  return passedScenario(
+    'legacy-import',
+    startedAt,
+    16,
+    entryCount,
     await fileBytes(databasePath),
     await fileBytes(`${databasePath}-wal`),
   )

@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto'
-import type { SessionTreeEntry } from '@earendil-works/pi-agent-core'
+import {
+  buildSessionContext,
+  type Session,
+  type SessionTreeEntry,
+} from '@earendil-works/pi-agent-core'
+import type {
+  SqliteSessionMetadata,
+  SqliteSessionRepo,
+} from '@earendil-works/pi-storage-sqlite-node'
 import { toKernelMessages } from '../src/shared/types/message.ts'
 import type { SessionEntry, SessionHeader } from '../src/shared/types/session.ts'
 
@@ -50,6 +58,13 @@ export interface ExistingLegacyImport extends LegacyImportExpectation {
 export type LegacyImportDecision =
   | { action: 'create' | 'skip' | 'rebuild' }
   | { action: 'conflict'; reason: string }
+
+export interface LegacyImportOutcome {
+  action: 'created' | 'skipped' | 'rebuilt'
+  metadata: SqliteSessionMetadata
+  importedEntries: number
+  diagnostics: LegacyDiagnostic[]
+}
 
 interface ParsedEntry {
   entry: SessionEntry
@@ -662,4 +677,168 @@ export function decideLegacyImport(
     return { action: 'skip' }
   }
   return { action: 'rebuild' }
+}
+
+export function legacySqliteSessionId(sessionId: string): string {
+  return `legacy-${hash(sessionId).slice(0, 32)}`
+}
+
+function entryIdentityDigest(entries: readonly SessionTreeEntry[]): string {
+  return hash(
+    entries.map((entry) => canonicalJson({ id: entry.id, type: entry.type })).join('\n'),
+  )
+}
+
+function existingImportMetadata(metadata: SqliteSessionMetadata): ExistingLegacyImport {
+  const value = metadata.metadata ?? {}
+  return {
+    marker: typeof value.importer === 'string' ? value.importer : undefined,
+    sessionId: typeof value.legacySessionId === 'string' ? value.legacySessionId : '',
+    fingerprint: typeof value.fingerprint === 'string' ? value.fingerprint : '',
+    entryDigest: typeof value.entryDigest === 'string' ? value.entryDigest : '',
+    entryCount: typeof value.entryCount === 'number' ? value.entryCount : -1,
+  }
+}
+
+function contextProjection(messages: readonly unknown[]): string {
+  return canonicalJson(
+    messages.map((message) => {
+      const value = isRecord(message) ? message : {}
+      return {
+        role: value.role,
+        content: value.content,
+        summary: value.summary,
+      }
+    }),
+  )
+}
+
+async function cleanupImportedSession(session: Session<SqliteSessionMetadata>): Promise<void> {
+  const storage = session.getStorage()
+  const cleanup = 'cleanup' in storage ? storage.cleanup : undefined
+  if (typeof cleanup !== 'function') throw new Error('SQLite SessionStorage 缺少 cleanup()')
+  await cleanup.call(storage)
+}
+
+async function verifyImportedSession(
+  repo: SqliteSessionRepo,
+  metadata: SqliteSessionMetadata,
+  mapped: LegacyMapResult,
+): Promise<void> {
+  const session = await repo.open(metadata)
+  try {
+    const actualEntries = await session.getEntries()
+    if (
+      actualEntries.length !== mapped.entries.length ||
+      entryIdentityDigest(actualEntries) !== mapped.entryDigest
+    ) {
+      throw new Error(`legacy Session 持久化 identity 校验失败: ${metadata.id}`)
+    }
+    const byId = new Map(mapped.entries.map((entry) => [entry.id, entry]))
+    const activeEntries = mapped.activeMessageIds.map((id) => {
+      const entry = byId.get(id)
+      if (!entry) throw new Error(`legacy active entry 缺失: ${id}`)
+      return entry
+    })
+    const expectedContext = buildSessionContext(activeEntries)
+    const actualContext = await session.buildContext()
+    if (
+      contextProjection(actualContext.messages) !==
+      contextProjection(expectedContext.messages)
+    ) {
+      throw new Error(`legacy Session active context 校验失败: ${metadata.id}`)
+    }
+  } finally {
+    await cleanupImportedSession(session)
+  }
+}
+
+async function createImportedSession(
+  repo: SqliteSessionRepo,
+  id: string,
+  parsed: LegacyParseResult,
+  mapped: LegacyMapResult,
+): Promise<SqliteSessionMetadata> {
+  const session = await repo.create({
+    id,
+    cwd: parsed.header.cwd,
+    metadata: {
+      importer: 'tgbuddy-jsonl-v1',
+      legacySessionId: parsed.sessionId,
+      fingerprint: parsed.fingerprint,
+      entryDigest: mapped.entryDigest,
+      entryCount: mapped.entries.length,
+    },
+  })
+  try {
+    for (const entry of mapped.entries) {
+      await session.getStorage().appendEntry(entry)
+    }
+    return await session.getMetadata()
+  } finally {
+    // append 中途失败时保留已提交的半成品，由下一次幂等导入安全 rebuild。
+    await cleanupImportedSession(session)
+  }
+}
+
+export async function importLegacySession(
+  repo: SqliteSessionRepo,
+  parsed: LegacyParseResult,
+): Promise<LegacyImportOutcome> {
+  const mapped = mapLegacyEntries(parsed)
+  const id = legacySqliteSessionId(parsed.sessionId)
+  const expected: LegacyImportExpectation = {
+    sessionId: parsed.sessionId,
+    fingerprint: parsed.fingerprint,
+    entryDigest: mapped.entryDigest,
+    entryCount: mapped.entries.length,
+  }
+  let existing = (await repo.list()).find((metadata) => metadata.id === id)
+  let decision = decideLegacyImport(
+    existing ? existingImportMetadata(existing) : undefined,
+    expected,
+  )
+
+  if (decision.action === 'conflict') {
+    throw new Error(`${decision.reason}: ${id}`)
+  }
+  if (decision.action === 'skip' && existing) {
+    const session = await repo.open(existing)
+    try {
+      const actualEntries = await session.getEntries()
+      if (
+        actualEntries.length !== expected.entryCount ||
+        entryIdentityDigest(actualEntries) !== expected.entryDigest
+      ) {
+        decision = { action: 'rebuild' }
+      }
+    } finally {
+      await cleanupImportedSession(session)
+    }
+  }
+
+  if (decision.action === 'skip' && existing) {
+    await verifyImportedSession(repo, existing, mapped)
+    return {
+      action: 'skipped',
+      metadata: existing,
+      importedEntries: 0,
+      diagnostics: mapped.diagnostics,
+    }
+  }
+
+  const outcomeAction = decision.action === 'rebuild' ? 'rebuilt' : 'created'
+  if (decision.action === 'rebuild') {
+    if (!existing) throw new Error(`rebuild 缺少已有 Session: ${id}`)
+    await repo.delete(existing)
+    existing = undefined
+  }
+  const metadata = await createImportedSession(repo, id, parsed, mapped)
+  await verifyImportedSession(repo, metadata, mapped)
+  return {
+    action: outcomeAction,
+    metadata,
+    importedEntries: mapped.entries.length,
+    diagnostics: mapped.diagnostics,
+  }
 }

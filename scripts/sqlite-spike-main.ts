@@ -13,6 +13,7 @@ import {
   runBootstrapScenario,
   runCrashChild,
   runCrashRecoveryScenario,
+  runLegacyImportScenario,
   runRuntimeScenario,
   runStorageScenarios,
   type CrashChildOptions,
@@ -123,6 +124,13 @@ async function executeScenarios(
       await runRuntimeScenario(context),
       await runBootstrapScenario(context),
       await runCrashRecoveryScenario(context),
+    ]
+  }
+  if (args.scenario === 'legacy') {
+    return [
+      await runRuntimeScenario(context),
+      await runBootstrapScenario(context),
+      await runLegacyImportScenario(context),
     ]
   }
   throw new Error(`scenario 尚未实现: ${args.scenario}`)

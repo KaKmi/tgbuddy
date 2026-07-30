@@ -87,6 +87,20 @@ async function stageRuntime(repoRoot: string, stagingRoot: string): Promise<void
   }
 }
 
+async function stageLegacyFixtures(repoRoot: string, spikeRoot: string): Promise<void> {
+  const inputRoot = join(spikeRoot, 'legacy-input')
+  const sessionsRoot = join(inputRoot, 'sessions')
+  await mkdir(sessionsRoot, { recursive: true })
+  await cp(
+    join(repoRoot, 'tests', 'fixtures', 'legacy-sessions.json'),
+    join(inputRoot, 'sessions.json'),
+  )
+  await cp(
+    join(repoRoot, 'tests', 'fixtures', 'legacy-session.jsonl'),
+    join(sessionsRoot, 'legacy-a.jsonl'),
+  )
+}
+
 async function readElectronPackage(repoRoot: string): Promise<ElectronPackage> {
   return JSON.parse(
     await readFile(join(repoRoot, 'node_modules', 'electron', 'package.json'), 'utf8'),
@@ -212,6 +226,9 @@ export async function packageAndRunSpike(
       throw new Error(`Packager 必须只生成一个产物，实际 ${outputPaths.length}`)
     }
     const executablePath = resolvePackagedExecutable(outputPaths[0], process.platform)
+    if (options.scenario === 'legacy' || options.scenario === 'full') {
+      await stageLegacyFixtures(repoRoot, spikeRoot)
+    }
     console.log('[sqlite-spike] 启动 packaged Electron')
     const spawned = await spawnPackaged(executablePath, [
       '--spike-root',
