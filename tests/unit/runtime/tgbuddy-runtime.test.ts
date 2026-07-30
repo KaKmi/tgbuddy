@@ -158,6 +158,7 @@ describe('TgBuddyRuntime 门面', () => {
       sourceSessionId: 'session-1',
       throughMessageId: 'message-1',
     })).rejects.toThrow('任务运行中')
+    await expect(runtime.sessions.delete('session-1')).rejects.toThrow('任务运行中')
     expect(calls).toEqual([])
   })
 })

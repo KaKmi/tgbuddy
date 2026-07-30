@@ -403,6 +403,36 @@ describe('SessionMessageHistory', () => {
     ).toEqual(['message-1', 'message-edited'])
   })
 
+  test('压缩后编辑保留消息仍保留摘要，不会重新激活已压缩原文', async () => {
+    const store = new MemoryMessageStore()
+    const generatedIds = ['compaction-1', 'truncate-1', 'compaction-2']
+    const history = createSessionMessageHistory({
+      store,
+      createId: () => generatedIds.shift() ?? 'unused',
+      now: () => 1_700_000_000_010,
+    })
+    await history.create('session-1', 'C:\\workspace')
+    await history.append('session-1', userMessage('message-1', 1))
+    await history.append('session-1', userMessage('message-2', 2))
+    await history.append('session-1', userMessage('message-3', 3))
+    await history.appendCompaction('session-1', {
+      summary: '前两条摘要',
+      firstKeptEntryId: 'message-3',
+      tokensBefore: 100,
+    })
+
+    const truncated = await history.truncate('session-1', 'message-3')
+    await history.append('session-1', userMessage('message-edited', 11))
+
+    expect(truncated.map((message) => message.id)).toEqual(['compaction-2'])
+    expect((await history.messages('session-1')).map((message) => message.id))
+      .toEqual(['compaction-2', 'message-edited'])
+    expect(
+      (await history.compactedMessages('session-1', 'compaction-2'))
+        .map((message) => message.id),
+    ).toEqual(['message-1', 'message-2'])
+  })
+
   test('线性截断拒绝非用户消息且不改变 active history', async () => {
     const store = new MemoryMessageStore()
     const history = createSessionMessageHistory({

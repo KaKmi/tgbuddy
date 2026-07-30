@@ -158,6 +158,9 @@ export function createTgBuddyRuntime(dependencies: RuntimeDependencies): TgBuddy
     sessions: {
       ...dependencies.sessions,
       async delete(sessionId) {
+        if (dependencies.runs.isRunning(sessionId)) {
+          throw new Error('任务运行中，暂时不能删除会话')
+        }
         dependencies.context.clearSession(sessionId)
         await dependencies.sessions.delete(sessionId)
         dependencies.permissions.expireSessionRules(sessionId)

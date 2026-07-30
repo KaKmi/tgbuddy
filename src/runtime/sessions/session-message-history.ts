@@ -167,9 +167,11 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
     return this.#withSessionLock(sessionId, async () => {
       const session = await this.#requireSession(sessionId)
       const branch = await session.activeEntries()
-      const targetIndex = branch.findIndex((entry) => entry.id === fromMessageId)
-      const target = targetIndex === -1 ? undefined : branch[targetIndex]
-      const targetMessage = target ? toSessionMessage(target) : undefined
+      const activeMessages = replayActiveMessages(branch)
+      const activeTargetIndex = activeMessages.findIndex(
+        (message) => message.id === fromMessageId,
+      )
+      const targetMessage = activeMessages[activeTargetIndex]
       if (
         !targetMessage
         || targetMessage.kind !== 'kernel'
@@ -191,7 +193,18 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
           reason: 'edit_and_resend',
         },
       })
-      await session.moveTo(branch[targetIndex - 1]?.id ?? null)
+
+      if (activeMessages[0]?.kind === 'compaction') {
+        return this.#rebuildCompactedPrefix(
+          session,
+          activeMessages.slice(0, activeTargetIndex),
+        )
+      }
+
+      const branchTargetIndex = branch.findIndex(
+        (entry) => entry.id === fromMessageId,
+      )
+      await session.moveTo(branch[branchTargetIndex - 1]?.id ?? null)
       return replayActiveMessages(await session.activeEntries())
     })
   }
@@ -253,6 +266,42 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
       throw new Error(`Session 消息后端不存在：${sessionId}`)
     }
     return session
+  }
+
+  async #rebuildCompactedPrefix(
+    session: MessageSession,
+    prefix: SessionMessage[],
+  ): Promise<SessionMessage[]> {
+    const marker = prefix[0]
+    if (!marker || marker.kind !== 'compaction') {
+      throw new Error('压缩历史缺少摘要边界')
+    }
+
+    await session.moveTo(null)
+    const markerId = this.#createId()
+    await session.append({
+      type: 'compaction',
+      id: markerId,
+      parentId: null,
+      timestamp: toIsoTimestamp(marker.createdAt),
+      summary: marker.summary,
+      firstKeptEntryId: marker.firstKeptEntryId,
+      tokensBefore: marker.tokensBefore,
+      details: {
+        compactedCount: marker.compactedCount,
+        legacyFirstKeptEntryId: marker.firstKeptEntryId,
+        legacyTruncated: true,
+      },
+    })
+
+    let parentId = markerId
+    for (const message of prefix.slice(1)) {
+      const cloned = structuredClone(message)
+      cloned.id = this.#createId()
+      await session.append(toPersistedEntry(cloned, parentId))
+      parentId = cloned.id
+    }
+    return replayActiveMessages(await session.activeEntries())
   }
 
   async #withSessionLock<T>(
