@@ -5,18 +5,22 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   assertPackagedRuntime,
-  REQUIRED_SCENARIOS,
   type RuntimeSnapshot,
   type ScenarioResult,
   type SpikeReport,
 } from './sqlite-spike-runtime.ts'
 import {
   runBootstrapScenario,
+  runCompaction,
   runCrashChild,
   runCrashRecoveryScenario,
+  runDeleteCleanup,
   runLegacyImportScenario,
+  runOrderedEntries,
   runRuntimeScenario,
+  runSessionIsolation,
   runStorageScenarios,
+  runWalBackupRestore,
   type CrashChildOptions,
   type ScenarioContext,
 } from './sqlite-spike-scenarios.ts'
@@ -135,18 +139,17 @@ async function executeScenarios(
     ]
   }
   if (args.scenario === 'full') {
-    const runtime = await runRuntimeScenario(context)
-    const bootstrap = await runBootstrapScenario(context)
-    const storage = await runStorageScenarios(context)
-    const crash = await runCrashRecoveryScenario(context)
-    const legacy = await runLegacyImportScenario(context)
-    const results = [runtime, bootstrap, ...storage, crash, legacy]
-    const byName = new Map(results.map((result) => [result.name, result]))
-    return REQUIRED_SCENARIOS.map((name) => {
-      const result = byName.get(name)
-      if (!result) throw new Error(`full scenario 缺少结果: ${name}`)
-      return result
-    })
+    return [
+      await runRuntimeScenario(context),
+      await runBootstrapScenario(context),
+      await runOrderedEntries(context),
+      await runSessionIsolation(context),
+      await runCrashRecoveryScenario(context),
+      await runCompaction(context),
+      await runDeleteCleanup(context),
+      await runWalBackupRestore(context),
+      await runLegacyImportScenario(context),
+    ]
   }
   throw new Error(`scenario 尚未实现: ${args.scenario}`)
 }

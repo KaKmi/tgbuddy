@@ -628,7 +628,7 @@ export async function runLegacyImportScenario(
   )
 }
 
-async function runOrderedEntries(context: ScenarioContext): Promise<ScenarioResult> {
+export async function runOrderedEntries(context: ScenarioContext): Promise<ScenarioResult> {
   const startedAt = Date.now()
   const databasePath = join(context.rootDir, 'ordered', 'sessions.db')
   const cwd = join(context.rootDir, 'ordered-workspace')
@@ -667,9 +667,9 @@ async function runOrderedEntries(context: ScenarioContext): Promise<ScenarioResu
   )
 }
 
-async function runIsolationAndDelete(
+export async function runSessionIsolation(
   context: ScenarioContext,
-): Promise<ScenarioResult[]> {
+): Promise<ScenarioResult> {
   const isolationStarted = Date.now()
   const databasePath = join(context.rootDir, 'isolation', 'sessions.db')
   const cwd = join(context.rootDir, 'isolation-workspace')
@@ -692,29 +692,36 @@ async function runIsolationAndDelete(
   }
 
   const reopened = createSpikeRepo(databasePath, cwd)
-  const listed = await reopened.repo.list()
-  const sessionA = await reopened.repo.open(metadataA!)
-  const sessionB = await reopened.repo.open(metadataB!)
-  const entriesA = await sessionA.getEntries()
-  const entriesB = await sessionB.getEntries()
-  assertCondition(listed.length === 2, '隔离数据库必须有两个 Session')
-  assertCondition(entriesA.length === 100, `A 必须恰好包含 100 条 entry: ${entriesA.length}`)
-  assertCondition(entriesB.length === 100, `B 必须恰好包含 100 条 entry: ${entriesB.length}`)
-  assertContinuousPrefix(entriesA, 'A-', 100, 100)
-  assertContinuousPrefix(entriesB, 'B-', 100, 100)
-  assertCondition(
-    entriesA.every((entry) => messageText(entry)?.startsWith('A-') === true),
-    'A 只能包含自身的消息 entry',
-  )
-  assertCondition(
-    entriesB.every((entry) => messageText(entry)?.startsWith('B-') === true),
-    'B 只能包含自身的消息 entry',
-  )
-  assertCondition((await sessionA.getSessionStats()).messageCount === 100, 'A 物化计数必须为 100')
-  assertCondition((await sessionB.getSessionStats()).messageCount === 100, 'B 物化计数必须为 100')
-  await cleanupSession(sessionA)
-  await cleanupSession(sessionB)
-  const isolationResult = passedScenario(
+  try {
+    const listed = await reopened.repo.list()
+    const sessionA = await reopened.repo.open(metadataA!)
+    const sessionB = await reopened.repo.open(metadataB!)
+    try {
+      const entriesA = await sessionA.getEntries()
+      const entriesB = await sessionB.getEntries()
+      assertCondition(listed.length === 2, '隔离数据库必须有两个 Session')
+      assertCondition(entriesA.length === 100, `A 必须恰好包含 100 条 entry: ${entriesA.length}`)
+      assertCondition(entriesB.length === 100, `B 必须恰好包含 100 条 entry: ${entriesB.length}`)
+      assertContinuousPrefix(entriesA, 'A-', 100, 100)
+      assertContinuousPrefix(entriesB, 'B-', 100, 100)
+      assertCondition(
+        entriesA.every((entry) => messageText(entry)?.startsWith('A-') === true),
+        'A 只能包含自身的消息 entry',
+      )
+      assertCondition(
+        entriesB.every((entry) => messageText(entry)?.startsWith('B-') === true),
+        'B 只能包含自身的消息 entry',
+      )
+      assertCondition((await sessionA.getSessionStats()).messageCount === 100, 'A 物化计数必须为 100')
+      assertCondition((await sessionB.getSessionStats()).messageCount === 100, 'B 物化计数必须为 100')
+    } finally {
+      await cleanupSession(sessionA)
+      await cleanupSession(sessionB)
+    }
+  } finally {
+    await reopened.env.cleanup()
+  }
+  return passedScenario(
     'session-isolation',
     isolationStarted,
     9,
@@ -722,25 +729,42 @@ async function runIsolationAndDelete(
     await fileBytes(databasePath),
     await fileBytes(`${databasePath}-wal`),
   )
+}
 
+export async function runDeleteCleanup(
+  context: ScenarioContext,
+): Promise<ScenarioResult> {
   const deleteStarted = Date.now()
-  await reopened.repo.delete(metadataA!)
-  const afterDelete = await reopened.repo.list()
-  assertCondition(
-    afterDelete.length === 1 && afterDelete[0]?.id === 'isolation-b',
-    'delete 后只能剩 isolation-b',
-  )
-  let notFound = false
+  const databasePath = join(context.rootDir, 'isolation', 'sessions.db')
+  const cwd = join(context.rootDir, 'isolation-workspace')
+  const reopened = createSpikeRepo(databasePath, cwd)
   try {
-    await reopened.repo.open(metadataA!)
-  } catch (error) {
-    notFound = error instanceof Error && error.message.includes('Session not found')
+    const listed = await reopened.repo.list()
+    const metadataA = listed.find((item) => item.id === 'isolation-a')
+    const metadataB = listed.find((item) => item.id === 'isolation-b')
+    assertCondition(metadataA && metadataB, 'delete 前必须存在 isolation-a/isolation-b')
+    await reopened.repo.delete(metadataA)
+    const afterDelete = await reopened.repo.list()
+    assertCondition(
+      afterDelete.length === 1 && afterDelete[0]?.id === 'isolation-b',
+      'delete 后只能剩 isolation-b',
+    )
+    let notFound = false
+    try {
+      await reopened.repo.open(metadataA)
+    } catch (error) {
+      notFound = error instanceof Error && error.message.includes('Session not found')
+    }
+    assertCondition(notFound, 'delete 后 open(A) 必须 not_found')
+    const surviving = await reopened.repo.open(metadataB)
+    try {
+      assertCondition((await surviving.getEntries()).length === 100, 'B 内容不得受 delete 影响')
+    } finally {
+      await cleanupSession(surviving)
+    }
+  } finally {
+    await reopened.env.cleanup()
   }
-  assertCondition(notFound, 'delete 后 open(A) 必须 not_found')
-  const surviving = await reopened.repo.open(metadataB!)
-  assertCondition((await surviving.getEntries()).length === 100, 'B 内容不得受 delete 影响')
-  await cleanupSession(surviving)
-  await reopened.env.cleanup()
   if (!nodeSqlite) throw new Error('delete audit 只能在 Electron Node 22 运行')
   const audit = new nodeSqlite.DatabaseSync(databasePath)
   try {
@@ -751,7 +775,7 @@ async function runIsolationAndDelete(
   } finally {
     audit.close()
   }
-  const deleteResult = passedScenario(
+  return passedScenario(
     'delete-cleanup',
     deleteStarted,
     4,
@@ -759,10 +783,9 @@ async function runIsolationAndDelete(
     await fileBytes(databasePath),
     await fileBytes(`${databasePath}-wal`),
   )
-  return [isolationResult, deleteResult]
 }
 
-async function runCompaction(context: ScenarioContext): Promise<ScenarioResult> {
+export async function runCompaction(context: ScenarioContext): Promise<ScenarioResult> {
   const startedAt = Date.now()
   const databasePath = join(context.rootDir, 'compaction', 'sessions.db')
   const cwd = join(context.rootDir, 'compaction-workspace')
@@ -815,7 +838,7 @@ async function runCompaction(context: ScenarioContext): Promise<ScenarioResult> 
   )
 }
 
-async function runWalBackupRestore(context: ScenarioContext): Promise<ScenarioResult> {
+export async function runWalBackupRestore(context: ScenarioContext): Promise<ScenarioResult> {
   const startedAt = Date.now()
   const sourcePath = join(context.rootDir, 'backup', 'source.db')
   const backupPath = join(context.rootDir, 'backup', 'restored.db')
@@ -918,8 +941,9 @@ export async function runStorageScenarios(
 ): Promise<ScenarioResult[]> {
   const results: ScenarioResult[] = []
   results.push(await runOrderedEntries(context))
-  results.push(...(await runIsolationAndDelete(context)))
+  results.push(await runSessionIsolation(context))
   results.push(await runCompaction(context))
+  results.push(await runDeleteCleanup(context))
   results.push(await runWalBackupRestore(context))
   return results
 }

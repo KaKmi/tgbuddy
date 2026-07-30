@@ -15,15 +15,15 @@
 ## Scenarios
 | Scenario | Result | Duration | Entries | DB bytes | WAL bytes |
 |---|---|---:|---:|---:|---:|
-| runtime | passed | 0 | 0 | 0 | 0 |
-| bootstrap | passed | 40 | 0 | 81920 | 0 |
-| ordered-entries | passed | 1930 | 1000 | 888832 | 0 |
-| session-isolation | passed | 387 | 200 | 245760 | 0 |
-| crash-recovery | passed | 2510 | 251 | 299008 | 0 |
-| compaction | passed | 36 | 4 | 81920 | 0 |
-| delete-cleanup | passed | 26 | 100 | 245760 | 0 |
-| wal-backup-restore | passed | 1883 | 1001 | 884736 | 0 |
-| legacy-import | passed | 154 | 23 | 90112 | 0 |
+| runtime | passed | 1 | 0 | 0 | 0 |
+| bootstrap | passed | 41 | 0 | 81920 | 0 |
+| ordered-entries | passed | 1813 | 1000 | 888832 | 0 |
+| session-isolation | passed | 429 | 200 | 245760 | 0 |
+| crash-recovery | passed | 2772 | 266 | 311296 | 0 |
+| compaction | passed | 34 | 4 | 81920 | 0 |
+| delete-cleanup | passed | 28 | 100 | 245760 | 0 |
+| wal-backup-restore | passed | 2113 | 1001 | 884736 | 0 |
+| legacy-import | passed | 166 | 23 | 90112 | 0 |
 
 ## Compatibility warnings
 - model_change.channelId 以 legacy.model_change 保存，未伪装为 provider。
