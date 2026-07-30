@@ -6,6 +6,7 @@ export interface SessionHistoryAdapter {
   create(sessionId: string, cwd: string): Promise<void>
   messages(sessionId: string): Promise<SessionMessage[]>
   compactedMessages(sessionId: string, compactionId: string): Promise<SessionMessage[]>
+  truncate(sessionId: string, fromMessageId: string): Promise<SessionMessage[]>
   delete(sessionId: string): Promise<void>
 }
 
@@ -60,6 +61,8 @@ export function createSessionCommands(
     messages: (sessionId) => options.history.messages(sessionId),
     compactedMessages: (sessionId, compactionId) =>
       options.history.compactedMessages(sessionId, compactionId),
+    truncate: (sessionId, fromMessageId) =>
+      options.history.truncate(sessionId, fromMessageId),
     updateMeta(sessionId, patch) {
       const current = options.repository.get(sessionId)
       if (!current) return undefined

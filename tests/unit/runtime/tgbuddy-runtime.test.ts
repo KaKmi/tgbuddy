@@ -23,6 +23,10 @@ function createDependencies(calls: string[]): RuntimeDependencies {
       },
       messages: async () => [],
       compactedMessages: async () => [],
+      truncate: async () => {
+        calls.push('session.truncate')
+        return []
+      },
       updateMeta: () => calls.push('session.updateMeta'),
     },
     runs: {
@@ -119,5 +123,21 @@ describe('TgBuddyRuntime 门面', () => {
         },
       },
     ])
+  })
+
+  test('编辑历史前取消压缩状态，并拒绝在 active Run 中截断', async () => {
+    const calls: string[] = []
+    const dependencies = createDependencies(calls)
+    const runtime = createTgBuddyRuntime(dependencies)
+
+    expect(await runtime.sessions.truncate('session-1', 'message-1')).toEqual([])
+    expect(calls).toEqual(['context.clear', 'session.truncate'])
+
+    calls.length = 0
+    dependencies.runs.isRunning = () => true
+    await expect(
+      runtime.sessions.truncate('session-1', 'message-1'),
+    ).rejects.toThrow('任务运行中')
+    expect(calls).toEqual([])
   })
 })

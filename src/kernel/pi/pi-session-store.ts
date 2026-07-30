@@ -17,7 +17,9 @@ import type {
 export interface PiSessionAdapter {
   metadata(): Promise<Record<string, unknown> | undefined>
   listEntries(): Promise<PersistedSessionEntry[]>
+  listActiveEntries(): Promise<PersistedSessionEntry[]>
   appendEntry(entry: PersistedSessionEntry): Promise<void>
+  moveTo(entryId: string | null): Promise<void>
   harnessSession(): Session
   close(): Promise<void>
 }
@@ -80,8 +82,16 @@ class SqlitePiSessionAdapter implements PiSessionAdapter {
     return this.#session.getEntries()
   }
 
+  listActiveEntries(): Promise<SessionTreeEntry[]> {
+    return this.#session.getBranch()
+  }
+
   appendEntry(entry: PersistedSessionEntry): Promise<void> {
     return this.#session.getStorage().appendEntry(entry)
+  }
+
+  async moveTo(entryId: string | null): Promise<void> {
+    await this.#session.moveTo(entryId)
   }
 
   harnessSession(): Session {
@@ -163,9 +173,19 @@ class ManagedMessageSession implements MessageSession {
     return this.#track(this.#session.listEntries())
   }
 
+  activeEntries(): Promise<PersistedSessionEntry[]> {
+    this.#requireOpen()
+    return this.#track(this.#session.listActiveEntries())
+  }
+
   append(entry: PersistedSessionEntry): Promise<void> {
     this.#requireOpen()
     return this.#track(this.#session.appendEntry(entry))
+  }
+
+  moveTo(entryId: string | null): Promise<void> {
+    this.#requireOpen()
+    return this.#track(this.#session.moveTo(entryId))
   }
 
   harnessSession(): Session {

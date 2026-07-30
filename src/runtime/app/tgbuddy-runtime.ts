@@ -37,6 +37,10 @@ export interface SessionCommands {
     sessionId: string,
     compactionId: string,
   ): Promise<SessionMessage[]>
+  truncate(
+    sessionId: string,
+    fromMessageId: string,
+  ): Promise<SessionMessage[]>
   updateMeta(
     sessionId: string,
     patch: Partial<SessionMeta>,
@@ -153,6 +157,13 @@ export function createTgBuddyRuntime(dependencies: RuntimeDependencies): TgBuddy
         dependencies.context.clearSession(sessionId)
         await dependencies.sessions.delete(sessionId)
         dependencies.permissions.expireSessionRules(sessionId)
+      },
+      async truncate(sessionId, fromMessageId) {
+        if (dependencies.runs.isRunning(sessionId)) {
+          throw new Error('任务运行中，暂时不能编辑历史消息')
+        }
+        dependencies.context.clearSession(sessionId)
+        return dependencies.sessions.truncate(sessionId, fromMessageId)
       },
     },
     runs: {

@@ -53,6 +53,14 @@ export function registerIpc(
       runtime.sessions.compactedMessages(input.sessionId, input.compactionId),
   )
   ipcMain.handle(
+    IPC.SESSION_TRUNCATE,
+    (
+      _event,
+      input: IpcRequest<'session:truncate'>,
+    ): Promise<IpcResponse<'session:truncate'>> =>
+      runtime.sessions.truncate(input.sessionId, input.fromMessageId),
+  )
+  ipcMain.handle(
     IPC.SESSION_UPDATE_META,
     (
       _event,

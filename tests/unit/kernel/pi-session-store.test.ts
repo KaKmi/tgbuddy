@@ -15,6 +15,7 @@ class MemoryPiSession implements PiSessionAdapter {
   readonly harness = new Session(new InMemorySessionStorage())
   closeCount = 0
   metadataError: Error | undefined
+  leafId: string | null = null
   readonly #beforeAppend: (() => Promise<void>) | undefined
   readonly #beforeClose: (() => Promise<void>) | undefined
 
@@ -35,9 +36,27 @@ class MemoryPiSession implements PiSessionAdapter {
     return [...this.entries]
   }
 
+  async listActiveEntries(): Promise<PersistedSessionEntry[]> {
+    const byId = new Map(this.entries.map((entry) => [entry.id, entry]))
+    const branch: PersistedSessionEntry[] = []
+    let entryId: string | null | undefined = this.leafId
+    while (entryId) {
+      const entry = byId.get(entryId)
+      if (!entry) break
+      branch.unshift(entry)
+      entryId = entry.parentId
+    }
+    return branch
+  }
+
   async appendEntry(entry: PersistedSessionEntry): Promise<void> {
     await this.#beforeAppend?.()
     this.entries.push(entry)
+    this.leafId = entry.id
+  }
+
+  async moveTo(entryId: string | null): Promise<void> {
+    this.leafId = entryId
   }
 
   harnessSession(): Session {
@@ -178,6 +197,26 @@ describe('PiSessionStore', () => {
     expect((await store.open('session-b', 'pi@0.82'))?.entries()).resolves.toEqual([
       userEntry('b-entry-1', null, 'B'),
     ])
+    await store.dispose()
+  })
+
+  test('activeEntries 与 moveTo 只切换有效路径，不删除审计日志', async () => {
+    const repository = new MemoryPiRepository()
+    const store = new PiSessionStore(repository)
+    const session = await store.create({
+      sessionId: 'session-a',
+      cwd: 'C:\\workspace-a',
+      kernel: 'pi@0.82',
+    })
+    const first = userEntry('entry-1', null, '第一条')
+    const second = userEntry('entry-2', 'entry-1', '第二条')
+    await session.append(first)
+    await session.append(second)
+
+    await session.moveTo('entry-1')
+
+    expect(await session.activeEntries()).toEqual([first])
+    expect(await session.entries()).toEqual([first, second])
     await store.dispose()
   })
 

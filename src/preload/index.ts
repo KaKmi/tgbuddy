@@ -23,6 +23,11 @@ const api = {
         sessionId: id,
         compactionId,
       }),
+    truncate: (id, fromMessageId) =>
+      ipcRenderer.invoke(IPC.SESSION_TRUNCATE, {
+        sessionId: id,
+        fromMessageId,
+      }),
     updateMeta: (id, patch) =>
       ipcRenderer.invoke(IPC.SESSION_UPDATE_META, { sessionId: id, patch }),
   },

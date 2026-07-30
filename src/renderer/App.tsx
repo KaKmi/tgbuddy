@@ -99,6 +99,19 @@ export function App() {
     await window.tgbuddy.agent.send({ sessionId: currentId, text })
   }
 
+  async function editAndResend(messageId: string, text: string) {
+    if (!currentId || stream.running || stream.compaction) return
+    const sessionId = currentId
+    const nextMessages = await window.tgbuddy.session.truncate(
+      sessionId,
+      messageId,
+    )
+    setMessagesMap((current) =>
+      new Map(current).set(sessionId, nextMessages),
+    )
+    await window.tgbuddy.agent.send({ sessionId, text })
+  }
+
   return (
     <div className="flex h-screen bg-background text-foreground">
       {/* ── 侧边栏 ────────────────────────────────────────── */}
@@ -174,6 +187,8 @@ export function App() {
                   message={m}
                   toolResults={toolResults}
                   liveToolIds={liveToolIds}
+                  canEdit={!stream.running && !stream.compaction}
+                  onEditAndResend={editAndResend}
                 />
               ))}
 
@@ -439,12 +454,21 @@ function MessageView({
   message,
   toolResults,
   liveToolIds,
+  canEdit,
+  onEditAndResend,
 }: {
   sessionId: string
   message: SessionMessage
   toolResults: ToolResultMap
   liveToolIds: Set<string>
+  canEdit: boolean
+  onEditAndResend(messageId: string, text: string): Promise<void>
 }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [editError, setEditError] = useState<string>()
+  const [submitting, setSubmitting] = useState(false)
+
   if (message.kind === 'notice' && message.notice === 'session_resumed') {
     return (
       <SystemMarker
@@ -475,9 +499,79 @@ function MessageView({
       typeof inner.content === 'string'
         ? inner.content
         : inner.content.map((c) => (c.type === 'text' ? c.text : '')).join('')
+    if (editing) {
+      const submit = async (): Promise<void> => {
+        const next = draft.trim()
+        if (!next || submitting) return
+        setSubmitting(true)
+        setEditError(undefined)
+        try {
+          await onEditAndResend(message.id, next)
+          setEditing(false)
+        } catch (error) {
+          setEditError(error instanceof Error ? error.message : String(error))
+        } finally {
+          setSubmitting(false)
+        }
+      }
+
+      return (
+        <div className="flex justify-end">
+          <div className="flex w-full max-w-[80%] flex-col gap-2 rounded-2xl bg-card p-3">
+            <textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              rows={Math.max(2, Math.min(8, draft.split('\n').length))}
+              autoFocus
+              className="min-h-[64px] resize-y bg-transparent text-sm leading-relaxed text-foreground outline-none"
+            />
+            {editError && (
+              <div className="text-[11px] text-[#dfa39d]">{editError}</div>
+            )}
+            <div className="flex justify-end gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(false)
+                  setEditError(undefined)
+                }}
+                disabled={submitting}
+                className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#9a9aa2] hover:bg-white/[.06] disabled:opacity-40"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void submit()}
+                disabled={!draft.trim() || submitting}
+                className="rounded-[6px] bg-white/[.06] px-[9px] py-1 text-[11px] text-[#b6b6be] hover:bg-white/[.12] disabled:opacity-40"
+              >
+                {submitting ? '重发中…' : '重发'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
-      <div className="flex justify-end">
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-card px-4 py-2.5 text-sm leading-relaxed">{text}</div>
+      <div className="group flex flex-col items-end gap-1">
+        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-card px-4 py-2.5 text-sm leading-relaxed">
+          {text}
+        </div>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(text)
+              setEditError(undefined)
+              setEditing(true)
+            }}
+            className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#777780] opacity-0 transition-opacity hover:bg-white/[.06] hover:text-[#b6b6be] group-hover:opacity-100 focus:opacity-100"
+          >
+            编辑并重发
+          </button>
+        )}
       </div>
     )
   }

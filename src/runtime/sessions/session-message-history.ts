@@ -23,6 +23,10 @@ export interface SessionMessageHistory {
     sessionId: string,
     input: AppendCompactionInput,
   ): Promise<CompactionMessage>
+  truncate(
+    sessionId: string,
+    fromMessageId: string,
+  ): Promise<SessionMessage[]>
   countArtifacts(sessionId: string): Promise<number>
   delete(sessionId: string): Promise<void>
 }
@@ -64,7 +68,7 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
   async messages(sessionId: string): Promise<SessionMessage[]> {
     return this.#withSessionLock(sessionId, async () => {
       const session = await this.#store.open(sessionId, KERNEL_ID)
-      return session ? replayActiveMessages(await session.entries()) : []
+      return session ? replayActiveMessages(await session.activeEntries()) : []
     })
   }
 
@@ -119,7 +123,7 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
   async append(sessionId: string, message: SessionMessage): Promise<void> {
     await this.#withSessionLock(sessionId, async () => {
       const session = await this.#requireSession(sessionId)
-      const entries = await session.entries()
+      const entries = await session.activeEntries()
       await session.append(toPersistedEntry(message, entries.at(-1)?.id ?? null))
     })
   }
@@ -130,7 +134,7 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
   ): Promise<CompactionMessage> {
     return this.#withSessionLock(sessionId, async () => {
       const session = await this.#requireSession(sessionId)
-      const entries = await session.entries()
+      const entries = await session.activeEntries()
       const activeMessages = replayActiveMessages(entries)
       const boundaryIndex = activeMessages.findIndex(
         (message) => message.id === input.firstKeptEntryId,
@@ -150,11 +154,47 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
     })
   }
 
+  async truncate(
+    sessionId: string,
+    fromMessageId: string,
+  ): Promise<SessionMessage[]> {
+    return this.#withSessionLock(sessionId, async () => {
+      const session = await this.#requireSession(sessionId)
+      const branch = await session.activeEntries()
+      const targetIndex = branch.findIndex((entry) => entry.id === fromMessageId)
+      const target = targetIndex === -1 ? undefined : branch[targetIndex]
+      const targetMessage = target ? toSessionMessage(target) : undefined
+      if (
+        !targetMessage
+        || targetMessage.kind !== 'kernel'
+        || targetMessage.message.role !== 'user'
+      ) {
+        throw new Error(`只能从当前历史中的用户消息编辑重发：${fromMessageId}`)
+      }
+
+      // 审计 entry 先追加在旧 leaf 后，再移动 active leaf；即使 move 失败，
+      // 原历史也仍是有效路径，同时留下可诊断记录。
+      await session.append({
+        type: 'custom',
+        id: this.#createId(),
+        parentId: branch.at(-1)?.id ?? null,
+        timestamp: toIsoTimestamp(this.#now()),
+        customType: 'tgbuddy.truncate',
+        data: {
+          fromId: fromMessageId,
+          reason: 'edit_and_resend',
+        },
+      })
+      await session.moveTo(branch[targetIndex - 1]?.id ?? null)
+      return replayActiveMessages(await session.activeEntries())
+    })
+  }
+
   async countArtifacts(sessionId: string): Promise<number> {
     return this.#withSessionLock(sessionId, async () => {
       const session = await this.#store.open(sessionId, KERNEL_ID)
       return session
-        ? countArtifacts(rawMessages(await session.entries()))
+        ? countArtifacts(rawMessages(await session.activeEntries()))
         : 0
     })
   }

@@ -34,6 +34,7 @@ export const IPC = {
   SESSION_DELETE: 'session:delete',
   SESSION_MESSAGES: 'session:messages',
   SESSION_COMPACTED_MESSAGES: 'session:compacted-messages',
+  SESSION_TRUNCATE: 'session:truncate',
   SESSION_UPDATE_META: 'session:update-meta',
 
   // Agent 运行
@@ -100,6 +101,10 @@ export interface IpcCommandMap {
     { sessionId: string; compactionId: string },
     SessionMessage[]
   >
+  'session:truncate': IpcCommand<
+    { sessionId: string; fromMessageId: string },
+    SessionMessage[]
+  >
   'session:update-meta': IpcCommand<
     { sessionId: string; patch: Partial<SessionMeta> },
     void
@@ -142,6 +147,10 @@ export interface TgBuddyAPI {
       id: IpcRequest<'session:compacted-messages'>['sessionId'],
       compactionId: IpcRequest<'session:compacted-messages'>['compactionId'],
     ): Promise<IpcResponse<'session:compacted-messages'>>
+    truncate(
+      id: IpcRequest<'session:truncate'>['sessionId'],
+      fromMessageId: IpcRequest<'session:truncate'>['fromMessageId'],
+    ): Promise<IpcResponse<'session:truncate'>>
     updateMeta(
       id: IpcRequest<'session:update-meta'>['sessionId'],
       patch: IpcRequest<'session:update-meta'>['patch'],

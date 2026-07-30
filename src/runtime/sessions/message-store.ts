@@ -9,8 +9,12 @@ export interface CreateMessageSessionInput {
 
 export interface MessageSession {
   readonly sessionId: string
+  /** 完整审计日志，包含已经离开 active path 的 entry。 */
   entries(): Promise<PersistedSessionEntry[]>
+  /** 当前线性会话从根到 leaf 的有效路径。 */
+  activeEntries(): Promise<PersistedSessionEntry[]>
   append(entry: PersistedSessionEntry): Promise<void>
+  moveTo(entryId: string | null): Promise<void>
   close(): Promise<void>
 }
 

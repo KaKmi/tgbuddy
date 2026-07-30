@@ -50,6 +50,10 @@ describe('SessionCommands', () => {
         calls.push(`compacted:${sessionId}:${compactionId}`)
         return []
       },
+      async truncate(sessionId: string, fromMessageId: string) {
+        calls.push(`truncate:${sessionId}:${fromMessageId}`)
+        return []
+      },
       async delete(sessionId: string) {
         calls.push(`delete:${sessionId}`)
       },
@@ -76,6 +80,7 @@ describe('SessionCommands', () => {
     })
     expect(await first.messages('session-1')).toEqual([])
     expect(await first.compactedMessages('session-1', 'compaction-1')).toEqual([])
+    expect(await first.truncate('session-1', 'message-1')).toEqual([])
 
     const reopened = createSessionCommands({
       repository,
@@ -106,6 +111,7 @@ describe('SessionCommands', () => {
       'create:session-1:C:\\workspace',
       'messages:session-1',
       'compacted:session-1:compaction-1',
+      'truncate:session-1:message-1',
       'delete:session-1',
     ])
   })
@@ -118,6 +124,7 @@ describe('SessionCommands', () => {
         create: async () => undefined,
         messages: async () => [],
         compactedMessages: async () => [],
+        truncate: async () => [],
         delete: async () => undefined,
       },
       createId: () => 'unused',
@@ -139,6 +146,7 @@ describe('SessionCommands', () => {
         },
         messages: async () => [],
         compactedMessages: async () => [],
+        truncate: async () => [],
         delete: async () => undefined,
       },
       createId: () => 'session-failed',
@@ -159,6 +167,7 @@ describe('SessionCommands', () => {
         create: async () => undefined,
         messages: async () => [],
         compactedMessages: async () => [],
+        truncate: async () => [],
         delete: async (sessionId) => {
           calls.push(`history.delete:${sessionId}`)
         },
@@ -184,6 +193,7 @@ describe('SessionCommands', () => {
         create: async () => undefined,
         messages: async () => [],
         compactedMessages: async () => [],
+        truncate: async () => [],
         delete: async () => {
           throw new Error('history busy')
         },

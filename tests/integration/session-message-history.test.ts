@@ -17,18 +17,47 @@ import type { SessionMeta } from '../../src/shared/contracts/session.ts'
 class MemoryMessageSession implements MessageSession {
   readonly sessionId: string
   readonly persisted: PersistedSessionEntry[]
+  readonly leaves: Map<string, string | null>
 
-  constructor(sessionId: string, persisted: PersistedSessionEntry[]) {
+  constructor(
+    sessionId: string,
+    persisted: PersistedSessionEntry[],
+    leaves: Map<string, string | null>,
+  ) {
     this.sessionId = sessionId
     this.persisted = persisted
+    this.leaves = leaves
   }
 
   async entries(): Promise<PersistedSessionEntry[]> {
     return [...this.persisted]
   }
 
+  async activeEntries(): Promise<PersistedSessionEntry[]> {
+    const byId = new Map(this.persisted.map((entry) => [entry.id, entry]))
+    let entryId = this.leaves.has(this.sessionId)
+      ? this.leaves.get(this.sessionId)
+      : this.persisted.at(-1)?.id
+    const branch: PersistedSessionEntry[] = []
+    while (entryId) {
+      const entry = byId.get(entryId)
+      if (!entry) break
+      branch.unshift(entry)
+      entryId = entry.parentId ?? undefined
+    }
+    return branch
+  }
+
   async append(entry: PersistedSessionEntry): Promise<void> {
     this.persisted.push(entry)
+    this.leaves.set(this.sessionId, entry.id)
+  }
+
+  async moveTo(entryId: string | null): Promise<void> {
+    if (entryId && !this.persisted.some((entry) => entry.id === entryId)) {
+      throw new Error(`entry 不存在：${entryId}`)
+    }
+    this.leaves.set(this.sessionId, entryId)
   }
 
   async close(): Promise<void> {}
@@ -37,24 +66,27 @@ class MemoryMessageSession implements MessageSession {
 class MemoryMessageStore implements MessageStore {
   readonly entriesBySession = new Map<string, PersistedSessionEntry[]>()
   readonly kernels = new Map<string, string>()
+  readonly leaves = new Map<string, string | null>()
 
   async create(input: CreateMessageSessionInput): Promise<MessageSession> {
     const entries: PersistedSessionEntry[] = []
     this.entriesBySession.set(input.sessionId, entries)
     this.kernels.set(input.sessionId, input.kernel)
-    return new MemoryMessageSession(input.sessionId, entries)
+    this.leaves.set(input.sessionId, null)
+    return new MemoryMessageSession(input.sessionId, entries, this.leaves)
   }
 
   async open(sessionId: string, kernel: string): Promise<MessageSession | undefined> {
     const entries = this.entriesBySession.get(sessionId)
     if (!entries) return undefined
     if (this.kernels.get(sessionId) !== kernel) throw new Error('kernel 不兼容')
-    return new MemoryMessageSession(sessionId, entries)
+    return new MemoryMessageSession(sessionId, entries, this.leaves)
   }
 
   async delete(sessionId: string): Promise<void> {
     this.entriesBySession.delete(sessionId)
     this.kernels.delete(sessionId)
+    this.leaves.delete(sessionId)
   }
 
   async dispose(): Promise<void> {}
@@ -319,6 +351,76 @@ describe('SessionMessageHistory', () => {
       'kept-message',
     ])
     expect(await history.countArtifacts('session-1')).toBe(1)
+  })
+
+  test('编辑并重发追加审计截断，重启后只恢复前缀与新消息', async () => {
+    const store = new MemoryMessageStore()
+    const generatedIds = ['truncate-1']
+    const history = createSessionMessageHistory({
+      store,
+      createId: () => generatedIds.shift() ?? 'unused',
+      now: () => 1_700_000_000_010,
+    })
+    await history.create('session-1', 'C:\\workspace')
+    await history.append('session-1', userMessage('message-1', 1_700_000_000_001))
+    await history.append('session-1', userMessage('message-2', 1_700_000_000_002))
+    await history.append('session-1', userMessage('message-3', 1_700_000_000_003))
+
+    const truncated = await history.truncate('session-1', 'message-2')
+    await history.append(
+      'session-1',
+      userMessage('message-edited', 1_700_000_000_011),
+    )
+
+    expect(truncated.map((message) => message.id)).toEqual(['message-1'])
+    const allEntries = store.entriesBySession.get('session-1') ?? []
+    expect(allEntries.map((entry) => entry.id)).toEqual([
+      'message-1',
+      'message-2',
+      'message-3',
+      'truncate-1',
+      'message-edited',
+    ])
+    expect(allEntries[3]).toMatchObject({
+      type: 'custom',
+      id: 'truncate-1',
+      parentId: 'message-3',
+      customType: 'tgbuddy.truncate',
+      data: {
+        fromId: 'message-2',
+        reason: 'edit_and_resend',
+      },
+    })
+    expect(allEntries[4]?.parentId).toBe('message-1')
+
+    const reopened = createSessionMessageHistory({
+      store,
+      createId: () => 'unused',
+      now: Date.now,
+    })
+    expect(
+      (await reopened.messages('session-1')).map((message) => message.id),
+    ).toEqual(['message-1', 'message-edited'])
+  })
+
+  test('线性截断拒绝非用户消息且不改变 active history', async () => {
+    const store = new MemoryMessageStore()
+    const history = createSessionMessageHistory({
+      store,
+      createId: () => 'unused',
+      now: Date.now,
+    })
+    await history.create('session-1', 'C:\\workspace')
+    await history.append('session-1', userMessage('message-1', 1))
+    const result = successfulWriteMessages(2)[1]!
+    await history.append('session-1', result)
+
+    await expect(
+      history.truncate('session-1', result.id),
+    ).rejects.toThrow('只能从当前历史中的用户消息编辑重发')
+    expect(
+      (await history.messages('session-1')).map((message) => message.id),
+    ).toEqual(['message-1', result.id])
   })
 
   test('legacy truncate 移除压缩边界后只回放摘要和迁移后的新消息', async () => {

@@ -132,6 +132,9 @@ function createFixture(): Fixture {
     async compactedMessages() {
       return []
     },
+    async truncate() {
+      return []
+    },
     async compactionSourceEntries() {
       return messages.map((message) => {
         if (message.kind === 'compaction') {
