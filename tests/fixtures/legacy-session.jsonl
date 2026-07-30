@@ -1,0 +1,13 @@
+{"type":"session","version":2,"kernel":"pi@0.82","cwd":"C:\\fixture\\workspace","createdAt":1700000000000}
+{"type":"message","id":"m0000001","timestamp":1700000001000,"message":{"kind":"kernel","id":"m0000001","createdAt":1700000001000,"message":{"role":"user","content":[{"type":"text","text":"旧问题"}],"timestamp":1700000001000}}}
+{"type":"message","id":"n0000001","timestamp":1700000002000,"message":{"kind":"notice","id":"n0000001","createdAt":1700000002000,"notice":"mode_changed","text":"进入计划模式","display":true}}
+{"type":"model_change","id":"d0000001","timestamp":1700000003000,"channelId":"deepseek-primary","modelId":"deepseek-chat"}
+{"type":"message","id":"m0000002","timestamp":1700000004000,"message":{"kind":"kernel","id":"m0000002","createdAt":1700000004000,"message":{"role":"user","content":[{"type":"text","text":"保留消息"}],"timestamp":1700000004000}}}
+{"type":"compaction","id":"c0000001","timestamp":1700000005000,"summary":"旧摘要","firstKeptEntryId":"m0000002","tokensBefore":12000,"compactedCount":3}
+{"type":"message","id":"q0000001","timestamp":1700000006000,"message":{"kind":"compaction","id":"q0000001","createdAt":1700000006000,"summary":"消息内摘要","compactedCount":2,"tokensBefore":8000,"firstKeptEntryId":"m0000002"}}
+{"type":"custom","id":"u0000001","timestamp":1700000007000,"key":"plan_state","value":{"phase":"approved"}}
+{"type":"message","id":"m0000003","timestamp":1700000008000,"message":{"kind":"kernel","id":"m0000003","createdAt":1700000008000,"message":{"role":"user","content":[{"type":"text","text":"应被截断"}],"timestamp":1700000008000}}}
+{"type":"truncate","id":"t0000001","timestamp":1700000009000,"fromId":"m0000003"}
+{"type":"message","id":"m0000004","timestamp":1700000010000,"message":{"kind":"kernel","id":"m0000004","createdAt":1700000010000,"message":{"role":"user","content":[{"type":"text","text":"截断后也不应进入旧重放"}],"timestamp":1700000010000}}}
+{"type":"message","id":
+{"type":"unknown","id":"x0000001","timestamp":1700000011000}
