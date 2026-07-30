@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   createContextService,
+  type ContextClock,
 } from '../../../src/runtime/context/context-service.ts'
 import type {
   ContextCompactor,
@@ -57,6 +58,47 @@ interface Fixture {
   appended: AppendCompactionInput[]
   usageInputs: ContextUsageEstimateInput[]
   history: SessionMessageHistory
+}
+
+interface FakeTimer {
+  id: number
+  deadlineAt: number
+  callback(): void
+}
+
+class FakeClock implements ContextClock {
+  current = 100
+  #nextId = 1
+  readonly #timers = new Map<number, FakeTimer>()
+
+  now(): number {
+    return this.current
+  }
+
+  setTimeout(callback: () => void, delayMs: number): number {
+    const timer = {
+      id: this.#nextId++,
+      deadlineAt: this.current + delayMs,
+      callback,
+    }
+    this.#timers.set(timer.id, timer)
+    return timer.id
+  }
+
+  clearTimeout(timer: unknown): void {
+    if (typeof timer === 'number') this.#timers.delete(timer)
+  }
+
+  advance(ms: number): void {
+    this.current += ms
+    const due = [...this.#timers.values()]
+      .filter((timer) => timer.deadlineAt <= this.current)
+      .sort((left, right) => left.deadlineAt - right.deadlineAt)
+    for (const timer of due) {
+      this.#timers.delete(timer.id)
+      timer.callback()
+    }
+  }
 }
 
 function createFixture(): Fixture {
@@ -170,6 +212,7 @@ function createCompactor(
 function createService(
   fixture: Fixture,
   compactor: ContextCompactor,
+  clock?: ContextClock,
 ) {
   return createContextService({
     sessions: {
@@ -182,6 +225,7 @@ function createService(
     history: fixture.history,
     channels: { list: () => [CHANNEL] },
     compactor,
+    ...(clock ? { clock } : {}),
   })
 }
 
@@ -193,6 +237,29 @@ function hostEventTypes(frames: StreamFrame[]): string[] {
   return frames.flatMap((frame) =>
     frame.payload.channel === 'host' ? [frame.payload.event.type] : [],
   )
+}
+
+function turnUsage(totalTokens: number) {
+  return {
+    input: Math.max(0, totalTokens - 100),
+    output: 100,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens,
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+    },
+  }
+}
+
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
 }
 
 describe('ContextService', () => {
@@ -282,6 +349,141 @@ describe('ContextService', () => {
       'compaction_cancelled',
     ])
     expect(fixture.appended).toHaveLength(0)
+  })
+
+  test('84% 不调度，达到 85% 后显示三秒倒计时', () => {
+    const fixture = createFixture()
+    const clock = new FakeClock()
+    const service = createService(fixture, createCompactor(fixture), clock)
+    let running = false
+
+    service.observeTurn({
+      sessionId: 'session-1',
+      usage: turnUsage(84_999),
+      contextWindow: 100_000,
+      emit: emitTo(fixture),
+      isRunning: () => running,
+    })
+    service.observeTurn({
+      sessionId: 'session-1',
+      usage: turnUsage(85_000),
+      contextWindow: 100_000,
+      emit: emitTo(fixture),
+      isRunning: () => running,
+    })
+
+    expect(hostEventTypes(fixture.frames)).toEqual([
+      'context_usage',
+      'context_usage',
+      'compaction_scheduled',
+    ])
+    expect(
+      fixture.frames.find(
+        (frame) =>
+          frame.payload.channel === 'host'
+          && frame.payload.event.type === 'compaction_scheduled',
+      ),
+    ).toEqual({
+      sessionId: 'session-1',
+      runId: 0,
+      payload: {
+        channel: 'host',
+        event: { type: 'compaction_scheduled', deadlineAt: 3_100 },
+      },
+    })
+    running = true
+  })
+
+  test('稍后会取消本次倒计时，直到用量再增加 5% 才重新调度', () => {
+    const fixture = createFixture()
+    const clock = new FakeClock()
+    const service = createService(fixture, createCompactor(fixture), clock)
+    const observe = (usedTokens: number): void => service.observeTurn({
+      sessionId: 'session-1',
+      usage: turnUsage(usedTokens),
+      contextWindow: 100_000,
+      emit: emitTo(fixture),
+      isRunning: () => false,
+    })
+
+    observe(85_000)
+    service.defer('session-1', emitTo(fixture))
+    clock.advance(3_000)
+    observe(89_999)
+    observe(90_000)
+
+    expect(hostEventTypes(fixture.frames)).toEqual([
+      'context_usage',
+      'compaction_scheduled',
+      'compaction_cancelled',
+      'context_usage',
+      'context_usage',
+      'compaction_scheduled',
+    ])
+    expect(fixture.appended).toHaveLength(0)
+  })
+
+  test('倒计时到期时 Run 未结束则排队，并在 settled 后立即压缩', async () => {
+    const fixture = createFixture()
+    const clock = new FakeClock()
+    const service = createService(fixture, createCompactor(fixture), clock)
+
+    service.observeTurn({
+      sessionId: 'session-1',
+      usage: turnUsage(85_000),
+      contextWindow: 100_000,
+      emit: emitTo(fixture),
+      isRunning: () => true,
+    })
+    clock.advance(3_000)
+
+    expect(hostEventTypes(fixture.frames)).toEqual([
+      'context_usage',
+      'compaction_scheduled',
+      'compaction_queued',
+    ])
+
+    service.runSettled('session-1')
+    await flushAsyncWork()
+
+    expect(hostEventTypes(fixture.frames)).toEqual([
+      'context_usage',
+      'compaction_scheduled',
+      'compaction_queued',
+      'compaction_start',
+      'compaction_end',
+    ])
+    expect(fixture.appended).toHaveLength(1)
+  })
+
+  test('下一次模型调用前达到阈值会取消倒计时并同步完成压缩', async () => {
+    const fixture = createFixture()
+    const clock = new FakeClock()
+    const service = createService(fixture, createCompactor(fixture), clock)
+    service.observeTurn({
+      sessionId: 'session-1',
+      usage: turnUsage(85_000),
+      contextWindow: 100_000,
+      emit: emitTo(fixture),
+      isRunning: () => true,
+    })
+
+    const compacted = await service.beforeModelCall({
+      sessionId: 'session-1',
+      contextTokens: 85_000,
+      contextWindow: 100_000,
+      emit: emitTo(fixture),
+    })
+    clock.advance(3_000)
+
+    expect(compacted).toBe(true)
+    expect(hostEventTypes(fixture.frames)).toEqual([
+      'context_usage',
+      'compaction_scheduled',
+      'compaction_start',
+      'compaction_end',
+    ])
+    expect(fixture.appended).toHaveLength(1)
   })
 })
 

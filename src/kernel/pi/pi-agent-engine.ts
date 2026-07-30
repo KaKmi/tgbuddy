@@ -19,6 +19,11 @@ import type {
   AgentInvocation,
   ToolPolicy,
 } from '../../runtime/runs/agent-engine.ts'
+import { estimateModelCallContextTokens } from './pi-compaction.ts'
+import {
+  estimateTextTokens,
+  estimateToolTokens,
+} from './pi-context-usage.ts'
 import { buildModels } from './pi-models.ts'
 
 export interface PiAgentSessionProvider {
@@ -38,6 +43,11 @@ export interface PersistedPiMessage {
   id: string
   createdAt: number
   message: PiMessage
+}
+
+export interface CompactedContextCursor {
+  base: AgentMessage[]
+  sourceMessageCount: number
 }
 
 interface QueueWaiter<T> {
@@ -133,12 +143,13 @@ class PiAgentEngine implements AgentEngine {
     }
     if (signal.aborted) return
 
+    const tools = this.#tools(invocation)
     const harness = new AgentHarness({
       session,
       models,
       model,
       systemPrompt: invocation.systemPrompt,
-      tools: this.#tools(invocation),
+      tools,
     })
     const events = new AsyncEventQueue<AgentEvent>()
     let promptSettled = false
@@ -157,6 +168,31 @@ class PiAgentEngine implements AgentEngine {
       return decision.action === 'deny'
         ? { block: true, reason: decision.reason }
         : undefined
+    })
+    const fixedContextTokens =
+      estimateTextTokens(invocation.systemPrompt)
+      + estimateToolTokens(tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      })))
+    let compactedContext: CompactedContextCursor | undefined
+    const unsubscribeContextGuard = harness.on('context', async (event) => {
+      if (!invocation.beforeModelCall) return undefined
+      const current = mergeCompactedContext(event.messages, compactedContext)
+      const compacted = await invocation.beforeModelCall(
+        estimateModelCallContextTokens(current, fixedContextTokens),
+        model.contextWindow,
+      )
+      if (!compacted) {
+        return compactedContext ? { messages: current } : undefined
+      }
+      const base = (await session.buildContext()).messages
+      compactedContext = {
+        base,
+        sourceMessageCount: event.messages.length,
+      }
+      return { messages: base }
     })
     const unsubscribe = harness.subscribe(async (event) => {
       const persisted = event.type === 'message_end'
@@ -201,6 +237,7 @@ class PiAgentEngine implements AgentEngine {
       if (promptFailed) throw promptError
     } finally {
       signal.removeEventListener('abort', abortHarness)
+      unsubscribeContextGuard()
       unsubscribeToolPolicy()
       unsubscribe()
       if (this.#active.get(invocation.sessionId) === harness) {
@@ -411,4 +448,17 @@ export function createPiAgentEngine(
   options: CreatePiAgentEngineOptions,
 ): AgentEngine {
   return new PiAgentEngine(options)
+}
+
+/**
+ * Agent loop 会保留本次 Run 开始时的内存历史；压缩后用新的持久化基线替换旧前缀，
+ * 再拼接本 Run 后续产生的消息，避免下一轮工具调用把已压缩原文带回来。
+ */
+export function mergeCompactedContext(
+  source: AgentMessage[],
+  cursor?: CompactedContextCursor,
+): AgentMessage[] {
+  return cursor
+    ? [...cursor.base, ...source.slice(cursor.sourceMessageCount)]
+    : source
 }

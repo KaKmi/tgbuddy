@@ -1,8 +1,10 @@
 export {
   createPiAgentEngine,
+  mergeCompactedContext,
   piEventToAgentEvent,
   piMessageFailureEvent,
   type CreatePiAgentEngineOptions,
+  type CompactedContextCursor,
   type PersistedPiMessage,
   type PiAgentSessionProvider,
 } from './pi-agent-engine.ts'
@@ -19,8 +21,6 @@ export {
   estimateModelCallContextTokens,
   prepareCompactionRuntime,
   prepareStoredCompaction,
-  shouldCompactBeforeModelCall,
-  shouldScheduleCompaction,
   toPiEntries,
   type CompactionKernelRuntime,
   type StoredCompactionResult,

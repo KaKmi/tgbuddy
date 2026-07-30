@@ -14,6 +14,14 @@ export interface AgentInvocation {
   channel: Channel
   modelId: string
   systemPrompt: string
+  /**
+   * 每次真正请求模型前执行的容量护栏。返回 true 表示历史已压缩，
+   * kernel 需要重新读取持久化上下文。
+   */
+  beforeModelCall?(
+    contextTokens: number,
+    contextWindow: number,
+  ): Promise<boolean>
 }
 
 export interface ToolPolicyInput {

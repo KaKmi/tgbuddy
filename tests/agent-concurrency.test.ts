@@ -12,6 +12,7 @@ import {
   acceptRunFrame,
   applyAgentEvent,
   applyCompactionState,
+  dequeueQueuedPrompt,
   emptyStreamState,
   indexPendingRequests,
   mergePendingRequests,
@@ -167,6 +168,21 @@ describe('Agent 并发状态', () => {
     expect(running.running).toBe(true)
     expect(running.compaction?.status).toBe('scheduled')
   })
+
+  test('压缩完成只会取走当前 Session 的一条排队输入', () => {
+    const prompts = new Map([
+      ['session-1', '压缩后发送'],
+      ['session-2', '保持排队'],
+    ])
+
+    const first = dequeueQueuedPrompt(prompts, 'session-1')
+    const duplicate = dequeueQueuedPrompt(first.prompts, 'session-1')
+
+    expect(first.text).toBe('压缩后发送')
+    expect(first.prompts.has('session-1')).toBe(false)
+    expect(first.prompts.get('session-2')).toBe('保持排队')
+    expect(duplicate.text).toBeUndefined()
+  })
 })
 
 describe('RunRegistry', () => {
@@ -205,6 +221,62 @@ describe('RunRegistry', () => {
 })
 
 describe('RunCoordinator', () => {
+  test('把模型调用护栏、turn usage 与 settled 串到同一 ContextService', async () => {
+    const calls: string[] = []
+    const engine: AgentEngine = {
+      async *run(invocation) {
+        const compacted = await invocation.beforeModelCall?.(85, 100)
+        calls.push(`engine.compacted:${String(compacted)}`)
+        yield {
+          type: 'turn_end',
+          usage: {
+            input: 80,
+            output: 5,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 85,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
+        }
+        yield { type: 'run_end', stopReason: 'stop' }
+      },
+      async dispose() {},
+    }
+    const coordinator = createRunCoordinator({
+      now: () => 100,
+      engine,
+      createInvocation,
+      lifecycle: createLifecycle(),
+      context: {
+        async beforeModelCall(input) {
+          calls.push(`context.before:${input.contextTokens}`)
+          return true
+        },
+        observeTurn(input) {
+          calls.push(`context.turn:${input.usage.totalTokens}`)
+        },
+        runSettled(sessionId) {
+          calls.push(`context.settled:${sessionId}`)
+        },
+      },
+    })
+
+    await coordinator.send({ sessionId: 'session-1', text: '继续' }, () => {})
+
+    expect(calls).toEqual([
+      'context.before:85',
+      'engine.compacted:true',
+      'context.turn:85',
+      'context.settled:session-1',
+    ])
+  })
+
   test('拒绝同 Session 重入，同时允许不同 Session 执行并在 settled 后释放', async () => {
     const pending = new Map<string, Deferred>()
     const started: AgentInvocation[] = []

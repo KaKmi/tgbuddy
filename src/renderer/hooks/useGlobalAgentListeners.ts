@@ -17,6 +17,7 @@ import {
   acceptRunFrame,
   applyCompactionState,
   applyAgentEvent,
+  dequeueQueuedPrompt,
   emptyStreamState,
   indexPendingRequests,
   markersAtom,
@@ -50,12 +51,10 @@ function pushMarker(
 }
 
 function flushQueuedPrompt(store: ReturnType<typeof useStore>, sessionId: string): void {
-  const queued = new Map(store.get(queuedPromptsAtom))
-  const text = queued.get(sessionId)
-  if (!text) return
-  queued.delete(sessionId)
-  store.set(queuedPromptsAtom, queued)
-  void window.tgbuddy.agent.send({ sessionId, text })
+  const result = dequeueQueuedPrompt(store.get(queuedPromptsAtom), sessionId)
+  if (!result.text) return
+  store.set(queuedPromptsAtom, result.prompts)
+  void window.tgbuddy.agent.send({ sessionId, text: result.text })
 }
 
 async function refreshMessagesAndFlush(

@@ -2,10 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import {
   convertStoredMessagesToLlm,
   estimateModelCallContextTokens,
-  shouldCompactBeforeModelCall,
-  shouldScheduleCompaction,
   toPiEntries,
 } from '../src/kernel/pi/pi-compaction.ts'
+import { shouldSchedule } from '../src/runtime/context/context-service.ts'
 import { buildPostCompactionUsage } from '../src/kernel/pi/pi-context-usage.ts'
 import { applyCompactionState, emptyStreamState } from '../src/renderer/atoms/agent.ts'
 import { toKernelMessages, type SessionMessage } from '../src/shared/types/message.ts'
@@ -14,15 +13,10 @@ import { replaySessionEntries } from '../src/main/session-store.ts'
 
 describe('上下文压缩', () => {
   test('自动阈值与稍后冷却正确生效', () => {
-    expect(shouldScheduleCompaction(84_999, 100_000)).toBe(false)
-    expect(shouldScheduleCompaction(85_000, 100_000)).toBe(true)
-    expect(shouldScheduleCompaction(89_999, 100_000, 85_000)).toBe(false)
-    expect(shouldScheduleCompaction(90_000, 100_000, 85_000)).toBe(true)
-  })
-
-  test('模型调用前会把固定提示和新消息计入阈值', () => {
-    expect(shouldCompactBeforeModelCall(80_000, 4_999, 100_000)).toBe(false)
-    expect(shouldCompactBeforeModelCall(80_000, 5_000, 100_000)).toBe(true)
+    expect(shouldSchedule(84_999, 100_000)).toBe(false)
+    expect(shouldSchedule(85_000, 100_000)).toBe(true)
+    expect(shouldSchedule(89_999, 100_000, 85_000)).toBe(false)
+    expect(shouldSchedule(90_000, 100_000, 85_000)).toBe(true)
   })
 
   test('供应商 usage 已含固定提示时不会重复计算', () => {

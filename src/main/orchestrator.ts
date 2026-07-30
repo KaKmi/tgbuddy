@@ -11,14 +11,13 @@
  *   - 专家绑定（阶段 7.5）
  */
 
-import { Agent, type AgentMessage } from '@earendil-works/pi-agent-core'
+import { Agent } from '@earendil-works/pi-agent-core'
 import type { SendInput } from '../shared/ipc.ts'
 import type { StreamFrame, StreamPayload } from '../shared/types/event.ts'
 import { toKernelMessages } from '../shared/types/message.ts'
 import type { SessionMessageHistory } from '../runtime/index.ts'
 import { buildModels } from '../kernel/pi/pi-models.ts'
 import { eventFromPi } from '../kernel/normalize.ts'
-import { buildContextUsage } from '../kernel/pi/pi-context-usage.ts'
 import { convertStoredMessagesToLlm } from '../kernel/pi/pi-compaction.ts'
 import { DATA_DIR, listChannels } from './channel-store.ts'
 import * as permission from './permission-service.ts'
@@ -29,7 +28,6 @@ import { buildBuiltinTools } from './tools/index.ts'
 import { buildAskUserTool } from './tools/ask-user.ts'
 import { buildPlanModeTools } from './tools/plan-mode.ts'
 import { configureSandbox } from './tools/sandbox.ts'
-import * as compaction from './compaction-service.ts'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -39,7 +37,6 @@ interface LegacyRunExecutionContext {
   sessionId: string
   runId: number
   emit(frame: StreamFrame): void
-  isRunning(): boolean
 }
 
 const runningAgents = new Map<string, Agent>()
@@ -52,11 +49,6 @@ export async function execute(
 ): Promise<void> {
   const { sessionId } = input
   const { runId, emit: sendFrame } = context
-
-  if (compaction.isCompacting(sessionId)) {
-    emitHostError(sessionId, 0, '正在压缩历史消息，请稍候', sendFrame)
-    return
-  }
 
   const emit = (payload: StreamPayload): void => sendFrame({ sessionId, runId, payload })
 
@@ -115,12 +107,6 @@ export async function execute(
           signal),
       }),
     ]
-    let compactedContext: AgentMessage[] | undefined
-    let sourceMessageCount = 0
-    const effectiveMessages = (messages: AgentMessage[]): AgentMessage[] =>
-      compactedContext
-        ? [...compactedContext, ...messages.slice(sourceMessageCount)]
-        : messages
     const initialMessages = toKernelMessages(await history.messages(sessionId))
     // dispose/stop 可能发生在历史读取期间；此时不能再启动一个无人能中断的新 Agent。
     if (stoppedByUser.has(sessionId)) return
@@ -136,26 +122,6 @@ export async function execute(
       // 不依赖 process.env —— GUI 启动的 Electron 读不到 shell 环境变量
       getApiKey: async () => channel.apiKey,
       convertToLlm: convertStoredMessagesToLlm,
-      transformContext: async (messages, signal) => {
-        const current = effectiveMessages(messages)
-        const next = await compaction.compactBeforeModelCall(
-          {
-            sessionId,
-            messages: current,
-            systemPrompt,
-            tools,
-            contextWindow: model.contextWindow,
-            sendFrame,
-            signal,
-          },
-          history,
-        )
-        if (compactedContext || next !== current) {
-          compactedContext = next
-          sourceMessageCount = messages.length
-        }
-        return next
-      },
       // ★ 权限拦截点。这个钩子是 await 的，所以能真的挂起 agent loop
       //   等一次 IPC 往返到渲染进程弹窗（阶段 1 实测确认过）
       beforeToolCall: permission.createBeforeToolCall(sessionId, (request) => {
@@ -181,27 +147,6 @@ export async function execute(
       //   比如 write → 「正在写 reports/q2-risk.md」
       if (event.type === 'tool_start') {
         store.updateMeta(sessionId, { lastActivity: `正在执行 ${event.toolName}…` })
-      }
-
-      if (event.type === 'turn_end' && event.usage) {
-        const contextMessages = effectiveMessages(agent.state.messages)
-        const contextUsage = buildContextUsage({
-          messages: contextMessages,
-          systemPrompt: agent.state.systemPrompt,
-          tools: agent.state.tools,
-          contextWindow: model.contextWindow,
-          usage: event.usage,
-        })
-        store.updateMeta(sessionId, { contextUsage })
-        emit({ channel: 'host', event: { type: 'context_usage', usage: contextUsage } })
-        compaction.scheduleIfNeeded(
-          sessionId,
-          contextUsage.usedTokens,
-          contextUsage.contextWindow,
-          sendFrame,
-          context.isRunning,
-          history,
-        )
       }
 
       emit({ channel: 'agent', event })
@@ -235,7 +180,6 @@ export async function execute(
     emit({ channel: 'host', event: { type: 'pending_requests_cleared' } })
     runningAgents.delete(sessionId)
     stoppedByUser.delete(sessionId)
-    compaction.runQueued(sessionId, sendFrame, history)
   }
 }
 
@@ -246,19 +190,6 @@ export function stop(sessionId: string): void {
 }
 
 // ── 辅助 ──────────────────────────────────────────────────────────
-
-function emitHostError(
-  sessionId: string,
-  runId: number,
-  message: string,
-  sendFrame: FrameSender,
-): void {
-  sendFrame({
-    sessionId,
-    runId,
-    payload: { channel: 'host', event: { type: 'host_error', message, recoverable: true } },
-  })
-}
 
 /**
  * 把冗长的错误压成侧边栏能放下的一句。

@@ -62,11 +62,17 @@ export type {
   ToolPolicyInput,
 } from './runs/agent-engine.ts'
 export {
+  CONTEXT_AUTO_COMPACTION_DELAY_MS,
+  CONTEXT_AUTO_COMPACTION_THRESHOLD,
   createContextService,
+  shouldSchedule,
   type ContextChannelCatalog,
+  type ContextClock,
   type ContextService,
   type ContextSessionCatalog,
+  type BeforeModelCallInput,
   type CreateContextServiceOptions,
+  type ObserveContextTurnInput,
 } from './context/context-service.ts'
 export type {
   ContextCompactionInput,

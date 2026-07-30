@@ -3,8 +3,7 @@
  *
  * 删除期限：
  * - Session catalog 已在 K03 改为注入；legacy 消息委托在 K05 删除。
- * - orchestrator 已在 K08 退出生产 Run；permission、plan、question、compaction
- *   委托按 M1 后续 Slice 删除。
+ * - orchestrator 已在 K08 退出生产 Run；permission、plan、question 委托按后续 Slice 删除。
  * - 该文件不得成为第二个长期应用门面。
  */
 import { existsSync, mkdirSync } from 'node:fs'
@@ -29,7 +28,6 @@ import {
   listChannels,
   saveChannels,
 } from '../channel-store.ts'
-import * as compaction from '../compaction-service.ts'
 import * as permission from '../permission-service.ts'
 import * as plan from '../plan-service.ts'
 
@@ -45,10 +43,17 @@ export function createLegacyRuntime(
   options: CreateLegacyRuntimeOptions,
 ): TgBuddyRuntime {
   ensureDataDir()
+  const context = createContextService({
+    sessions: options.sessions,
+    history: options.history,
+    channels: { list: listChannels },
+    compactor: options.contextCompactor,
+  })
   const runs = createRunCoordinator({
     now: Date.now,
     engine: options.agentEngine,
     createInvocation: (input) => createAgentInvocation(input, options.sessions),
+    context,
     lifecycle: {
       async started(sessionId) {
         return requireSessionUpdate(
@@ -77,13 +82,6 @@ export function createLegacyRuntime(
       },
     },
   })
-  const context = createContextService({
-    sessions: options.sessions,
-    history: options.history,
-    channels: { list: listChannels },
-    compactor: options.contextCompactor,
-  })
-
   return createTgBuddyRuntime({
     workspaces: {
       list: () => [],
@@ -106,16 +104,9 @@ export function createLegacyRuntime(
     },
     context: {
       start: context.start,
-      defer: compaction.defer,
-      cancel(sessionId, emit) {
-        if (!context.cancel(sessionId, emit)) {
-          compaction.cancel(sessionId, emit)
-        }
-      },
-      clearSession(sessionId) {
-        context.clearSession(sessionId)
-        compaction.clearSession(sessionId)
-      },
+      defer: context.defer,
+      cancel: context.cancel,
+      clearSession: context.clearSession,
     },
     artifacts: {
       list: () => [],
@@ -137,6 +128,7 @@ export function createLegacyRuntime(
       },
     },
     async dispose() {
+      context.dispose()
       await runs.dispose()
       await options.dispose?.()
     },

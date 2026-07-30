@@ -196,7 +196,6 @@ describe('仓库 import 边界', () => {
     expect(LEGACY_COMPATIBILITY).toEqual([
       { prefix: 'src/kernel/', deleteIn: 'Story 1C' },
       { prefix: 'src/main/orchestrator.ts', deleteIn: 'Story 1C' },
-      { prefix: 'src/main/compaction-service.ts', deleteIn: 'Story 1C' },
       { prefix: 'src/main/tools/sandbox.ts', deleteIn: 'Story 2' },
       { prefix: 'src/main/tools/sandboxed-env.ts', deleteIn: 'Story 2' },
       { prefix: 'src/main/tools/index.ts', deleteIn: 'Story 4' },

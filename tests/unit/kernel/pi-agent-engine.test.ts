@@ -9,6 +9,7 @@ import type {
   UserMessage,
 } from '@earendil-works/pi-ai'
 import {
+  mergeCompactedContext,
   piEventToAgentEvent,
   piMessageFailureEvent,
   type PersistedPiMessage,
@@ -205,5 +206,31 @@ describe('PiAgentEngine 事件适配', () => {
       type: 'run_end',
       stopReason: 'stop',
     })
+  })
+
+  test('压缩后的模型上下文不会在后续工具轮次带回旧历史', () => {
+    const oldMessages: AgentMessage[] = [
+      { role: 'user', content: '旧一', timestamp: 1 },
+      { role: 'user', content: '旧二', timestamp: 2 },
+    ]
+    const summary: AgentMessage = {
+      role: 'compactionSummary',
+      summary: '旧历史摘要',
+      tokensBefore: 20_000,
+      timestamp: 3,
+    }
+    const fresh: AgentMessage = {
+      role: 'toolResult',
+      toolCallId: 'call-1',
+      toolName: 'read',
+      content: [{ type: 'text', text: '新结果' }],
+      isError: false,
+      timestamp: 4,
+    }
+
+    expect(mergeCompactedContext([...oldMessages, fresh], {
+      base: [summary],
+      sourceMessageCount: oldMessages.length,
+    })).toEqual([summary, fresh])
   })
 })

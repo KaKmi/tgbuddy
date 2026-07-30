@@ -26,8 +26,6 @@ import { buildPostCompactionUsage } from './pi-context-usage.ts'
 import { buildModels } from './pi-models.ts'
 
 const SUMMARY_MAX_CHARS = 16_000
-const AUTO_THRESHOLD = 0.85
-const RESCHEDULE_GAP = 0.05
 
 export interface StoredCompactionResult {
   summary: string
@@ -89,26 +87,6 @@ export function createPiContextCompactor(): ContextCompactor {
       )
     },
   }
-}
-
-export function shouldScheduleCompaction(
-  usedTokens: number,
-  contextWindow: number,
-  deferredAtTokens?: number,
-): boolean {
-  if (contextWindow <= 0 || usedTokens < contextWindow * AUTO_THRESHOLD) return false
-  if (deferredAtTokens === undefined) return true
-  return usedTokens >= deferredAtTokens + contextWindow * RESCHEDULE_GAP
-}
-
-/** 每次调用模型前使用估算值兜底，避免下一轮请求先撞上上下文上限。 */
-export function shouldCompactBeforeModelCall(
-  messagesTokens: number,
-  fixedTokens: number,
-  contextWindow: number,
-): boolean {
-  if (contextWindow <= 0) return false
-  return messagesTokens + fixedTokens >= contextWindow * AUTO_THRESHOLD
 }
 
 /**

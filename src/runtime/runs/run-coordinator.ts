@@ -8,6 +8,7 @@ import type {
   AgentEngine,
   AgentInvocation,
 } from './agent-engine.ts'
+import type { ContextService } from '../context/context-service.ts'
 import {
   RunRegistry,
   type ActiveRun,
@@ -18,6 +19,10 @@ export interface CreateRunCoordinatorOptions {
   engine: AgentEngine
   createInvocation(input: SendInput): Promise<AgentInvocation>
   lifecycle: RunSessionLifecycle
+  context?: Pick<
+    ContextService,
+    'observeTurn' | 'beforeModelCall' | 'runSettled'
+  >
 }
 
 export interface RunSettlement {
@@ -45,6 +50,7 @@ class DefaultRunCoordinator implements RunCoordinator {
     input: SendInput,
   ) => Promise<AgentInvocation>
   readonly #lifecycle: RunSessionLifecycle
+  readonly #context: CreateRunCoordinatorOptions['context']
   readonly #inFlight = new Set<Promise<void>>()
   #disposePromise: Promise<void> | undefined
 
@@ -53,6 +59,7 @@ class DefaultRunCoordinator implements RunCoordinator {
     this.#engine = options.engine
     this.#createInvocation = options.createInvocation
     this.#lifecycle = options.lifecycle
+    this.#context = options.context
   }
 
   send(
@@ -123,7 +130,19 @@ class DefaultRunCoordinator implements RunCoordinator {
         { type: 'session_updated', session: runningSession },
         emit,
       )
-      const invocation = await this.#createInvocation(input)
+      const sourceInvocation = await this.#createInvocation(input)
+      const invocation: AgentInvocation = this.#context
+        ? {
+            ...sourceInvocation,
+            beforeModelCall: (contextTokens, contextWindow) =>
+              this.#context!.beforeModelCall({
+                sessionId: run.sessionId,
+                contextTokens,
+                contextWindow,
+                emit,
+              }),
+          }
+        : sourceInvocation
       if (run.signal.aborted) {
         terminalEvent = { type: 'run_end', stopReason: 'aborted' }
         return
@@ -137,6 +156,15 @@ class DefaultRunCoordinator implements RunCoordinator {
         if (event.type === 'run_end') {
           terminalEvent ??= event
           continue
+        }
+        if (event.type === 'turn_end' && event.usage) {
+          this.#context?.observeTurn({
+            sessionId: run.sessionId,
+            usage: event.usage,
+            contextWindow: invocationContextWindow(invocation),
+            emit,
+            isRunning: () => this.#registry.isRunning(run.sessionId),
+          })
         }
         this.#emitAgentEvent(run, event, emit)
       }
@@ -206,8 +234,9 @@ class DefaultRunCoordinator implements RunCoordinator {
           emit,
         )
       }
-      if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
       this.#registry.settle(run)
+      if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
+      this.#context?.runSettled(run.sessionId)
     }
   }
 
@@ -249,4 +278,9 @@ export function createRunCoordinator(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function invocationContextWindow(invocation: AgentInvocation): number {
+  return invocation.channel.models.find((model) => model.id === invocation.modelId)
+    ?.contextWindow ?? 0
 }

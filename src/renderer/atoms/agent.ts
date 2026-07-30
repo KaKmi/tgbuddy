@@ -131,6 +131,23 @@ export const streamStatesAtom = atom<Map<string, StreamState>>(new Map())
 /** 压缩期间排队的一条用户消息。每个会话独立，切换页面不会丢。 */
 export const queuedPromptsAtom = atom<Map<string, string>>(new Map())
 
+export interface DequeuedPrompt {
+  prompts: Map<string, string>
+  text?: string
+}
+
+/** 压缩结束时原子地取走一条排队输入，避免重复完成事件发送两次。 */
+export function dequeueQueuedPrompt(
+  current: Map<string, string>,
+  sessionId: string,
+): DequeuedPrompt {
+  const text = current.get(sessionId)
+  if (!text) return { prompts: current }
+  const prompts = new Map(current)
+  prompts.delete(sessionId)
+  return { prompts, text }
+}
+
 /**
  * sessionId → 待授权请求队列。
  *
