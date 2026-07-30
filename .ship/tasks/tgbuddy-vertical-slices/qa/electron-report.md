@@ -5,16 +5,16 @@
 - 应用入口：`file:///C:/Users/Administrator/Desktop/prom/proma-mini/dist/renderer/index.html`
 - 会话：`tgbuddy-qa`
 - 运行方式：打包后的 Renderer + Electron Main/Preload + 真实 IPC/Runtime/SQLite
-- 结果：发现 1 个 P2，其余探索项通过
+- 结果：发现 1 个 P2；已修复并完成定向 E2E 与 Electron QA 回归
 
 ## 严重度汇总
 
-| 严重度 | 数量 |
-| --- | ---: |
-| P0 | 0 |
-| P1 | 0 |
-| P2 | 1 |
-| P3 | 0 |
+| 严重度 | 发现 | 未解决 |
+| --- | ---: | ---: |
+| P0 | 0 | 0 |
+| P1 | 0 | 0 |
+| P2 | 1 | 0 |
+| P3 | 0 | 0 |
 
 ## 通过项
 
@@ -40,6 +40,7 @@
 - 严重度：P2
 - 类型：状态投影 / 用户反馈
 - 复现率：2/2
+- 状态：已修复并回归通过
 - 前置条件：新建会话并发送一条会触发运行的消息
 
 复现步骤：
@@ -65,7 +66,15 @@
 
 - 运行中：[04-running.png](screenshots/04-running.png)
 - 停止后：[05-stopped.png](screenshots/05-stopped.png)
+- 修复后：[11-stopped-status-fixed.png](screenshots/11-stopped-status-fixed.png)
 - Electron CDP 连接不支持 `Target.createBrowserContext`，因此 `agent-browser record` 无法为现有窗口创建视频上下文；保留前后截图作为证据。
+
+修复与回归：
+
+- Run 被主动停止后持久化为 `interrupted`，详情为“用户已停止”。
+- 定向单元测试通过：19/19。
+- 定向 Playwright Electron E2E 通过：1/1。
+- Electron QA 在点击停止后等待 8.5 秒，侧边栏持续显示“已中断 · 用户已停止”，且未出现迟到文本。
 
 ## 运行观察
 

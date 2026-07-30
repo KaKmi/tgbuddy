@@ -50,6 +50,9 @@ test('停止会中止 Run、丢弃迟到文本，并允许下一次发送', asyn
   await tgbuddy.page.getByRole('button', { name: '停止' }).click()
 
   await expect(tgbuddy.page.getByRole('button', { name: '发送', exact: true })).toBeVisible()
+  await expect(
+    tgbuddy.page.getByRole('button', { name: /已中断 · 用户已停止/ }),
+  ).toBeVisible()
   await expect(tgbuddy.page.getByText('这段迟到文本不应在停止后出现')).toHaveCount(0)
   await sendAndWait(tgbuddy.page, '停止后继续', 'E2E 回复：停止后继续')
 })

@@ -391,11 +391,12 @@ describe('RunCoordinator', () => {
     expect(coordinator.isRunning('session-2')).toBe(false)
   })
 
-  test('stop 幂等触发 AbortSignal，丢弃停止后的 engine 迟到事件并 settled 为 idle', async () => {
+  test('stop 幂等触发 AbortSignal，丢弃停止后的 engine 迟到事件并 settled 为 interrupted', async () => {
     const started = deferred()
     const settlements: Array<{
       sessionId: string
-      status: 'idle' | 'done' | 'failed'
+      status: 'idle' | 'done' | 'failed' | 'interrupted'
+      detail?: string
     }> = []
     const frames: StreamFrame[] = []
     const engine: AgentEngine = {
@@ -428,6 +429,7 @@ describe('RunCoordinator', () => {
           settlements.push({
             sessionId: settlement.sessionId,
             status: settlement.status,
+            ...(settlement.detail ? { detail: settlement.detail } : {}),
           })
           return Promise.resolve({
             id: settlement.sessionId,
@@ -451,7 +453,8 @@ describe('RunCoordinator', () => {
 
     expect(settlements).toEqual([{
       sessionId: 'session-1',
-      status: 'idle',
+      status: 'interrupted',
+      detail: '用户已停止',
     }])
     expect(
       frames.some(

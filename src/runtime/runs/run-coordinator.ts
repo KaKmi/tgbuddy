@@ -27,7 +27,7 @@ export interface CreateRunCoordinatorOptions {
 
 export interface RunSettlement {
   sessionId: string
-  status: 'idle' | 'done' | 'failed'
+  status: 'idle' | 'done' | 'failed' | 'interrupted'
   detail?: string
 }
 
@@ -193,14 +193,16 @@ class DefaultRunCoordinator implements RunCoordinator {
         const settledSession = await this.#lifecycle.settled({
           sessionId: run.sessionId,
           status: run.signal.aborted
-            ? 'idle'
+            ? 'interrupted'
             : failureMessage
               ? 'failed'
               : 'done',
           ...(
-            failureMessage && !run.signal.aborted
-              ? { detail: failureMessage }
-              : {}
+            run.signal.aborted
+              ? { detail: '用户已停止' }
+              : failureMessage
+                ? { detail: failureMessage }
+                : {}
           ),
         })
         this.#emitHostEvent(
