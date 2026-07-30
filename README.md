@@ -1,107 +1,167 @@
 # TgBuddy
 
-基于 **pi** 内核的精简版 Agent 桌面应用，使用
-[`@earendil-works/pi-*`](https://github.com/earendil-works/pi) 管理模型调用和 Agent 循环。
+TgBuddy 是一个基于 **pi 内核**的本地优先 Agent Workbench，使用 Electron、React、
+`@earendil-works/pi-agent-core` 和 `@earendil-works/pi-ai`。它既是一套可供二次开发的
+通用工作平台，也是一份强调架构决策、工程质量和可验证证据的面试作品。产品只做 Agent
+模式，不做普通 Chat 模式。
 
-- **给 Claude Code 的项目指引**：[CLAUDE.md](CLAUDE.md)
-- 架构设计：[docs/01-架构设计.md](docs/01-架构设计.md)
-- 功能范围（做什么 / 不做什么）：[docs/02-功能范围.md](docs/02-功能范围.md)
-- UI 设计需求清单（给设计的输入）：[docs/03-UI设计需求清单.md](docs/03-UI设计需求清单.md)
-- 给设计的 prompt：[docs/04-给设计的prompt.md](docs/04-给设计的prompt.md)
-- 设计系统：[docs/05-design.md](docs/05-design.md)
-- **设计决策（已定，照做即可）**：[docs/06-设计决策.md](docs/06-设计决策.md)
-- 交互原型：`tgbuddy-mockup/TgBuddy 交互原型（独立版）.html`
-- 只做 Agent 模式，不做 Chat 模式
-- 目标规模：`src/` 下 30–40 个文件
+第一版采用“仓库内模块化 Runtime + Electron 参考宿主”：先把正常的软件分层、扩展接口、
+测试和失败恢复做好，不提前承诺独立 npm SDK、第三方插件 ABI、复杂 DI 容器或完整 Team 平台。
 
-## 当前进度
+## 当前状态
 
-| # | 阶段 | 状态 |
+项目正在进行一次**架构迁移式的二次开发**，不是从零重写。
+
+现有代码已经验证了核心交互闭环，可以作为后续开发的基座；但早期实现中的裸 `Agent`、
+JSONL canonical storage、全局 Sandbox 和“Workspace 等于目录”等设计，需要迁移到新架构。
+
+### 已有基座
+
+- Electron 主进程、Preload、React Renderer 和 IPC 双通道。
+- pi Provider 接入、流式消息、工具调用和多轮上下文。
+- 内置文件工具、权限挂起、计划模式和 `ask_user`。
+- 多 Session generation 守卫、停止运行和挂起请求清理。
+- 线性 JSONL 会话、坏行跳过、原子索引和压缩恢复的原型实现。
+- 上下文用量统计、自动/手动压缩和对应测试。
+- 工具卡片、权限卡片、计划审批和压缩状态等 UI 基础组件。
+
+这些代码不会整体推倒。迁移过程中优先保留已经验证的 Provider、事件、UI 和测试能力，
+逐步替换运行时、存储和 Workspace 边界。
+
+### 正在迁移的目标架构
+
+| 领域 | 当前基座 | 目标 |
 |---|---|---|
-| 1 | 打通内核 | ✅ DeepSeek 实测通过（流式 / 工具调用 / 权限挂起 / 多轮） |
-| 2 | Electron 骨架 | ✅ 三栏骨架 + IPC 双通道，实测能发消息看到流式 |
-| 3 | 持久化（线性 JSONL + 原子写 + 续接） | ✅ 跨进程重放、坏行跳过、.bak 恢复均实测 |
-| 4 | 工具 + 权限 + 沙箱 + 删除保护 | ✅ 全部实测通过 |
-| 4.5 | 计划模式（基础版） | ✅ 只读规划 + 计划审批；结构化任务执行留待 Plan 2.0 |
-| 5 | 并发与中断 | ✅ 多会话隔离 + generation 守卫 + abort + 挂起请求恢复/清理 |
-| 5.5 | 上下文用量面板 | ✅ 真实总占用 + 系统/工具/消息分类；压缩操作留待阶段 6 |
-| 6 | 上下文压缩 | ✅ 85% 自动触发 + 稍后/取消 + 手动压缩 + JSONL 恢复 |
-| 6.5 | 技能 + 连接器（Skills / MCP） | ⬜ |
-| 7 | 记忆（工具式、本地） | ⬜ |
-| 7.5 | 专家（轻量，切 systemPrompt） | ⬜ |
-| 8 | 专家（子 Agent）+ 团队编排 | ⬜ |
-| 9 | Plan 2.0：结构化任务执行 | ⬜ 任务列表 + 依赖 + 退出条件 + 验证证据 |
+| Agent Runtime | `src/main/orchestrator.ts` 直接创建裸 `Agent` | 使用 pi `AgentHarness` 管理 Session、save point、Tool 生命周期和 settled |
+| 会话存储 | `sessions.json` + 线性 JSONL | SQLite canonical storage；JSONL 只做导入、导出、审计和恢复 |
+| Workspace | 自动创建 `~/.tgbuddy/workspaces/{id}` | 逻辑 `WorkspaceRecord` + 可重新定位的 `WorkspaceMount` |
+| Sandbox | 全局配置 + 文件路径校验 | 每个 Run 独立的 `Sandboxed ExecutionEnv` + canonical path 校验 |
+| 大对象 | 消息内截断或剥离 | BlobStore 保存附件、完整工具输出、预览和非工作区产物 |
+| 能力系统 | 内置 Tool | Tool Registry + Skill Registry + MCP Manager |
+| 多 Agent | 尚未实现 | 主 Agent 同步委派单层 child，最多 2 个，最大深度 1 |
 
-面向用户的四个概念对应关系：**模式** = 权限模式，**专家** = systemPrompt 或子 Agent，
-**技能** = Agent Skills 的 `SKILL.md`，**连接器** = MCP Server。
+### 平台设计原则
 
-## 阶段 1：验证内核
+- **可替换**：Provider、Session storage、Tool、Skill、MCP 和 Agent Profile 通过明确接口装配。
+- **宿主解耦**：Runtime 不依赖 React 组件；Electron 通过 IPC 使用 Runtime，而不是成为业务内核。
+- **最小扩展面**：第一版只开放仓库内 TypeScript 接口，不维护跨版本插件兼容承诺。
+- **可验证**：关键架构决策必须有测试、失败场景或可重复的 spike 结果支撑。
+- **不过度设计**：不为了“平台感”引入无真实消费者的抽象层，每个扩展点至少服务当前实现或近期 Wave。
+- **面试可讲清楚**：保留架构图、取舍、迁移路径、测试证据和性能数字，而不是只展示功能截图。
 
-先不碰 Electron。用一个脚本证明 pi 能连上你要用的端点，并且
-`beforeToolCall` 能真的挂起 agent loop（这是整个权限设计的支点）。
+## 第一版范围
+
+第一版需要完成的闭环是：
+
+```text
+用户消息和附件
+  -> 恢复 Session 与 Workspace
+  -> AgentHarness 构造上下文和能力
+  -> Provider / Tool / MCP / Skill
+  -> 权限与 Sandbox
+  -> 消息、Blob 和产物持久化
+  -> UI 流式展示与重启恢复
+```
+
+Team 第一版不做独立实体、成员页、任务 DAG、parallel/chain/router 或复杂调度。
+只保留“主 Agent 委派 child，并让过程可见”的最小能力。
+
+详细边界见：
+
+- [架构设计](docs/01-架构设计.md)
+- [功能范围](docs/02-功能范围.md)
+- [设计决策](docs/06-设计决策.md)
+- [文档索引](docs/DOCS_INDEX.md)
+
+## 开发方式
+
+架构文档中的阶段是 Milestone，不直接作为一个大任务开发。实际开发计划按以下层次拆分：
+
+```text
+Milestone
+  -> Wave（2-5 天）
+    -> Story（0.5-2 天）
+      -> 验收测试
+```
+
+近期顺序如下，详细 Story 和文件级改动仍需通过 `$ship:design` 生成：
+
+| 顺序 | Wave | 目标 |
+|---:|---|---|
+| 0 | SQLite packaged spike | 验证 Electron 打包环境中的追加、强杀恢复、WAL 备份和 JSONL 导入 |
+| 1 | Session Runtime | 接入 AgentHarness、SessionRepo、save point、错误和取消生命周期 |
+| 2 | Workspace 与安全 | WorkspaceMount、per-run Sandbox、权限规则绑定 Workspace |
+| 3 | Blob 与产物 | 附件、大 Tool 输出、预览和 Artifact 索引 |
+| 4 | 能力系统 | Skill Registry、MCP Manager、上下文能力预算 |
+| 5 | 单层委派 | child lineage、root budget、权限透传和级联取消 |
+| 6 | UI 与恢复验收 | 按交互原型完成工具卡片、结果区、压缩和恢复场景 |
+
+## 本地运行
+
+### 安装依赖
 
 ```bash
 bun install
 ```
 
-把 `.env.example` 复制成 `.env`，填入你的 DeepSeek key（compat 已按 pi 官方目录预配好）：
+复制开发配置并填写模型密钥：
 
 ```bash
 copy .env.example .env
 ```
 
-然后直接跑，Bun 会自动加载 `.env`，不用管 shell 的环境变量语法：
+### 验证 pi 内核
 
 ```bash
 bun run probe
 ```
 
-可选项在 `.env` 里：`DEEPSEEK_MODEL=deepseek-v4-pro`（默认 flash）、`DEEPSEEK_BASE_URL=...`（走中转网关时）。
+`probe` 不启动 Electron，用于验证 Provider、流式输出、工具调用和多轮上下文。
+Bun 会自动加载 `.env`；Electron 不会，开发模式由主进程的 `loadDotEnv()` 处理。
 
-脚本跑三轮，分别验证流式输出、工具调用 + `beforeToolCall` 挂起、多轮上下文。
-
-## 阶段 2：跑起来
+### 启动桌面应用
 
 ```bash
 bun run dev
 ```
 
-同时起 Vite dev server 和 Electron，主进程/preload 用 esbuild 编译。
-渠道配置沿用 `.env` 里的 `DEEPSEEK_API_KEY`，所以 probe 能跑通的配置界面上也能直接用。
+### 检查与构建
 
-### 构建产物说明
-
-| 产物 | 工具 | 格式 |
-|---|---|---|
-| `dist/main.js` | esbuild | **ESM**（Electron ≥28 支持 ESM 主进程） |
-| `dist/preload.cjs` | esbuild | **CJS**（preload 只用 electron 两个 API，不冒 ESM 的险） |
-| `dist/renderer/` | Vite | — |
-
-主进程用 `--packages=external`，**不把 node_modules 打进去**。原因：pi-ai 把
-`openai` / `@anthropic-ai/sdk` / `@aws-sdk/client-bedrock-runtime` / `@google/genai`
-全列为硬依赖并靠动态 import 懒加载，全量 bundle 会把 AWS SDK 这类
-bundler-hostile 的包也拖进来。Electron 主进程有完整的 Node 解析，留在
-node_modules 里即可。
-
-### 接其它端点
-
-**先去 `node_modules/@earendil-works/pi-ai/dist/providers/data/` 找有没有现成的。**
-pi 为 36 家 provider 维护了 compat 矩阵，那里的 json 就是权威配置，自己一个个试要花几小时。
-
-DeepSeek 的预设就是这么来的（见 [src/shared/channel-presets.ts](src/shared/channel-presets.ts)），
-关键是这四项：
-
-```json
-{ "supportsStore": false, "supportsDeveloperRole": false,
-  "requiresReasoningContentOnAssistantMessages": true, "thinkingFormat": "deepseek" }
+```bash
+bun test
+bun run typecheck
+bun run build
 ```
 
-另注意 DeepSeek 的 baseUrl 是 `https://api.deepseek.com`，**不带 `/v1`**。
+主进程使用 esbuild 输出 ESM，Preload 输出 CJS，Renderer 由 Vite 构建。
+主进程依赖保持 external，由 Electron 的 Node 运行时解析。
+
+## 模型与渠道
+
+渠道配置当前位于 `~/.tgbuddy/channels.json`，开发环境也可通过 `.env` 提供 DeepSeek 配置。
+
+接入其它 Provider 时，优先读取
+`node_modules/@earendil-works/pi-ai/dist/providers/data/` 中的现成 compat 配置，
+不要手工猜测第三方端点的 Tool、thinking 或 token 字段兼容性。
+
+## UI 事实来源
+
+UI 实现以 `tgbuddy-mockup/TgBuddy 交互原型.dc.html` 为唯一事实来源。
+颜色、间距、圆角、工具卡片状态和交互时序直接读取原型源码，不根据截图目测调整。
+
+设计系统和原型说明：
+
+- [设计系统](docs/05-design.md)
+- [UI 设计需求清单](docs/03-UI设计需求清单.md)
+- `tgbuddy-mockup/TgBuddy 交互原型.dc.html`
 
 ## 架构红线
 
-**`src/kernel/` 是唯一允许 import pi 的目录。** 其它任何文件出现
-`@earendil-works/pi-*` 都是架构违规。
+- pi 的运行时调用只允许出现在 `src/kernel/` 和明确的 Harness 适配层；pi 类型允许出现在 `src/shared/`。
+- Renderer 不直接访问数据库、任意文件路径、API Key 或 MCP 子进程。
+- 文件类 Tool 统一通过 `ExecutionEnv` 访问磁盘，不能在每个 Tool 内各写一套路径校验。
+- pi 内置 Tool 的 `details` 形状不可依赖；产物由 Tool 参数和成功结果共同推导。
+- 消息保存引用，不把大 Base64 图片或完整大 Tool 输出直接写入 Session payload。
+- 注释和文档使用中文，保留必要的英文术语。
 
-这条规则用于防止内核 API 从 shared 层一路渗透到 React 组件，避免 Provider
-抽象失效，也让消息持久化和 UI 不必依赖内核的运行时实现细节。
+更完整的项目约束见 [AGENTS.md](AGENTS.md)。
