@@ -9,9 +9,40 @@ import type { AgentEvent } from '../../shared/contracts/events.ts'
 export interface AgentInvocation {
   sessionId: string
   text: string
+  /** 本次 Run 绑定的工作目录；工具只能使用这份不可变快照。 */
+  cwd: string
   channel: Channel
   modelId: string
   systemPrompt: string
+}
+
+export interface ToolPolicyInput {
+  sessionId: string
+  toolCallId: string
+  toolName: string
+  args: Record<string, unknown>
+}
+
+export type ToolPolicyDecision =
+  | { action: 'allow' }
+  | { action: 'deny'; reason: string }
+
+/**
+ * 工具执行前的策略端口。
+ *
+ * K11 只接显式 permissive 实现，S05 再把真实 allow/ask/deny 规则装进来。
+ */
+export interface ToolPolicy {
+  evaluate(
+    input: ToolPolicyInput,
+    signal: AbortSignal,
+  ): Promise<ToolPolicyDecision>
+}
+
+export function createPermissiveToolPolicy(): ToolPolicy {
+  return {
+    evaluate: async () => ({ action: 'allow' }),
+  }
 }
 
 /**

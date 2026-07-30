@@ -48,10 +48,10 @@ interface ToolContext {
 }
 
 /**
- * 把 pi 的 `AgentHarnessTool` 适配成裸 `Agent` 能用的 `AgentTool`。
+ * 把 pi 的 `AgentHarnessTool` 绑定成不再需要外部 context 的 `AgentTool`。
  *
- * 两者只差一个参数：harness 版的 `execute` 多收一个 `context`，
- * 由 `AgentHarness` 每轮注入。我们不用 harness，所以在这里把 context 绑死。
+ * 当前工具 factory 仍是待 C12 删除的 Main compatibility owner，因此在这里
+ * 绑定 ExecutionEnv；PiAgentEngine 可以把返回值当作 context-free 工具装入 Harness。
  */
 function bindContext<T extends object>(tool: AgentHarnessTool<T>, context: T): AgentTool {
   return {

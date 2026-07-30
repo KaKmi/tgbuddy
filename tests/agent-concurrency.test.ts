@@ -43,6 +43,7 @@ function createInvocation(input: SendInput): Promise<AgentInvocation> {
   return Promise.resolve({
     sessionId: input.sessionId,
     text: input.text,
+    cwd: 'C:\\fixture',
     channel: {
       id: 'test',
       name: 'Test',

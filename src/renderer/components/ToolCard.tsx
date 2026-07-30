@@ -152,7 +152,7 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
                       result.isError ? 'text-status-error/90' : 'text-muted-foreground',
                     )}
                   >
-                    {result.text || '(无输出)'}
+                    {previewToolText(result.text)}
                   </pre>
                 </Field>
               )}
@@ -162,6 +162,14 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
       </div>
     </div>
   )
+}
+
+/** K11 只展示八行预览；完整输出在 A04 接入 Blob 后提供打开入口。 */
+export function previewToolText(text: string, maxLines = 8): string {
+  if (!text) return '(无输出)'
+  const lines = text.split('\n')
+  if (lines.length <= maxLines) return text
+  return `${lines.slice(0, maxLines).join('\n')}\n…（其余 ${lines.length - maxLines} 行暂不展示）`
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

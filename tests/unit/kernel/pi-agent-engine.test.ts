@@ -111,6 +111,55 @@ describe('PiAgentEngine 事件适配', () => {
     })
   })
 
+  test('工具事件保留参数、进度、结果预览和 details', () => {
+    const events: AgentHarnessEvent[] = [
+      {
+        type: 'tool_execution_start',
+        toolCallId: 'call-1',
+        toolName: 'read',
+        args: { path: 'README.md' },
+      },
+      {
+        type: 'tool_execution_update',
+        toolCallId: 'call-1',
+        toolName: 'read',
+        args: { path: 'README.md' },
+        partialResult: { content: [{ type: 'text', text: '读取中' }] },
+      },
+      {
+        type: 'tool_execution_end',
+        toolCallId: 'call-1',
+        toolName: 'read',
+        result: {
+          content: [{ type: 'text', text: '读取完成' }],
+          details: { action: 'read', path: 'README.md' },
+        },
+        isError: false,
+      },
+    ]
+
+    expect(events.map((event) => piEventToAgentEvent(event))).toEqual([
+      {
+        type: 'tool_start',
+        toolCallId: 'call-1',
+        toolName: 'read',
+        args: { path: 'README.md' },
+      },
+      {
+        type: 'tool_progress',
+        toolCallId: 'call-1',
+        partial: { content: [{ type: 'text', text: '读取中' }] },
+      },
+      {
+        type: 'tool_end',
+        toolCallId: 'call-1',
+        isError: false,
+        output: '读取完成',
+        details: { action: 'read', path: 'README.md' },
+      },
+    ])
+  })
+
   test('provider 只在最终 assistant 写错误时补发 error 事件', () => {
     expect(piMessageFailureEvent({
       ...assistant('error'),

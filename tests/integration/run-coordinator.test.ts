@@ -13,6 +13,7 @@ function invocation(sessionId: string, text: string): AgentInvocation {
   return {
     sessionId,
     text,
+    cwd: 'C:\\fixture',
     channel: {
       id: 'test',
       name: 'Test',

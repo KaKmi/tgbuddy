@@ -31,6 +31,8 @@ export interface ToolActivity {
   startedAt: number
   /** 执行耗时，tool_end 时填 */
   elapsedMs?: number
+  /** 实时结果预览；完整内容在落盘的 toolResult 消息中。 */
+  result?: { isError: boolean; text: string }
 }
 
 export interface StreamState {
@@ -310,6 +312,14 @@ export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEven
                 ...t,
                 status: event.isError ? ('error' as const) : ('success' as const),
                 elapsedMs: Date.now() - t.startedAt,
+                ...(event.output
+                  ? {
+                      result: {
+                        isError: event.isError,
+                        text: event.output,
+                      },
+                    }
+                  : {}),
               }
             : t,
         ),

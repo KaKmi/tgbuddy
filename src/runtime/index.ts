@@ -46,7 +46,11 @@ export {
   type RunSessionLifecycle,
   type RunSettlement,
 } from './runs/run-coordinator.ts'
+export { createPermissiveToolPolicy } from './runs/agent-engine.ts'
 export type {
   AgentEngine,
   AgentInvocation,
+  ToolPolicy,
+  ToolPolicyDecision,
+  ToolPolicyInput,
 } from './runs/agent-engine.ts'

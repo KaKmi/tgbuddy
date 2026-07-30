@@ -36,7 +36,14 @@ export type AgentEvent =
   | { type: 'tool_start'; toolCallId: string; toolName: string; args: Record<string, unknown> }
   /** 工具执行中的进度（pi 的 onUpdate 回调） */
   | { type: 'tool_progress'; toolCallId: string; partial: unknown }
-  | { type: 'tool_end'; toolCallId: string; isError: boolean; details?: ToolDetails }
+  | {
+      type: 'tool_end'
+      toolCallId: string
+      isError: boolean
+      /** 只用于实时卡片预览；完整结果仍以 toolResult 消息持久化。 */
+      output?: string
+      details?: ToolDetails
+    }
   /** 一轮结束，带本轮用量 */
   | { type: 'turn_end'; usage?: Usage }
   /** 整个 run 结束 */

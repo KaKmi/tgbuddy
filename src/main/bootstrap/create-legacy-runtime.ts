@@ -158,6 +158,7 @@ async function createAgentInvocation(
   return {
     sessionId: input.sessionId,
     text: input.text,
+    cwd: workspaceDir,
     channel,
     modelId,
     systemPrompt: buildSystemPrompt(workspaceDir, mode),

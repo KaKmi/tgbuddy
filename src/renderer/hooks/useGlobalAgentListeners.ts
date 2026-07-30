@@ -75,12 +75,48 @@ async function refreshMessagesAndFlush(
  */
 const RUNNING_DELAY_MS = 120
 
+export interface ToolRunningTimers {
+  start(sessionId: string, toolCallId: string): void
+  cancel(toolCallId: string): void
+  dispose(): void
+}
+
+export function createToolRunningTimers(
+  onRunning: (sessionId: string, event: LocalEvent) => void,
+  delayMs = RUNNING_DELAY_MS,
+): ToolRunningTimers {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  const cancel = (toolCallId: string): void => {
+    const timer = timers.get(toolCallId)
+    if (!timer) return
+    clearTimeout(timer)
+    timers.delete(toolCallId)
+  }
+
+  return {
+    start(sessionId, toolCallId) {
+      cancel(toolCallId)
+      timers.set(
+        toolCallId,
+        setTimeout(() => {
+          timers.delete(toolCallId)
+          onRunning(sessionId, { type: 'tool_running', toolCallId })
+        }, delayMs),
+      )
+    },
+    cancel,
+    dispose() {
+      for (const timer of timers.values()) clearTimeout(timer)
+      timers.clear()
+    },
+  }
+}
+
 export function useGlobalAgentListeners(): void {
   const store = useStore()
 
   useEffect(() => {
-    /** toolCallId → 待触发的「升级为执行中」定时器 */
-    const timers = new Map<string, ReturnType<typeof setTimeout>>()
     /** 每个 Session 的 Run 游标；settled 后同 runId 的迟到帧也会被拒绝。 */
     const runCursors = new Map<string, RunFrameCursor>()
     let pendingRevision = 0
@@ -93,13 +129,7 @@ export function useGlobalAgentListeners(): void {
       store.set(streamStatesAtom, states)
     }
 
-    const clearTimer = (toolCallId: string): void => {
-      const t = timers.get(toolCallId)
-      if (t) {
-        clearTimeout(t)
-        timers.delete(toolCallId)
-      }
-    }
+    const runningTimers = createToolRunningTimers(dispatch)
 
     const unsubscribe = window.tgbuddy.agent.onStream((frame) => {
       const { sessionId, runId, payload } = frame
@@ -117,17 +147,9 @@ export function useGlobalAgentListeners(): void {
 
         // ★ tool_start 先落在「等待授权」，120ms 后没等到授权请求才升级为「执行中」
         if (event.type === 'tool_start') {
-          const { toolCallId } = event
-          clearTimer(toolCallId)
-          timers.set(
-            toolCallId,
-            setTimeout(() => {
-              timers.delete(toolCallId)
-              dispatch(sessionId, { type: 'tool_running', toolCallId })
-            }, RUNNING_DELAY_MS),
-          )
+          runningTimers.start(sessionId, event.toolCallId)
         }
-        if (event.type === 'tool_end') clearTimer(event.toolCallId)
+        if (event.type === 'tool_end') runningTimers.cancel(event.toolCallId)
 
         dispatch(sessionId, event)
         if (event.type === 'run_end') {
@@ -151,7 +173,7 @@ export function useGlobalAgentListeners(): void {
         case 'permission_request': {
           pendingRevision++
           // 授权请求赶在定时器之前到了 → 取消升级，卡片留在「等待授权」
-          clearTimer(event.request.toolCallId)
+          runningTimers.cancel(event.request.toolCallId)
           store.set(
             pendingPermissionsAtom,
             mergePendingRequests(store.get(pendingPermissionsAtom), [event.request]),
@@ -164,6 +186,13 @@ export function useGlobalAgentListeners(): void {
           // 主进程发这条时不带 sessionId（它只知道 requestId），所以全表扫一遍
           const map = new Map(store.get(pendingPermissionsAtom))
           for (const [sid, list] of map) {
+            const request = list.find((item) => item.requestId === event.requestId)
+            if (request && event.allowed) {
+              dispatch(sid, {
+                type: 'tool_running',
+                toolCallId: request.toolCallId,
+              })
+            }
             const next = list.filter((r) => r.requestId !== event.requestId)
             if (next.length !== list.length) map.set(sid, next)
           }
@@ -215,7 +244,9 @@ export function useGlobalAgentListeners(): void {
         case 'pending_requests_cleared': {
           pendingRevision++
           const permissions = new Map(store.get(pendingPermissionsAtom))
-          for (const request of permissions.get(sessionId) ?? []) clearTimer(request.toolCallId)
+          for (const request of permissions.get(sessionId) ?? []) {
+            runningTimers.cancel(request.toolCallId)
+          }
           permissions.delete(sessionId)
           store.set(pendingPermissionsAtom, permissions)
 
@@ -343,8 +374,7 @@ export function useGlobalAgentListeners(): void {
 
     return () => {
       disposed = true
-      for (const t of timers.values()) clearTimeout(t)
-      timers.clear()
+      runningTimers.dispose()
       runCursors.clear()
       unsubscribe()
     }

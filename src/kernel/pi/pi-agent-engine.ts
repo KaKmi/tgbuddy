@@ -2,6 +2,7 @@ import {
   AgentHarness,
   type AgentHarnessEvent,
   type AgentMessage,
+  type AgentTool,
   type Session,
 } from '@earendil-works/pi-agent-core'
 import type {
@@ -16,6 +17,7 @@ import type {
 import type {
   AgentEngine,
   AgentInvocation,
+  ToolPolicy,
 } from '../../runtime/runs/agent-engine.ts'
 import { buildModels } from './pi-models.ts'
 
@@ -28,6 +30,8 @@ export interface PiAgentSessionProvider {
 
 export interface CreatePiAgentEngineOptions {
   sessions: PiAgentSessionProvider
+  tools(invocation: AgentInvocation): AgentTool[]
+  toolPolicy: ToolPolicy
 }
 
 export interface PersistedPiMessage {
@@ -90,11 +94,15 @@ class AsyncEventQueue<T> implements AsyncIterableIterator<T> {
 
 class PiAgentEngine implements AgentEngine {
   readonly #sessions: PiAgentSessionProvider
+  readonly #tools: CreatePiAgentEngineOptions['tools']
+  readonly #toolPolicy: ToolPolicy
   readonly #active = new Map<string, AgentHarness>()
   #disposed = false
 
   constructor(options: CreatePiAgentEngineOptions) {
     this.#sessions = options.sessions
+    this.#tools = options.tools
+    this.#toolPolicy = options.toolPolicy
   }
 
   async *run(
@@ -130,6 +138,7 @@ class PiAgentEngine implements AgentEngine {
       models,
       model,
       systemPrompt: invocation.systemPrompt,
+      tools: this.#tools(invocation),
     })
     const events = new AsyncEventQueue<AgentEvent>()
     let promptSettled = false
@@ -138,6 +147,17 @@ class PiAgentEngine implements AgentEngine {
     let sawErrorEvent = false
     let abortPromise: Promise<void> | undefined
 
+    const unsubscribeToolPolicy = harness.on('tool_call', async (event) => {
+      const decision = await this.#toolPolicy.evaluate({
+        sessionId: invocation.sessionId,
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        args: event.input,
+      }, signal)
+      return decision.action === 'deny'
+        ? { block: true, reason: decision.reason }
+        : undefined
+    })
     const unsubscribe = harness.subscribe(async (event) => {
       const persisted = event.type === 'message_end'
         ? await persistedMessage(session, event.message)
@@ -181,6 +201,7 @@ class PiAgentEngine implements AgentEngine {
       if (promptFailed) throw promptError
     } finally {
       signal.removeEventListener('abort', abortHarness)
+      unsubscribeToolPolicy()
       unsubscribe()
       if (this.#active.get(invocation.sessionId) === harness) {
         this.#active.delete(invocation.sessionId)
@@ -265,10 +286,12 @@ export function piEventToAgentEvent(
 
     case 'tool_execution_end': {
       const details = extractDetails(event.result)
+      const output = extractToolOutput(event.result)
       return {
         type: 'tool_end',
         toolCallId: event.toolCallId,
         isError: event.isError,
+        ...(output ? { output } : {}),
         ...(details ? { details } : {}),
       }
     }
@@ -365,6 +388,19 @@ function isPiMessage(message: AgentMessage): message is PiMessage {
 function extractDetails(result: unknown): Record<string, unknown> | undefined {
   if (!isRecord(result)) return undefined
   return isRecord(result.details) ? result.details : undefined
+}
+
+function extractToolOutput(result: unknown): string | undefined {
+  if (!isRecord(result) || !Array.isArray(result.content)) return undefined
+  const text = result.content
+    .map((item) =>
+      isRecord(item) && item.type === 'text' && typeof item.text === 'string'
+        ? item.text
+        : '',
+    )
+    .join('')
+    .trim()
+  return text || undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

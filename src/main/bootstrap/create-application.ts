@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import {
+  createPermissiveToolPolicy,
   createSessionCommands,
   createSessionMessageHistory,
   type TgBuddyRuntime,
@@ -14,6 +15,7 @@ import {
 } from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
 import * as store from '../session-store.ts'
+import { buildBuiltinTools } from '../tools/index.ts'
 import { createLegacyRuntime } from './create-legacy-runtime.ts'
 import {
   importLegacySessions,
@@ -66,6 +68,8 @@ export async function createApplication(
     runtime = createLegacyRuntime({
       agentEngine: createPiAgentEngine({
         sessions: createdMessageStore,
+        tools: (invocation) => buildBuiltinTools(invocation.cwd),
+        toolPolicy: createPermissiveToolPolicy(),
       }),
       history: messageHistory,
       sessions: createSessionCommands({

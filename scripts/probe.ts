@@ -16,7 +16,6 @@
  */
 
 import {
-  Agent,
   InMemorySessionRepo,
   type AgentTool,
 } from '@earendil-works/pi-agent-core'
@@ -24,7 +23,6 @@ import { Type } from '@earendil-works/pi-ai'
 import {
   createPiAgentEngine,
 } from '../src/kernel/pi/pi-agent-engine.ts'
-import { buildModels } from '../src/kernel/pi/pi-models.ts'
 import type { AgentInvocation } from '../src/runtime/index.ts'
 import { deepseekChannel } from '../src/shared/channel-presets.ts'
 
@@ -39,9 +37,7 @@ if (!API_KEY) {
 }
 
 const channel = BASE_URL ? deepseekChannel(API_KEY, BASE_URL) : deepseekChannel(API_KEY)
-const models = buildModels([channel])
-const model = models.getModel(channel.id, MODEL_ID)
-if (!model) {
+if (!channel.models.some((model) => model.id === MODEL_ID)) {
   console.error(`模型未注册：${channel.id}/${MODEL_ID}`)
   console.error(`可用：${channel.models.map((m) => m.id).join(', ')}`)
   process.exit(1)
@@ -50,15 +46,9 @@ if (!model) {
 const probeSessionId = 'probe-agent-engine'
 const sessionRepository = new InMemorySessionRepo()
 const harnessSession = await sessionRepository.create({ id: probeSessionId })
-const agentEngine = createPiAgentEngine({
-  sessions: {
-    async openHarnessSession(sessionId) {
-      return sessionId === probeSessionId ? harnessSession : undefined
-    },
-  },
-})
 const engineInvocation: Omit<AgentInvocation, 'text'> = {
   sessionId: probeSessionId,
+  cwd: process.cwd(),
   channel,
   modelId: MODEL_ID,
   systemPrompt: '你是一个测试助手。回答简短。',
@@ -82,41 +72,32 @@ const getTimeTool: AgentTool = {
   },
 }
 
-// ── 构建 Agent ────────────────────────────────────────────────────
-const agent = new Agent({
-  initialState: {
-    systemPrompt: '你是一个测试助手。回答简短。需要时间信息时调用工具。',
-    model,
-    tools: [getTimeTool],
+const agentEngine = createPiAgentEngine({
+  sessions: {
+    async openHarnessSession(sessionId) {
+      return sessionId === probeSessionId ? harnessSession : undefined
+    },
   },
-  // 0.81.0 起 streamFn 从可选变必填。我们本来就要传自建的 models，零成本。
-  streamFn: models.streamSimple.bind(models),
-
-  // 每次请求带上 key —— 不依赖 process.env，因为 GUI 启动的 Electron 读不到 shell 环境变量
-  onPayload: undefined,
-  getApiKey: async () => API_KEY,
-
-  /**
-   * ★ 权限拦截点验证
-   *
-   * 这里故意 await 一个 800ms 的延迟，模拟「IPC 往返到渲染进程弹窗、等用户点击」。
-   * 如果 agent loop 真的挂起等待，说明
-   * `Map<requestId, resolve>` 跨 IPC 挂起 Promise 的模式可以成立。
-   */
-  beforeToolCall: async ({ toolCall, args }, signal) => {
-    console.log(`\n  [权限] 请求执行工具：${toolCall.name}`)
-    console.log(`  [权限] 参数：${JSON.stringify(args)}`)
-    const t0 = Date.now()
-
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 800)
-      // pi 把 signal 给你，但**你有责任自己 honor abort**。
-      // 不加这段，用户点停止时这个 Promise 会挂死。
-      signal?.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
-    })
-
-    console.log(`  [权限] 用户已确认（模拟等待 ${Date.now() - t0}ms）→ 放行\n`)
-    return undefined // undefined = 放行；{ block: true, reason } = 拒绝
+  tools: () => [getTimeTool],
+  toolPolicy: {
+    async evaluate(input, signal) {
+      console.log(`\n  [策略] 请求执行工具：${input.toolName}`)
+      console.log(`  [策略] 参数：${JSON.stringify(input.args)}`)
+      const startedAt = Date.now()
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          resolve()
+          return
+        }
+        const timer = setTimeout(resolve, 800)
+        signal.addEventListener('abort', () => {
+          clearTimeout(timer)
+          resolve()
+        }, { once: true })
+      })
+      console.log(`  [策略] 模拟等待 ${Date.now() - startedAt}ms → 放行\n`)
+      return { action: 'allow' }
+    },
   },
 })
 
@@ -124,6 +105,8 @@ const agent = new Agent({
 // 注意：监听器是被 await 的、按订阅顺序串行执行。
 // 你的监听器慢 = agent 慢。往渲染进程发 IPC 时不要 await 渲染完成。
 let sawError = false
+let sawToolStart = false
+let sawToolEnd = false
 
 async function runProductionEngine(
   text: string,
@@ -139,6 +122,14 @@ async function runProductionEngine(
     if (event.type === 'text_delta') process.stdout.write(event.delta)
     if (event.type === 'thinking_delta') {
       process.stdout.write(`\x1b[90m${event.delta}\x1b[0m`)
+    }
+    if (event.type === 'tool_start') {
+      sawToolStart = true
+      console.log(`\n  [工具] 开始执行 ${event.toolName}`)
+    }
+    if (event.type === 'tool_end') {
+      sawToolEnd = true
+      console.log(`  [工具] 完成，isError=${event.isError}`)
     }
     if (event.type === 'error') {
       if (event.reason === 'aborted' && abortOnStart) {
@@ -159,44 +150,6 @@ async function runProductionEngine(
   return aborted ? 'aborted' : 'completed'
 }
 
-agent.subscribe((event) => {
-  switch (event.type) {
-    case 'message_update': {
-      const e = event.assistantMessageEvent
-      if (e.type === 'text_delta') process.stdout.write(e.delta)
-      if (e.type === 'thinking_delta') process.stdout.write(`\x1b[90m${e.delta}\x1b[0m`)
-      // ★ pi 的契约：stream 永远不 throw，失败编码成 error 事件。
-      //   不处理这个分支，认证失败/端点不通会被静默吞掉，看起来像"跑通了"。
-      if (e.type === 'error') {
-        sawError = true
-        console.error(`\n\x1b[31m  [错误] ${e.reason}：${e.error.errorMessage ?? '(无消息)'}\x1b[0m`)
-      }
-      break
-    }
-    case 'tool_execution_start':
-      console.log(`\n  [工具] 开始执行 ${event.toolName}`)
-      break
-    case 'tool_execution_end':
-      console.log(`  [工具] 完成，isError=${event.isError}`)
-      break
-    case 'turn_end': {
-      if (event.message.role === 'assistant' && event.message.stopReason === 'error') {
-        sawError = true
-        console.error(`\n\x1b[31m  [错误] ${event.message.errorMessage ?? '(无消息)'}\x1b[0m`)
-      }
-      const u = event.message.role === 'assistant' ? event.message.usage : undefined
-      if (u) {
-        console.log(
-          `\n  [用量] in=${u.input} out=${u.output} ` +
-          `cacheRead=${u.cacheRead} 共 ${u.totalTokens} tokens，` +
-          `成本 $${u.cost.total.toFixed(6)}`,
-        )
-      }
-      break
-    }
-  }
-})
-
 // ── 跑 ────────────────────────────────────────────────────────────
 console.log(`\n端点：${channel.baseUrl}`)
 console.log(`模型：${MODEL_ID}（${channel.protocol} 协议）\n`)
@@ -205,8 +158,8 @@ console.log('\n【第 1 轮】纯文本，验证流式输出\n')
 await runProductionEngine('用一句话介绍你自己。')
 
 console.log('\n\n' + '─'.repeat(60))
-console.log('\n【第 2 轮】触发工具调用，验证 beforeToolCall 挂起\n')
-await agent.prompt('现在几点了？')
+console.log('\n【第 2 轮】触发工具调用，验证生产 ToolPolicy 挂起\n')
+await runProductionEngine('必须调用 get_current_time 工具告诉我现在几点，不要自己猜。')
 
 console.log('\n\n' + '─'.repeat(60))
 console.log('\n【第 3 轮】验证多轮上下文（消息数组就是全部状态）\n')
@@ -221,6 +174,10 @@ const abortResult = await runProductionEngine(
 if (abortResult !== 'aborted') {
   sawError = true
   console.error('\n\x1b[31m  [错误] AbortSignal 未产生 aborted 终态\x1b[0m')
+}
+if (!sawToolStart || !sawToolEnd) {
+  sawError = true
+  console.error('\n\x1b[31m  [错误] 生产 PiAgentEngine 未完成工具事件闭环\x1b[0m')
 }
 
 console.log('\n\n' + '─'.repeat(60))
@@ -241,4 +198,5 @@ await agentEngine.dispose()
 console.log(`\n✓ Harness 会话消息数：${persistedMessages.length}`)
 console.log('✓ 生产 PiAgentEngine 已通过同一 Session 恢复多轮上下文')
 console.log('✓ message_end 在 Harness 持久化完成后进入 Runtime\n')
+console.log('✓ 生产 ToolPolicy、tool_start 与 tool_end 已形成闭环\n')
 console.log('✓ AbortSignal 已停止生产 AgentHarness\n')

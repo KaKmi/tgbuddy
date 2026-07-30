@@ -15,6 +15,7 @@ function invocation(sessionId: string): AgentInvocation {
   return {
     sessionId,
     text: '开始',
+    cwd: 'C:\\fixture',
     channel: {
       id: 'test',
       name: 'Test',

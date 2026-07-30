@@ -195,6 +195,7 @@ export function App() {
                   name={t.toolName}
                   args={t.args}
                   status={t.status}
+                  {...(t.result ? { result: t.result } : {})}
                   {...(t.elapsedMs !== undefined ? { elapsedMs: t.elapsedMs } : {})}
                 />
               ))}
