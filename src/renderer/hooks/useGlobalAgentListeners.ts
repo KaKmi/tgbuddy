@@ -26,6 +26,7 @@ import {
   pendingPlansAtom,
   pendingAskUserAtom,
   queuedPromptsAtom,
+  replaceSession,
   sessionsAtom,
   streamStatesAtom,
   updateSessionMode,
@@ -134,6 +135,14 @@ export function useGlobalAgentListeners(): void {
       const event = payload.event
 
       switch (event.type) {
+        case 'session_updated': {
+          store.set(
+            sessionsAtom,
+            (sessions) => replaceSession(sessions, event.session),
+          )
+          break
+        }
+
         case 'permission_request': {
           pendingRevision++
           // 授权请求赶在定时器之前到了 → 取消升级，卡片留在「等待授权」

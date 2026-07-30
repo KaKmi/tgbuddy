@@ -4,6 +4,7 @@ import {
   RunRegistry,
   type AgentEngine,
   type AgentInvocation,
+  type RunSessionLifecycle,
 } from '../src/runtime/index.ts'
 import type { SendInput } from '../src/shared/contracts/ipc.ts'
 import type { StreamFrame } from '../src/shared/contracts/events.ts'
@@ -14,6 +15,7 @@ import {
   emptyStreamState,
   indexPendingRequests,
   mergePendingRequests,
+  replaceSession,
   updateSessionMode,
 } from '../src/renderer/atoms/agent.ts'
 
@@ -63,6 +65,26 @@ async function flushCoordinator(): Promise<void> {
   await Promise.resolve()
 }
 
+function createLifecycle(): RunSessionLifecycle {
+  return {
+    started: (sessionId) => Promise.resolve({
+      id: sessionId,
+      title: sessionId,
+      status: 'running',
+      createdAt: 1,
+      updatedAt: 2,
+    }),
+    settled: ({ sessionId, status, detail }) => Promise.resolve({
+      id: sessionId,
+      title: sessionId,
+      status,
+      ...(detail ? { statusDetail: detail } : {}),
+      createdAt: 1,
+      updatedAt: 3,
+    }),
+  }
+}
+
 describe('Agent 并发状态', () => {
   test('旧 run 的迟到帧会被丢弃', () => {
     const active = new Map<string, number>()
@@ -107,6 +129,27 @@ describe('Agent 并发状态', () => {
 
     expect(updated[0]?.permissionMode).toBe('plan')
     expect(updated[1]?.permissionMode).toBe('auto')
+  })
+
+  test('Session settled 事件替换侧栏状态并按更新时间重排', () => {
+    const sessions = [
+      { id: 'session-1', title: '一', createdAt: 1, updatedAt: 3 },
+      { id: 'session-2', title: '二', createdAt: 1, updatedAt: 2 },
+    ]
+
+    const updated = replaceSession(sessions, {
+      ...sessions[1]!,
+      status: 'failed',
+      statusDetail: '认证失败',
+      updatedAt: 4,
+    })
+
+    expect(updated.map((session) => session.id)).toEqual([
+      'session-2',
+      'session-1',
+    ])
+    expect(updated[0]?.status).toBe('failed')
+    expect(updated[0]?.statusDetail).toBe('认证失败')
   })
 
   test('run_start 不会抹掉自动压缩倒计时', () => {
@@ -173,6 +216,7 @@ describe('RunCoordinator', () => {
       now: () => 100,
       engine,
       createInvocation,
+      lifecycle: createLifecycle(),
     })
 
     const first = coordinator.send(
@@ -254,6 +298,7 @@ describe('RunCoordinator', () => {
       now: () => 100,
       engine,
       createInvocation,
+      lifecycle: createLifecycle(),
     })
     void coordinator.send({ sessionId: 'session-1', text: '一' }, () => {})
     void coordinator.send({ sessionId: 'session-2', text: '二' }, () => {})

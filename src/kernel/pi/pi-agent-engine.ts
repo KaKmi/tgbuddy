@@ -131,12 +131,21 @@ class PiAgentEngine implements AgentEngine {
     let promptSettled = false
     let promptFailed = false
     let promptError: unknown
+    let sawErrorEvent = false
 
     const unsubscribe = harness.subscribe(async (event) => {
       const persisted = event.type === 'message_end'
         ? await persistedMessage(session, event.message)
         : undefined
       const runtimeEvent = piEventToAgentEvent(event, persisted)
+      if (runtimeEvent?.type === 'error') sawErrorEvent = true
+      if (event.type === 'message_end' && !sawErrorEvent) {
+        const failure = piMessageFailureEvent(event.message)
+        if (failure) {
+          sawErrorEvent = true
+          events.push(failure)
+        }
+      }
       if (runtimeEvent) events.push(runtimeEvent)
     })
 
@@ -270,6 +279,31 @@ export function piEventToAgentEvent(
 
     default:
       return null
+  }
+}
+
+/**
+ * 部分 provider 只在最终 AssistantMessage 上写 stopReason/errorMessage，
+ * 不发送 `message_update.error`。这里补齐公共 error 事件，避免认证失败静默。
+ */
+export function piMessageFailureEvent(
+  message: AgentMessage,
+): Extract<AgentEvent, { type: 'error' }> | null {
+  if (
+    message.role !== 'assistant'
+    || (
+      message.stopReason !== 'error'
+      && message.stopReason !== 'aborted'
+    )
+  ) {
+    return null
+  }
+  return {
+    type: 'error',
+    reason: message.stopReason,
+    message: message.errorMessage ?? (
+      message.stopReason === 'aborted' ? '运行已中止' : '未知错误'
+    ),
   }
 }
 

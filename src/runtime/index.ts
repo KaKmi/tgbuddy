@@ -43,6 +43,8 @@ export {
   createRunCoordinator,
   type CreateRunCoordinatorOptions,
   type RunCoordinator,
+  type RunSessionLifecycle,
+  type RunSettlement,
 } from './runs/run-coordinator.ts'
 export type {
   AgentEngine,

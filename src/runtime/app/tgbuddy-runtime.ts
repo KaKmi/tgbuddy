@@ -37,7 +37,10 @@ export interface SessionCommands {
     sessionId: string,
     compactionId: string,
   ): Promise<SessionMessage[]>
-  updateMeta(sessionId: string, patch: Partial<SessionMeta>): void
+  updateMeta(
+    sessionId: string,
+    patch: Partial<SessionMeta>,
+  ): SessionMeta | undefined
 }
 
 export interface RunCommands {

@@ -46,6 +46,33 @@ export function createLegacyRuntime(
     now: Date.now,
     engine: options.agentEngine,
     createInvocation: (input) => createAgentInvocation(input, options.sessions),
+    lifecycle: {
+      async started(sessionId) {
+        return requireSessionUpdate(
+          sessionId,
+          options.sessions.updateMeta(sessionId, {
+            status: 'running',
+            statusDetail: undefined,
+            lastActivity: '正在思考…',
+          }),
+        )
+      },
+      async settled(settlement) {
+        permission.clearSession(settlement.sessionId)
+        plan.clearSession(settlement.sessionId)
+        askUser.clearSession(settlement.sessionId)
+        return requireSessionUpdate(
+          settlement.sessionId,
+          options.sessions.updateMeta(settlement.sessionId, {
+            status: settlement.status,
+            statusDetail: settlement.detail
+              ? shortReason(settlement.detail)
+              : undefined,
+            lastActivity: undefined,
+          }),
+        )
+      },
+    },
   })
 
   return createTgBuddyRuntime({
@@ -164,4 +191,23 @@ function resolveWorkspace(workspaceId?: string): string {
   )
   if (!existsSync(directory)) mkdirSync(directory, { recursive: true })
   return directory
+}
+
+function requireSessionUpdate(
+  sessionId: string,
+  session: ReturnType<SessionCommands['updateMeta']>,
+): NonNullable<ReturnType<SessionCommands['updateMeta']>> {
+  if (!session) throw new Error(`会话不存在：${sessionId}`)
+  return session
+}
+
+function shortReason(message: string): string {
+  const firstLine = message.split('\n')[0] ?? message
+  if (/401|authentication/i.test(firstLine)) return '认证失败'
+  if (/429|rate.?limit/i.test(firstLine)) return '请求限流'
+  if (/timeout|ETIMEDOUT|ECONNRESET/i.test(firstLine)) return '网络超时'
+  if (/渠道|模型未注册/.test(firstLine)) return '渠道配置有误'
+  return firstLine.length > 40
+    ? `${firstLine.slice(0, 40)}…`
+    : firstLine
 }

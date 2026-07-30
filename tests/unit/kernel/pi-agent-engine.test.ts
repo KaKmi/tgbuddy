@@ -10,6 +10,7 @@ import type {
 } from '@earendil-works/pi-ai'
 import {
   piEventToAgentEvent,
+  piMessageFailureEvent,
   type PersistedPiMessage,
 } from '../../../src/kernel/pi/index.ts'
 
@@ -107,6 +108,17 @@ describe('PiAgentEngine 事件适配', () => {
         createdAt: 300,
         message,
       },
+    })
+  })
+
+  test('provider 只在最终 assistant 写错误时补发 error 事件', () => {
+    expect(piMessageFailureEvent({
+      ...assistant('error'),
+      errorMessage: '401 authentication failed',
+    })).toEqual({
+      type: 'error',
+      reason: 'error',
+      message: '401 authentication failed',
     })
   })
 

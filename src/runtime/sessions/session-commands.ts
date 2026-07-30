@@ -62,8 +62,8 @@ export function createSessionCommands(
       options.history.compactedMessages(sessionId, compactionId),
     updateMeta(sessionId, patch) {
       const current = options.repository.get(sessionId)
-      if (!current) return
-      options.repository.update({
+      if (!current) return undefined
+      return options.repository.update({
         ...current,
         ...patch,
         id: sessionId,

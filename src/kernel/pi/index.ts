@@ -1,6 +1,7 @@
 export {
   createPiAgentEngine,
   piEventToAgentEvent,
+  piMessageFailureEvent,
   type CreatePiAgentEngineOptions,
   type PersistedPiMessage,
   type PiAgentSessionProvider,

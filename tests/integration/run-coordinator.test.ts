@@ -85,6 +85,23 @@ describe('RunCoordinator + fake AgentEngine', () => {
       engine,
       createInvocation: (input) =>
         Promise.resolve(invocation(input.sessionId, input.text)),
+      lifecycle: {
+        started: (sessionId) => Promise.resolve({
+          id: sessionId,
+          title: '测试',
+          status: 'running',
+          createdAt: 1,
+          updatedAt: 2,
+        }),
+        settled: ({ sessionId, status, detail }) => Promise.resolve({
+          id: sessionId,
+          title: '测试',
+          status,
+          ...(detail ? { statusDetail: detail } : {}),
+          createdAt: 1,
+          updatedAt: 3,
+        }),
+      },
     })
 
     await coordinator.send(
@@ -92,9 +109,12 @@ describe('RunCoordinator + fake AgentEngine', () => {
       (frame) => frames.push(frame),
     )
 
-    expect(frames).toHaveLength(emitted.length)
+    const agentFrames = frames.filter(
+      (frame) => frame.payload.channel === 'agent',
+    )
+    expect(agentFrames).toHaveLength(emitted.length)
     expect(
-      frames.map((frame) => [
+      agentFrames.map((frame) => [
         frame.sessionId,
         frame.runId,
         frame.payload.channel,
@@ -103,7 +123,7 @@ describe('RunCoordinator + fake AgentEngine', () => {
       emitted.map(() => ['session-1', 1, 'agent']),
     )
     expect(
-      frames.map((frame) =>
+      agentFrames.map((frame) =>
         frame.payload.channel === 'agent'
           ? frame.payload.event.type
           : frame.payload.event.type),

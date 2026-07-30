@@ -13,6 +13,7 @@
 import type { StopReason, Usage } from '@earendil-works/pi-ai'
 import type { SessionMessage, ToolDetails } from './message.ts'
 import type { ContextUsage } from './context.ts'
+import type { SessionMeta } from './session.ts'
 
 // ── 内核事件 ──────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ export type {
 } from './permission.ts'
 
 export type HostEvent =
+  | { type: 'session_updated'; session: SessionMeta }
   | { type: 'permission_request'; request: PermissionRequest }
   | { type: 'permission_resolved'; requestId: string; allowed: boolean }
   | { type: 'mode_changed'; mode: 'plan' | 'auto' | 'bypass'; source: 'user' | 'tool' }

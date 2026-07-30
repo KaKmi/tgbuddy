@@ -57,8 +57,9 @@ export function registerIpc(
     (
       _event,
       input: IpcRequest<'session:update-meta'>,
-    ): IpcResponse<'session:update-meta'> =>
-      runtime.sessions.updateMeta(input.sessionId, input.patch),
+    ): IpcResponse<'session:update-meta'> => {
+      runtime.sessions.updateMeta(input.sessionId, input.patch)
+    },
   )
 
   ipcMain.handle(

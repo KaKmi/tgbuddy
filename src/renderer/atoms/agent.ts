@@ -64,6 +64,23 @@ export const emptyStreamState = (): StreamState => ({
 export const sessionsAtom = atom<SessionMeta[]>([])
 export const currentSessionIdAtom = atom<string | null>(null)
 
+export function replaceSession(
+  sessions: SessionMeta[],
+  updated: SessionMeta,
+): SessionMeta[] {
+  const exists = sessions.some((session) => session.id === updated.id)
+  const next = exists
+    ? sessions.map((session) =>
+        session.id === updated.id ? updated : session,
+      )
+    : [...sessions, updated]
+  return next.sort(
+    (left, right) =>
+      right.updatedAt - left.updatedAt
+      || left.id.localeCompare(right.id),
+  )
+}
+
 export function updateSessionMode(
   sessions: SessionMeta[],
   sessionId: string,

@@ -3,6 +3,7 @@ import type {
   StreamFrame,
 } from '../../shared/contracts/events.ts'
 import type { SendInput } from '../../shared/contracts/ipc.ts'
+import type { SessionMeta } from '../../shared/contracts/session.ts'
 import type {
   AgentEngine,
   AgentInvocation,
@@ -16,6 +17,18 @@ export interface CreateRunCoordinatorOptions {
   now(): number
   engine: AgentEngine
   createInvocation(input: SendInput): Promise<AgentInvocation>
+  lifecycle: RunSessionLifecycle
+}
+
+export interface RunSettlement {
+  sessionId: string
+  status: 'done' | 'failed'
+  detail?: string
+}
+
+export interface RunSessionLifecycle {
+  started(sessionId: string): Promise<SessionMeta>
+  settled(settlement: RunSettlement): Promise<SessionMeta>
 }
 
 export interface RunCoordinator {
@@ -31,6 +44,7 @@ class DefaultRunCoordinator implements RunCoordinator {
   readonly #createInvocation: (
     input: SendInput,
   ) => Promise<AgentInvocation>
+  readonly #lifecycle: RunSessionLifecycle
   readonly #inFlight = new Set<Promise<void>>()
   #disposePromise: Promise<void> | undefined
 
@@ -38,6 +52,7 @@ class DefaultRunCoordinator implements RunCoordinator {
     this.#registry = new RunRegistry({ now: options.now })
     this.#engine = options.engine
     this.#createInvocation = options.createInvocation
+    this.#lifecycle = options.lifecycle
   }
 
   send(
@@ -93,26 +108,81 @@ class DefaultRunCoordinator implements RunCoordinator {
     run: ActiveRun,
     emit: (frame: StreamFrame) => void,
   ): Promise<void> {
+    let terminalEvent:
+      | Extract<AgentEvent, { type: 'run_end' }>
+      | undefined
+    let failureMessage: string | undefined
+    let agentErrorVisible = false
+    let settlementFailure: string | undefined
+
     try {
+      const runningSession = await this.#lifecycle.started(run.sessionId)
+      this.#emitHostEvent(
+        run,
+        { type: 'session_updated', session: runningSession },
+        emit,
+      )
       const invocation = await this.#createInvocation(input)
       for await (const event of this.#engine.run(invocation)) {
+        if (event.type === 'error') {
+          agentErrorVisible = true
+          failureMessage ??= event.message
+        }
+        if (event.type === 'run_end') {
+          terminalEvent ??= event
+          continue
+        }
         this.#emitAgentEvent(run, event, emit)
       }
+      if (!terminalEvent) {
+        throw new Error('AgentEngine 未产生 run_end')
+      }
+      if (
+        terminalEvent.stopReason === 'error'
+        || terminalEvent.stopReason === 'aborted'
+      ) {
+        failureMessage ??= terminalEvent.stopReason === 'aborted'
+          ? '运行已中止'
+          : '模型调用失败'
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      emit({
-        sessionId: run.sessionId,
-        runId: run.runId,
-        payload: {
-          channel: 'host',
-          event: {
+      failureMessage ??= errorMessage(error)
+    } finally {
+      try {
+        const settledSession = await this.#lifecycle.settled({
+          sessionId: run.sessionId,
+          status: failureMessage ? 'failed' : 'done',
+          ...(failureMessage ? { detail: failureMessage } : {}),
+        })
+        this.#emitHostEvent(
+          run,
+          { type: 'session_updated', session: settledSession },
+          emit,
+        )
+      } catch (error) {
+        settlementFailure = errorMessage(error)
+      }
+
+      this.#emitHostEvent(
+        run,
+        { type: 'pending_requests_cleared' },
+        emit,
+      )
+      if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
+
+      const visibleFailure = settlementFailure
+        ?? (!agentErrorVisible ? failureMessage : undefined)
+      if (visibleFailure) {
+        this.#emitHostEvent(
+          run,
+          {
             type: 'host_error',
-            message,
+            message: visibleFailure,
             recoverable: false,
           },
-        },
-      })
-    } finally {
+          emit,
+        )
+      }
       this.#registry.settle(run)
     }
   }
@@ -129,6 +199,18 @@ class DefaultRunCoordinator implements RunCoordinator {
     })
   }
 
+  #emitHostEvent(
+    run: ActiveRun,
+    event: Extract<StreamFrame['payload'], { channel: 'host' }>['event'],
+    emit: (frame: StreamFrame) => void,
+  ): void {
+    emit({
+      sessionId: run.sessionId,
+      runId: run.runId,
+      payload: { channel: 'host', event },
+    })
+  }
+
   async #dispose(): Promise<void> {
     await Promise.allSettled([...this.#inFlight])
     await this.#engine.dispose()
@@ -139,4 +221,8 @@ export function createRunCoordinator(
   options: CreateRunCoordinatorOptions,
 ): RunCoordinator {
   return new DefaultRunCoordinator(options)
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
