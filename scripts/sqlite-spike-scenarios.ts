@@ -1,5 +1,6 @@
 import type { SessionTreeEntry } from '@earendil-works/pi-agent-core'
-import { mkdir, rename, stat } from 'node:fs/promises'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   assertCondition,
@@ -26,6 +27,20 @@ interface ScalarRow {
 
 interface NamedRow {
   name: string
+}
+
+interface ChildExit {
+  code: number | null
+  signal: NodeJS.Signals | null
+}
+
+export interface CrashChildOptions {
+  databasePath: string
+  cwd: string
+  sessionId: string
+  markerPath: string
+  minimumCommitted: number
+  maximumPlanned: number
 }
 
 async function fileBytes(path: string): Promise<number> {
@@ -236,6 +251,193 @@ function indexedUser(prefix: 'A' | 'B' | 'crash', index: number) {
     ],
     timestamp: 1_700_000_000_000 + index,
   }
+}
+
+export async function runCrashChild(options: CrashChildOptions): Promise<never> {
+  assertCondition(options.minimumCommitted >= 1, 'minimumCommitted 必须为正整数')
+  assertCondition(
+    options.maximumPlanned > options.minimumCommitted,
+    'maximumPlanned 必须大于 minimumCommitted',
+  )
+  const opened = createSpikeRepo(options.databasePath, options.cwd)
+  const metadata = (await opened.repo.list()).find((item) => item.id === options.sessionId)
+  assertCondition(metadata, `crash child 找不到 Session: ${options.sessionId}`)
+  const session = await opened.repo.open(metadata)
+  const markerTempPath = `${options.markerPath}.tmp`
+  for (let index = 0; index < options.maximumPlanned; index++) {
+    await session.appendMessage(indexedUser('crash', index))
+    await writeFile(markerTempPath, String(index), 'utf8')
+    await rename(markerTempPath, options.markerPath)
+  }
+
+  // child 必须保持 backend 和 WAL 打开，只有父进程的 OS 强杀能结束它。
+  return await new Promise<never>(() => undefined)
+}
+
+function childExit(child: ChildProcess): Promise<ChildExit> {
+  return new Promise((resolvePromise, reject) => {
+    child.once('error', reject)
+    child.once('close', (code, signal) => resolvePromise({ code, signal }))
+  })
+}
+
+async function waitForCommittedMarker(
+  markerPath: string,
+  minimumCommitted: number,
+  child: ChildProcess,
+): Promise<number> {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(
+        `crash child 在 ready marker 前退出: code=${child.exitCode}, signal=${child.signalCode}`,
+      )
+    }
+    try {
+      const value = Number((await readFile(markerPath, 'utf8')).trim())
+      if (Number.isInteger(value) && value >= minimumCommitted) return value
+    } catch {
+      // marker 通过 rename 原子发布；首次出现前短暂不存在是正常状态。
+    }
+    await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 10))
+  }
+  throw new Error(`等待 crash child marker 超时: ${markerPath}`)
+}
+
+async function forceKill(child: ChildProcess): Promise<void> {
+  assertCondition(child.pid !== undefined, 'crash child 缺少 PID')
+  if (process.platform !== 'win32') {
+    assertCondition(child.kill('SIGKILL'), 'SIGKILL 未能发送给 crash child')
+    return
+  }
+  const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  const result = await childExit(killer)
+  assertCondition(result.code === 0, `taskkill 失败: code=${result.code}, signal=${result.signal}`)
+}
+
+export async function runCrashRecoveryScenario(
+  context: ScenarioContext,
+): Promise<ScenarioResult> {
+  const startedAt = Date.now()
+  const databasePath = join(context.rootDir, 'crash', 'sessions.db')
+  const cwd = join(context.rootDir, 'crash-workspace')
+  const markerPath = join(context.rootDir, 'crash', 'committed.marker')
+  const sessionId = 'crash-session'
+  const minimumCommitted = 25
+  const maximumPlanned = 100_000
+  assertCondition(
+    context.executablePath === process.execPath,
+    'crash child 必须派生当前 packaged 可执行文件',
+  )
+
+  const created = createSpikeRepo(databasePath, cwd)
+  try {
+    const session = await created.repo.create({ id: sessionId, cwd })
+    await cleanupSession(session)
+  } finally {
+    await created.env.cleanup()
+  }
+
+  const childRoot = join(context.rootDir, 'crash-child-electron')
+  const child = spawn(process.execPath, [
+    '--spike-root',
+    childRoot,
+    '--report',
+    join(context.rootDir, 'crash', 'child-report.json'),
+    '--scenario',
+    'crash',
+    '--child-mode',
+    'crash-writer',
+    '--database',
+    databasePath,
+    '--cwd',
+    cwd,
+    '--session-id',
+    sessionId,
+    '--marker',
+    markerPath,
+    '--minimum-committed',
+    String(minimumCommitted),
+    '--maximum-planned',
+    String(maximumPlanned),
+  ], {
+    env: { ...process.env },
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  const exited = childExit(child)
+  try {
+    await waitForCommittedMarker(markerPath, minimumCommitted, child)
+    assertCondition(child.exitCode === null && child.signalCode === null, '强杀前 child 必须存活')
+    await forceKill(child)
+  } catch (error) {
+    if (child.exitCode === null && child.signalCode === null) {
+      await forceKill(child)
+    }
+    await exited.catch(() => undefined)
+    throw error
+  }
+  const exit = await exited
+  assertCondition(exit.code !== 0 || exit.signal !== null, 'crash child 不得正常退出')
+
+  const recovered = createSpikeRepo(databasePath, cwd)
+  let recoveredCount = 0
+  try {
+    const metadata = (await recovered.repo.list()).find((item) => item.id === sessionId)
+    assertCondition(metadata, '强杀后找不到 crash-session')
+    const session = await recovered.repo.open(metadata)
+    const entries = await session.getEntries()
+    recoveredCount = entries.length
+    assertCondition(
+      recoveredCount >= minimumCommitted && recoveredCount <= maximumPlanned,
+      `恢复数量超出范围: ${recoveredCount}`,
+    )
+    assertContinuousPrefix(entries, 'crash-', minimumCommitted, maximumPlanned)
+    assertCondition(
+      (await session.getSessionStats()).messageCount === recoveredCount,
+      '强杀恢复后的物化计数不一致',
+    )
+    await session.appendMessage(indexedUser('crash', recoveredCount))
+    await cleanupSession(session)
+  } finally {
+    await recovered.env.cleanup()
+  }
+
+  if (!nodeSqlite) throw new Error('crash audit 只能在 Electron Node 22 运行')
+  const audit = new nodeSqlite.DatabaseSync(databasePath)
+  try {
+    const integrity = audit.prepare('PRAGMA integrity_check').get() as unknown as {
+      integrity_check: string
+    }
+    assertCondition(integrity.integrity_check === 'ok', 'crash recovery integrity_check 必须为 ok')
+  } finally {
+    audit.close()
+  }
+
+  const continued = createSpikeRepo(databasePath, cwd)
+  try {
+    const metadata = (await continued.repo.list()).find((item) => item.id === sessionId)
+    assertCondition(metadata, '继续写入后找不到 crash-session')
+    const session = await continued.repo.open(metadata)
+    const entries = await session.getEntries()
+    assertCondition(entries.length === recoveredCount + 1, '强杀恢复后继续写入的条数不一致')
+    assertContinuousPrefix(entries, 'crash-', recoveredCount + 1, recoveredCount + 1)
+    await cleanupSession(session)
+  } finally {
+    await continued.env.cleanup()
+  }
+
+  return passedScenario(
+    'crash-recovery',
+    startedAt,
+    10,
+    recoveredCount + 1,
+    await fileBytes(databasePath),
+    await fileBytes(`${databasePath}-wal`),
+  )
 }
 
 async function runOrderedEntries(context: ScenarioContext): Promise<ScenarioResult> {

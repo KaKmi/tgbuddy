@@ -11,8 +11,11 @@ import {
 } from './sqlite-spike-runtime.ts'
 import {
   runBootstrapScenario,
+  runCrashChild,
+  runCrashRecoveryScenario,
   runRuntimeScenario,
   runStorageScenarios,
+  type CrashChildOptions,
   type ScenarioContext,
 } from './sqlite-spike-scenarios.ts'
 
@@ -42,6 +45,31 @@ function parseArguments(): MainArguments {
     reportPath,
     scenario: scenario as MainArguments['scenario'],
     childMode: argumentValue('--child-mode'),
+  }
+}
+
+function requiredArgument(name: string): string {
+  const value = argumentValue(name)
+  if (!value) throw new Error(`缺少 ${name}`)
+  return value
+}
+
+function positiveIntegerArgument(name: string): number {
+  const value = Number(requiredArgument(name))
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${name} 必须为正整数`)
+  }
+  return value
+}
+
+function parseCrashChildOptions(): CrashChildOptions {
+  return {
+    databasePath: requiredArgument('--database'),
+    cwd: requiredArgument('--cwd'),
+    sessionId: requiredArgument('--session-id'),
+    markerPath: requiredArgument('--marker'),
+    minimumCommitted: positiveIntegerArgument('--minimum-committed'),
+    maximumPlanned: positiveIntegerArgument('--maximum-planned'),
   }
 }
 
@@ -90,6 +118,13 @@ async function executeScenarios(
       ...(await runStorageScenarios(context)),
     ]
   }
+  if (args.scenario === 'crash') {
+    return [
+      await runRuntimeScenario(context),
+      await runBootstrapScenario(context),
+      await runCrashRecoveryScenario(context),
+    ]
+  }
   throw new Error(`scenario 尚未实现: ${args.scenario}`)
 }
 
@@ -124,6 +159,9 @@ async function run(): Promise<void> {
   let status: SpikeReport['status'] = 'failed'
   try {
     assertPackagedRuntime(runtime)
+    if (args.childMode === 'crash-writer') {
+      await runCrashChild(parseCrashChildOptions())
+    }
     if (args.childMode) throw new Error(`未知 child mode: ${args.childMode}`)
     scenarios = await executeScenarios(args, {
       rootDir: args.spikeRoot,
