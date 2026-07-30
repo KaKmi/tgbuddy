@@ -44,6 +44,21 @@ SQLite、kernel、bundle 和 UI Slice 再按计划追加 `spike:sqlite`、`probe
   - Mirror: `bun:test`、固定 runtime fixture、完整场景表。
   - Deviations: 真正 AppDatabase 断言在 packaged 场景内完成。
 
+### K02: SQLite SessionCatalogRepository
+
+- Reference: `src/main/session-store.ts`
+  - Why analogous: 现有 SessionMeta create/list/update/delete 语义和侧栏排序基线。
+  - Mirror: ID/时间戳由调用方提供或显式生成，列表按 `updatedAt` 倒序，删除不触碰其它 Session。
+  - Deviations: 新 repository 不读写 JSON/JSONL，不持有模块级 cache。
+- Reference: `src/infrastructure/sqlite/app-database.ts`
+  - Why analogous: K02 必须复用 K01 的同一 app connection 和 migration protocol。
+  - Mirror: `app_*` namespace、显式 close、Electron Node 能力边界。
+  - Deviations: `002_app_sessions.sql` 创建首个业务表，repository 只通过 AppDatabase connection callback 访问。
+- Reference: `scripts/sqlite-spike-scenarios.ts`
+  - Why analogous: SQLite 功能只能在 packaged Electron Node 22 中做真实 reopen/隔离验证。
+  - Mirror: 独立临时 DB、try/finally close、稳定 ScenarioResult 和完整报告顺序。
+  - Deviations: K02 通过 `SessionRepository` port 验证产品 catalog，不使用 pi SessionRepo。
+
 ## Waves
 
 M1 的 K01–K17 存在严格数据/装配依赖，并共享 Composition Root、Runtime contract 或 compatibility owner，因此全部顺序执行：

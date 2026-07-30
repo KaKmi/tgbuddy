@@ -17,3 +17,4 @@ export type {
   RuntimeEvent,
   RuntimeEventListener,
 } from './app/runtime-events.ts'
+export type { SessionRepository } from './sessions/session-repository.ts'

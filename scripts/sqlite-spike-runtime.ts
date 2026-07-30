@@ -41,6 +41,7 @@ export interface SpikeReport {
 export const REQUIRED_SCENARIOS = [
   'runtime',
   'app-database',
+  'session-catalog',
   'bootstrap',
   'ordered-entries',
   'session-isolation',

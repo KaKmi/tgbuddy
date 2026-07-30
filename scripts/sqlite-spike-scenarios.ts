@@ -2,7 +2,10 @@ import type { SessionTreeEntry } from '@earendil-works/pi-agent-core'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { AppDatabase } from '../src/infrastructure/sqlite/app-database.ts'
+import { SqliteSessionRepository } from '../src/infrastructure/sqlite/repositories/sqlite-session-repository.ts'
+import type { SessionMeta } from '../src/shared/contracts/session.ts'
 import {
   importLegacySession,
   legacySqliteSessionId,
@@ -139,8 +142,9 @@ export async function runAppDatabaseScenario(
       .prepare('SELECT id AS value FROM app_schema_migrations ORDER BY id')
       .all() as unknown as ScalarRow[]
     assertCondition(
-      migrations.length === 1 && migrations[0]?.value === '001_app_bootstrap.sql',
-      'app migration 必须恰好包含 001_app_bootstrap.sql',
+      JSON.stringify(migrations.map((row) => row.value)) ===
+        JSON.stringify(['001_app_bootstrap.sql', '002_app_sessions.sql']),
+      'app migration 必须按顺序包含 001 和 002',
     )
     assertions++
 
@@ -149,8 +153,8 @@ export async function runAppDatabaseScenario(
       .all() as unknown as NamedRow[]
     assertCondition(
       JSON.stringify(tables.map((row) => row.name)) ===
-        JSON.stringify(['app_schema_migrations']),
-      `K01 不得创建业务表或 pi 私有表: ${tables.map((row) => row.name).join(',')}`,
+        JSON.stringify(['app_schema_migrations', 'app_sessions']),
+      `AppDatabase 不得创建未登记的表或 pi 私有表: ${tables.map((row) => row.name).join(',')}`,
     )
     assertions++
   } finally {
@@ -165,7 +169,149 @@ export async function runAppDatabaseScenario(
     'app-database',
     startedAt,
     assertions,
-    1,
+    2,
+    await fileBytes(databasePath),
+    await fileBytes(`${databasePath}-wal`),
+  )
+}
+
+export async function runSessionCatalogScenario(
+  context: ScenarioContext,
+): Promise<ScenarioResult> {
+  const startedAt = Date.now()
+  const databasePath = join(context.rootDir, 'session-catalog', 'tgbuddy.db')
+  const renamedPath = join(context.rootDir, 'session-catalog', 'tgbuddy-renamed.db')
+  let assertions = 0
+
+  const sessionAOld: SessionMeta = {
+    id: 'workspace-a-old',
+    title: 'Workspace A 旧会话',
+    workspaceId: 'workspace-a',
+    pinned: false,
+    archived: false,
+    createdAt: 100,
+    updatedAt: 100,
+  }
+  const sessionANew: SessionMeta = {
+    id: 'workspace-a-new',
+    title: 'Workspace A 新会话',
+    workspaceId: 'workspace-a',
+    channelId: 'channel-a',
+    modelId: 'model-a',
+    expertId: 'expert-a',
+    pinned: true,
+    archived: true,
+    permissionMode: 'auto',
+    status: 'running',
+    statusDetail: '正在执行',
+    lastActivity: '刚刚',
+    artifactCount: 3,
+    contextUsage: {
+      usedTokens: 1234,
+      contextWindow: 8192,
+      percent: 15.1,
+      breakdown: {
+        systemPrompt: 100,
+        tools: 200,
+        messages: 700,
+        skills: 134,
+        mcp: 100,
+      },
+      outputTokens: 56,
+      costUsd: 0.0123,
+      updatedAt: 200,
+    },
+    originRef: { sessionId: 'origin-session', messageId: 'origin-message' },
+    createdAt: 200,
+    updatedAt: 200,
+  }
+  const sessionB: SessionMeta = {
+    id: 'workspace-b',
+    title: 'Workspace B 会话',
+    workspaceId: 'workspace-b',
+    createdAt: 150,
+    updatedAt: 150,
+  }
+
+  const firstDatabase = AppDatabase.open(databasePath)
+  const firstRepository = new SqliteSessionRepository(firstDatabase)
+  firstRepository.create(sessionAOld)
+  firstRepository.create(sessionANew)
+  firstRepository.create(sessionB)
+
+  assertCondition(
+    JSON.stringify(firstRepository.list('workspace-a').map((session) => session.id)) ===
+      JSON.stringify(['workspace-a-new', 'workspace-a-old']),
+    'Workspace A 必须按 updatedAt 倒序列出且不得混入其它 Workspace',
+  )
+  assertions++
+  assertCondition(
+    JSON.stringify(firstRepository.list('workspace-b').map((session) => session.id)) ===
+      JSON.stringify(['workspace-b']),
+    'Workspace B 必须与 Workspace A 隔离',
+  )
+  assertions++
+  assertCondition(
+    JSON.stringify(firstRepository.list().map((session) => session.id)) ===
+      JSON.stringify(['workspace-a-new', 'workspace-b', 'workspace-a-old']),
+    '不指定 Workspace 时必须按 updatedAt 倒序列出全部 Session',
+  )
+  assertions++
+
+  const updatedAOld: SessionMeta = {
+    ...sessionAOld,
+    title: 'Workspace A 已更新',
+    status: 'done',
+    updatedAt: 300,
+  }
+  assertCondition(
+    isDeepStrictEqual(firstRepository.update(updatedAOld), updatedAOld),
+    'update 必须返回更新后的完整 Session',
+  )
+  assertions++
+  assertCondition(
+    JSON.stringify(firstRepository.list('workspace-a').map((session) => session.id)) ===
+      JSON.stringify(['workspace-a-old', 'workspace-a-new']),
+    'updatedAt 更新后排序必须立即改变',
+  )
+  assertions++
+  firstDatabase.close()
+
+  const reopenedDatabase = AppDatabase.open(databasePath)
+  const reopenedRepository = new SqliteSessionRepository(reopenedDatabase)
+  assertCondition(
+    isDeepStrictEqual(reopenedRepository.get(sessionANew.id), sessionANew),
+    '跨 reopen 必须完整保留所有 SessionMeta 字段',
+  )
+  assertions++
+  assertCondition(
+    isDeepStrictEqual(reopenedRepository.get(updatedAOld.id), updatedAOld),
+    '跨 reopen 必须保留 update 结果',
+  )
+  assertions++
+  assertCondition(reopenedRepository.get('missing') === undefined, '未知 Session 必须返回 undefined')
+  assertions++
+  assertCondition(reopenedRepository.delete(sessionANew.id), '首次 delete 必须返回 true')
+  assertions++
+  assertCondition(!reopenedRepository.delete(sessionANew.id), '重复 delete 必须返回 false')
+  assertions++
+  assertCondition(
+    JSON.stringify(reopenedRepository.list('workspace-a').map((session) => session.id)) ===
+      JSON.stringify(['workspace-a-old']),
+    'delete 后 Session 不得继续出现在 Workspace 列表',
+  )
+  assertions++
+  reopenedDatabase.close()
+
+  await rename(databasePath, renamedPath)
+  await rename(renamedPath, databasePath)
+  assertions++
+
+  return passedScenario(
+    'session-catalog',
+    startedAt,
+    assertions,
+    2,
     await fileBytes(databasePath),
     await fileBytes(`${databasePath}-wal`),
   )

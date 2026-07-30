@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import appBootstrapSql from './migrations/001_app_bootstrap.sql'
+import appSessionsSql from './migrations/002_app_sessions.sql'
 
 interface SqliteModule {
   DatabaseSync: typeof import('node:sqlite').DatabaseSync
@@ -25,6 +26,10 @@ const APP_MIGRATIONS: readonly AppMigration[] = [
   {
     id: '001_app_bootstrap.sql',
     sql: appBootstrapSql,
+  },
+  {
+    id: '002_app_sessions.sql',
+    sql: appSessionsSql,
   },
 ]
 
@@ -64,6 +69,15 @@ export class AppDatabase {
   close(): void {
     this.#database?.close()
     this.#database = undefined
+  }
+
+  /**
+   * 基础设施 adapter 在一次同步操作内借用连接。
+   *
+   * 回调结束后不应保存 database 引用，连接的唯一 owner 仍是 AppDatabase。
+   */
+  use<T>(operation: (database: DatabaseSync) => T): T {
+    return operation(this.#requireOpen())
   }
 
   #configure(): void {
