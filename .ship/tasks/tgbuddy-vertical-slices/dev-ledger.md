@@ -386,3 +386,14 @@ A05 "Artifact 投影" — complete
   Concerns: 恢复被误覆盖的既有 ArtifactRef 契约，并演进 blobId:string → blob:BlobRef
     （对齐 A01 BlobStore，`blobId` 无其它引用）；producerRunId 留 D01 lineage 精确填充；
     artifacts.list 已接真实仓库，A06 结果区直接消费；旧 countArtifacts 推导及其测试一并删除
+
+A06 "结果列表、分组与筛选" — complete
+  Commits: （本 Slice）
+  Files: src/renderer/features/results/ResultsPanel.tsx、results-view.ts、
+    src/renderer/App.tsx（结果占位替换）、src/shared/contracts/ipc.ts、src/preload/index.ts、
+    src/main/ipc.ts（artifact:list）、tests/results-view-state.test.ts
+  Produces: IPC `artifact:list`、ResultsPanel（时间倒序、本次任务/更早按最近 Run 边界分组、
+    全部/文件/图片/文档/输出筛选、选中态）、纯视图模型 groupArtifacts/filterArtifacts
+  RED/GREEN: 4 项状态测试（倒序+分组边界/无边界/空列表/类型筛选）
+  Concerns: 「本次任务」边界 = 最近一次 Run 的 createdAt；选中态留 A07 预览消费；
+    结果区沿用 hidden xl:flex 布局（窄屏不占位）

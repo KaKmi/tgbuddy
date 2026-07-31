@@ -62,6 +62,9 @@ const api = {
   toolOutput: {
     read: (ref) => ipcRenderer.invoke(IPC.TOOL_OUTPUT_READ, { ref }),
   },
+  artifact: {
+    list: (sessionId) => ipcRenderer.invoke(IPC.ARTIFACT_LIST, { sessionId }),
+  },
   permission: {
     respond: (res) => ipcRenderer.invoke(IPC.PERMISSION_RESPOND, res),
     pending: () => ipcRenderer.invoke(IPC.PERMISSION_PENDING),

@@ -175,6 +175,15 @@ export function registerIpc(
       return attachmentIo.readToolOutput(input.ref)
     },
   )
+  ipcMain.handle(
+    IPC.ARTIFACT_LIST,
+    (
+      _event,
+      input: IpcRequest<'artifact:list'>,
+    ): IpcResponse<'artifact:list'> => {
+      return agentRuntime.artifacts.list(input.sessionId)
+    },
+  )
 
   ipcMain.handle(
     IPC.PERMISSION_RESPOND,

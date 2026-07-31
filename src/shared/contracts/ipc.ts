@@ -30,6 +30,7 @@ import type { StartRunInput } from './run.ts'
 import type { RunRecord } from './run-snapshot.ts'
 import type { AttachmentRef } from './attachment.ts'
 import type { BlobRef } from './blob.ts'
+import type { ArtifactRef } from './artifact.ts'
 import type { SessionMeta } from './session.ts'
 import type {
   Workspace,
@@ -74,6 +75,7 @@ export const IPC = {
   ATTACHMENT_STAGE: 'attachment:stage',
   ATTACHMENT_DISCARD: 'attachment:discard',
   TOOL_OUTPUT_READ: 'tool-output:read',
+  ARTIFACT_LIST: 'artifact:list',
   /** 主 → 渲染，单向推送 */
   AGENT_STREAM: 'agent:stream',
 
@@ -188,6 +190,7 @@ export interface IpcCommandMap {
   >
   'attachment:discard': IpcCommand<AttachmentRef, void>
   'tool-output:read': IpcCommand<{ ref: BlobRef }, string>
+  'artifact:list': IpcCommand<{ sessionId: string }, ArtifactRef[]>
   'permission:respond': IpcCommand<PermissionResponse, void>
   'permission:pending': IpcCommand<undefined, PermissionRequest[]>
   'permission:rules': IpcCommand<undefined, PermissionRule[]>
@@ -276,6 +279,9 @@ export interface TgBuddyAPI {
   }
   toolOutput: {
     read(ref: IpcRequest<'tool-output:read'>['ref']): Promise<IpcResponse<'tool-output:read'>>
+  }
+  artifact: {
+    list(sessionId: IpcRequest<'artifact:list'>['sessionId']): Promise<IpcResponse<'artifact:list'>>
   }
   permission: {
     respond(res: IpcRequest<'permission:respond'>): Promise<IpcResponse<'permission:respond'>>

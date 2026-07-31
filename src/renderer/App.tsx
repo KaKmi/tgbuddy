@@ -10,6 +10,7 @@ import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AttachmentDraft, AttachmentRef } from '../shared/contracts/attachment.ts'
 import { AttachmentChipList } from './components/AttachmentChips.tsx'
+import { ResultsPanel } from './features/results/ResultsPanel.tsx'
 import {
   currentMessagesAtom,
   currentSessionIdAtom,
@@ -641,13 +642,8 @@ export function App() {
         </div>
       </main>
 
-      {/* ── 结果区（阶段 4 之后才有内容）──────────────────── */}
-      <aside className="hidden w-72 shrink-0 border-l bg-background xl:block">
-        <div className="border-b px-4 py-3 text-sm font-medium">结果</div>
-        <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-          本次会话的产出会出现在这里
-        </p>
-      </aside>
+      {/* ── 结果区（A06：产物列表，时间倒序 + 分组 + 类型筛选）────────── */}
+      <ResultsPanel sessionId={currentId ?? undefined} />
     </div>
   )
 }
