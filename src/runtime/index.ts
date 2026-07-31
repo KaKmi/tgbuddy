@@ -25,6 +25,16 @@ export type {
   RunExecutionEnvFactory,
 } from './execution-env/run-execution-env.ts'
 export {
+  createPolicyEngine,
+  isControlTool,
+  type PermissionAskInput,
+  type PolicyEngineDependencies,
+} from './permissions/policy-engine.ts'
+export {
+  MemoryPermissionRuleRepository,
+  type PermissionRuleRepository,
+} from './permissions/permission-rule-repository.ts'
+export {
   mountFailureMessage,
   type WorkspaceMountResolver,
 } from './workspaces/workspace-mount-resolver.ts'

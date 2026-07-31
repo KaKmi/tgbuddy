@@ -29,6 +29,11 @@ export interface PermissionRule {
   tool: string
   match: RuleMatch
   pattern: string
+  /**
+   * 命中后的动作。缺省按 allow（「总是允许」）；C06 的「禁止」档
+   * 用 deny 持久化。破坏性命令即使 deny 也走询问，见 neverPersist。
+   */
+  action?: 'allow' | 'deny'
   scope: RuleScope
   /**
    * 破坏性操作命中即 true，**永不可持久化**。

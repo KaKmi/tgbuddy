@@ -4,10 +4,11 @@ import {
   resolve,
 } from 'node:path'
 import {
-  createPermissiveToolPolicy,
+  createPolicyEngine,
   createSessionCommands,
   createSessionMessageHistory,
   createWorkspaceService,
+  MemoryPermissionRuleRepository,
   recoverInterruptedRuns,
   type AgentRuntime,
   type InterruptedRunRecoveryReport,
@@ -25,6 +26,7 @@ import {
   PiRunExecutionEnvFactory,
 } from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
+import * as permission from '../permission-service.ts'
 import { buildBuiltinTools } from '../tools/index.ts'
 import { createId } from './create-id.ts'
 import { createLegacyRuntime } from './create-legacy-runtime.ts'
@@ -32,6 +34,7 @@ import {
   importLegacySessions,
   type LegacyMigrationReport,
 } from './import-legacy-sessions.ts'
+import { IPC } from '../../shared/contracts/ipc.ts'
 
 export interface CreateApplicationOptions {
   getWindow(): BrowserWindow | null
@@ -106,7 +109,41 @@ export async function createApplication(
         sessions: createdMessageStore,
         envFactory: new PiRunExecutionEnvFactory(),
         tools: (invocation, env) => buildBuiltinTools(invocation.cwd, env),
-        toolPolicy: createPermissiveToolPolicy(),
+        toolPolicy: createPolicyEngine({
+          rules: new MemoryPermissionRuleRepository(),
+          getMode: (sessionId) => permission.getMode(sessionId),
+          getWorkspaceId: (sessionId) =>
+            sessionRepository.get(sessionId)?.workspaceId,
+          // S05 的 ask 落点仍委托 legacy permission-service（挂起/响应/逃生口已完备），
+          // S06 把 pending registry 迁入 Runtime 后替换此 adapter。
+          ask: (input, signal) =>
+            permission
+              .createBeforeToolCall(
+                input.sessionId,
+                (request) => {
+                  const win = options.getWindow()
+                  if (!win || win.isDestroyed()) return
+                  win.webContents.send(IPC.AGENT_STREAM, {
+                    sessionId: input.sessionId,
+                    runId: 0,
+                    payload: {
+                      channel: 'host',
+                      event: { type: 'permission_request', request },
+                    },
+                  })
+                },
+              )(
+                {
+                  toolCall: {
+                    id: input.toolCallId,
+                    name: input.toolName,
+                  },
+                  args: input.args,
+                },
+                signal,
+              )
+              .then((verdict) => verdict === undefined),
+        }),
       }),
       contextCompactor: createPiContextCompactor(),
       history: messageHistory,
