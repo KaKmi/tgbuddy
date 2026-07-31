@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import type { AskUserRequest } from '../../shared/types/permission.ts'
+import { isAskUserComplete, resolveAskUserAnswer } from './ask-user-answer.ts'
 
 export function AskUserCard({ request }: { request: AskUserRequest }) {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [custom, setCustom] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
 
-  const complete = request.questions.every((question) =>
-    Boolean((custom[question.id] ?? answers[question.id] ?? '').trim()),
-  )
+  const complete = isAskUserComplete(request.questions, custom, answers)
 
   async function submit() {
     if (!complete) return
@@ -17,7 +16,7 @@ export function AskUserCard({ request }: { request: AskUserRequest }) {
       requestId: request.requestId,
       answers: request.questions.map((question) => ({
         questionId: question.id,
-        value: (custom[question.id] ?? answers[question.id] ?? '').trim(),
+        value: resolveAskUserAnswer(question.id, custom, answers),
       })),
     })
   }

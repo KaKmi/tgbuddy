@@ -57,16 +57,21 @@ test('ask_user 结构化问题可回答并回到原任务', async ({ tgbuddy }) 
   await expect(tgbuddy.page.getByText('这次修改的目标是什么？')).toBeVisible()
   await expect(tgbuddy.page.getByText('影响范围？')).toBeVisible()
 
+  // 第一题直接点选选项（修 bug），选中后不依赖「其他答案」输入框即可提交
   await tgbuddy.page
     .locator('fieldset')
     .nth(0)
-    .getByPlaceholder('其他答案…')
-    .fill('修 bug')
+    .getByRole('radio')
+    .first()
+    .check()
   await tgbuddy.page
     .locator('fieldset')
     .nth(1)
     .getByPlaceholder('其他答案…')
     .fill('单文件')
+  await expect(
+    tgbuddy.page.getByRole('button', { name: '提交回答', exact: true }),
+  ).toBeEnabled()
   await tgbuddy.page.getByRole('button', { name: '提交回答', exact: true }).click()
 
   await expect(tgbuddy.page.getByText('M2 提问完成', { exact: true })).toBeVisible()
