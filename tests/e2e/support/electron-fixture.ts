@@ -30,6 +30,7 @@ class ElectronHarness implements TgBuddyElectron {
   readonly #dataDir: string
   readonly #userDataDir: string
   readonly #modelServer: FakeOpenAiServer
+  #workspaceDir = ''
   #application: ElectronApplication | undefined
   #page: Page | undefined
 
@@ -49,6 +50,7 @@ class ElectronHarness implements TgBuddyElectron {
 
   async initialize(): Promise<void> {
     const workspace = join(this.#dataDir, 'workspaces', 'default')
+    this.#workspaceDir = workspace
     await mkdir(workspace, { recursive: true })
     await mkdir(this.#userDataDir, { recursive: true })
     await writeFile(
@@ -114,6 +116,9 @@ class ElectronHarness implements TgBuddyElectron {
       env: {
         ...process.env,
         TGBUDDY_DATA_DIR: this.#dataDir,
+        // S02 起默认工作区路径取自该变量；E2E 用 fixture 目录做 run cwd，
+        // 避免读仓库根、也不在重启后丢失（第一个工作区即默认）。
+        TGBUDDY_WORKSPACE_DIR: this.#workspaceDir,
         TGBUDDY_E2E: '1',
       },
     })

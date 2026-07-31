@@ -99,7 +99,12 @@ async function handleRequest(
       if (lastMessage?.role === 'tool') {
         await streamText(response, '工具读取完成')
       } else {
-        streamToolCall(response, 'README.md')
+        streamToolCall(
+          response,
+          'read',
+          { path: 'README.md' },
+          'call_e2e_read',
+        )
       }
       return
     }
@@ -107,7 +112,38 @@ async function handleRequest(
       if (lastMessage?.role === 'tool') {
         await streamText(response, `压缩素材完成：${prompt}`)
       } else {
-        streamToolCall(response, 'LARGE.txt')
+        streamToolCall(
+          response,
+          'read',
+          { path: 'LARGE.txt' },
+          'call_e2e_read',
+        )
+      }
+      return
+    }
+    if (prompt.includes('M2 写入')) {
+      if (lastMessage?.role === 'tool') {
+        await streamText(response, 'M2 写入完成')
+      } else {
+        streamToolCall(
+          response,
+          'write',
+          { path: 'm2-write.txt', content: 'M2 写入内容' },
+          'call_e2e_write',
+        )
+      }
+      return
+    }
+    if (prompt.includes('M2 删除')) {
+      if (lastMessage?.role === 'tool') {
+        await streamText(response, 'M2 删除完成')
+      } else {
+        streamToolCall(
+          response,
+          'delete',
+          { paths: ['m2-delete.txt'] },
+          'call_e2e_delete',
+        )
       }
       return
     }
@@ -172,7 +208,12 @@ async function streamText(
   writeUsageAndEnd(response, options.highUsage ? 900_000 : 1_000)
 }
 
-function streamToolCall(response: ServerResponse, path: string): void {
+function streamToolCall(
+  response: ServerResponse,
+  toolName: string,
+  args: Record<string, unknown>,
+  idPrefix: string,
+): void {
   toolCallSequence += 1
   writeChunk(response, {
     choices: [{
@@ -181,11 +222,11 @@ function streamToolCall(response: ServerResponse, path: string): void {
         role: 'assistant',
         tool_calls: [{
           index: 0,
-          id: `call_e2e_read_${toolCallSequence}`,
+          id: `${idPrefix}_${toolCallSequence}`,
           type: 'function',
           function: {
-            name: 'read',
-            arguments: JSON.stringify({ path }),
+            name: toolName,
+            arguments: JSON.stringify(args),
           },
         }],
       },

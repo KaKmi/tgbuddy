@@ -34,7 +34,7 @@ test('会话流式结果可持久化，硬重启会恢复中断 Run 并可继续
 
   await tgbuddy.page.getByPlaceholder(/说点什么/).fill('慢速恢复')
   await tgbuddy.page.getByRole('button', { name: '发送', exact: true }).click()
-  await expect(tgbuddy.page.getByRole('button', { name: '停止' })).toBeVisible()
+  await expect(tgbuddy.page.getByRole('button', { name: '停止', exact: true })).toBeVisible()
   await tgbuddy.restart({ hard: true })
 
   await selectOnlySession(tgbuddy.page)
@@ -47,7 +47,7 @@ test('停止会中止 Run、丢弃迟到文本，并允许下一次发送', asyn
   const input = tgbuddy.page.getByPlaceholder(/说点什么/)
   await input.fill('慢速停止')
   await tgbuddy.page.getByRole('button', { name: '发送', exact: true }).click()
-  await tgbuddy.page.getByRole('button', { name: '停止' }).click()
+  await tgbuddy.page.getByRole('button', { name: '停止', exact: true }).click()
 
   await expect(tgbuddy.page.getByRole('button', { name: '发送', exact: true })).toBeVisible()
   await expect(

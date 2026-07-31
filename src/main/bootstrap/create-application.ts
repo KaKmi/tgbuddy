@@ -159,7 +159,10 @@ export async function createApplication(
     reportLegacyMigration(migration)
     // 默认工作区承接尚无 workspaceId 的既有会话（含 legacy 导入），
     // 保证 S01 之后侧栏不会把历史会话隐藏成数据丢失。
-    workspaceService.ensureDefault(process.cwd())
+    // TGBUDDY_WORKSPACE_DIR 仅供 E2E 隔离 run cwd，生产默认仍是启动目录。
+    workspaceService.ensureDefault(
+      process.env.TGBUDDY_WORKSPACE_DIR ?? process.cwd(),
+    )
     const createdMessageStore = createPiSessionStore({
       databasePath: options.databasePath,
       cwd: process.cwd(),
