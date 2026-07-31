@@ -34,6 +34,7 @@ import type {
   SessionTreeEntry,
 } from '@earendil-works/pi-agent-core'
 import type { AttachmentRef } from './attachment.ts'
+import type { BlobRef } from './blob.ts'
 
 /** 当前内核标识，写进会话文件头 */
 export const KERNEL_ID = 'pi@0.82' as const
@@ -55,6 +56,8 @@ export interface ToolDetails {
   paths?: string[]
   action?: 'create' | 'update' | 'delete' | 'read' | 'execute'
   bytes?: number
+  /** A04：超长工具输出的完整内容 ref（BlobStore），消息只存 8 行预览 */
+  outputRef?: BlobRef
   [key: string]: unknown
 }
 

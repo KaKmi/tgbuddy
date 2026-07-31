@@ -59,6 +59,9 @@ const api = {
     stage: (input) => ipcRenderer.invoke(IPC.ATTACHMENT_STAGE, input),
     discard: (ref) => ipcRenderer.invoke(IPC.ATTACHMENT_DISCARD, ref),
   },
+  toolOutput: {
+    read: (ref) => ipcRenderer.invoke(IPC.TOOL_OUTPUT_READ, { ref }),
+  },
   permission: {
     respond: (res) => ipcRenderer.invoke(IPC.PERMISSION_RESPOND, res),
     pending: () => ipcRenderer.invoke(IPC.PERMISSION_PENDING),

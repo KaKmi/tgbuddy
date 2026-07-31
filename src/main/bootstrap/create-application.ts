@@ -280,6 +280,9 @@ export async function createApplication(
         },
         // A03：模型调用前按 ref 读回附件字节（图片转 pi ImageContent）
         loadAttachment: (blob) => blobStore.get(blob),
+        // A04：超长工具输出完整落 Blob，消息只存预览 + ref
+        storeToolOutput: (sessionId, toolCallId, text) =>
+          blobStore.put(new TextEncoder().encode(text), { mime: 'text/plain' }),
         tools: (invocation, env) => {
           const sessionId = invocation.sessionId
           // C12：工具集只来自 Run 启动时冻结的 snapshot，
@@ -415,6 +418,10 @@ export async function createApplication(
         }
       },
       discard: (ref) => blobStore.delete(ref.blob),
+      async readToolOutput(ref) {
+        const bytes = await blobStore.get(ref)
+        return new TextDecoder().decode(bytes)
+      },
     }
     unsubscribe = registerIpc(agentRuntime, options.getWindow, attachmentIo)
   } catch (error) {

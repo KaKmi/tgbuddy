@@ -86,13 +86,20 @@ export interface ToolCardProps {
   name: string
   args: Record<string, unknown>
   status: ToolStatus
-  result?: { isError: boolean; text: string }
+  result?: {
+    isError: boolean
+    text: string
+    /** A04：超长输出完整内容 ref（BlobStore），点击「查看完整输出」读取 */
+    outputRef?: { hash: string; size: number; mime?: string }
+  }
   elapsedMs?: number
 }
 
 export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProps) {
   // 失败默认展开 —— 用户需要立刻看到原因（docs/06 决定 2）
   const [open, setOpen] = useState(status === 'error')
+  const [fullOutput, setFullOutput] = useState<string>()
+  const [loadingOutput, setLoadingOutput] = useState(false)
   const s = ST[status]
 
   return (
@@ -170,6 +177,40 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
                     {previewToolText(result.text)}
                   </pre>
                 </Field>
+              )}
+              {result?.outputRef && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    data-testid="tool-output-open"
+                    disabled={loadingOutput}
+                    onClick={() => {
+                      if (fullOutput) {
+                        setFullOutput(undefined)
+                        return
+                      }
+                      setLoadingOutput(true)
+                      void window.tgbuddy.toolOutput
+                        .read(result.outputRef!)
+                        .then((text) => {
+                          setFullOutput(text)
+                          setLoadingOutput(false)
+                        })
+                        .catch((error: unknown) => {
+                          console.error('[ToolCard] 读取完整输出失败：', error)
+                          setLoadingOutput(false)
+                        })
+                    }}
+                    className="rounded-md bg-white/5 px-2 py-1 text-[11px] text-[#8ba7c4] hover:bg-white/10 disabled:opacity-40"
+                  >
+                    {loadingOutput ? '读取中…' : fullOutput ? '收起完整输出' : '查看完整输出'}
+                  </button>
+                </div>
+              )}
+              {fullOutput && (
+                <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-muted-foreground">
+                  {fullOutput}
+                </pre>
               )}
             </div>
           )}

@@ -892,7 +892,10 @@ function groupSessions(sessions: SessionMeta[]): { title: string; items: Session
 }
 
 /** toolCallId → 该次调用的结果。历史回放时用来给工具卡片定状态 */
-export type ToolResultMap = Map<string, { isError: boolean; text: string }>
+export type ToolResultMap = Map<
+  string,
+  { isError: boolean; text: string; outputRef?: { hash: string; size: number; mime?: string } }
+>
 
 /**
  * 从整段历史里建一次配对索引。
@@ -909,9 +912,27 @@ export function buildToolResultMap(messages: SessionMessage[]): ToolResultMap {
       .map((c) => (c.type === 'text' ? c.text : ''))
       .join('')
       .trim()
-    map.set(m.message.toolCallId, { isError: m.message.isError, text })
+    const details =
+      typeof m.message.details === 'object' && m.message.details !== null
+        ? (m.message.details as Record<string, unknown>)
+        : undefined
+    const outputRef = details?.outputRef
+    map.set(m.message.toolCallId, {
+      isError: m.message.isError,
+      text,
+      ...(isBlobRef(outputRef) ? { outputRef } : {}),
+    })
   }
   return map
+}
+
+function isBlobRef(value: unknown): value is { hash: string; size: number; mime?: string } {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && typeof (value as { hash?: unknown }).hash === 'string'
+    && typeof (value as { size?: unknown }).size === 'number'
+  )
 }
 
 function MessageView({

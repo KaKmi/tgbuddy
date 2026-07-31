@@ -353,3 +353,18 @@ A03 "附件进入模型上下文" — complete
   Concerns: 图片经 pi 原生 prompt(text,{images}) 注入，pi session 会存 base64 副本；
     原始 ref 仍在 app_attachments（UI/审计用），与「消息只存 ref」在契约层保持一致；
     超长文本附件截断到 64KB，完整内容在 BlobStore（A04 结果区打开）
+
+A04 "长工具输出 Blob 化" — complete
+  Commits: （本 Slice）
+  Files: src/kernel/pi/pi-tool-output.ts、src/kernel/pi/pi-agent-engine.ts、
+    src/shared/contracts/message.ts（ToolDetails.outputRef）、src/shared/contracts/ipc.ts、
+    src/main/ipc.ts、src/main/bootstrap/create-application.ts、src/preload/index.ts、
+    src/renderer/App.tsx（buildToolResultMap 带 outputRef）、src/renderer/components/ToolCard.tsx、
+    tests/unit/kernel/pi-tool-output.test.ts
+  Produces: `TOOL_OUTPUT_THRESHOLD=256KB`（按 UTF-8 字节）、`prepareToolOutputPreview`
+    （pi truncateTail 8 行尾部预览 + 截断说明 + outputRef）、engine `tool_result` 补丁
+    （ToolResultPatch 替换内容/合并 details）、IPC `tool-output:read`、ToolCard「查看完整输出」展开
+  RED/GREEN: 5 项（阈值上下/尾部 8 行/store 失败降级/UTF-8 多字节/多文本块合并）
+  Concerns: 阈值按字节算（中文 3 字节/字不会被低估）；store 失败降级为纯截断不阻断 Run；
+    禁止依赖 pi 原生 details 形状——details 由我们在补丁里按 ToolDetails 契约写入；
+    probe 未跑（需真实渠道），E2E 里程碑统一覆盖

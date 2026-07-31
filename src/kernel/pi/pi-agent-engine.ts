@@ -21,7 +21,9 @@ import type {
   ToolPolicy,
 } from '../../runtime/runs/agent-engine.ts'
 import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
+import type { BlobRef } from '../../shared/contracts/blob.ts'
 import { preparePromptWithAttachments } from './pi-attachment-content.ts'
+import { prepareToolOutputPreview } from './pi-tool-output.ts'
 import type {
   RunExecutionEnv,
   RunExecutionEnvFactory,
@@ -61,6 +63,15 @@ export interface CreatePiAgentEngineOptions {
    * 缺失/读取失败时只记诊断，不阻断 Run。
    */
   loadAttachment?(ref: AttachmentRef['blob']): Promise<Uint8Array>
+  /**
+   * A04：工具输出超过 256KB 时把完整内容落 BlobStore（Composition Root 注入）。
+   * 失败时只记诊断，模型/消息仍收到截断预览。
+   */
+  storeToolOutput?(
+    sessionId: string,
+    toolCallId: string,
+    text: string,
+  ): Promise<BlobRef>
 }
 
 export interface PersistedPiMessage {
@@ -135,6 +146,7 @@ class PiAgentEngine implements AgentEngine {
   readonly #toolPolicy: ToolPolicy
   readonly #persistAttachments: CreatePiAgentEngineOptions['persistAttachments']
   readonly #loadAttachment: CreatePiAgentEngineOptions['loadAttachment']
+  readonly #storeToolOutput: CreatePiAgentEngineOptions['storeToolOutput']
   readonly #active = new Map<string, AgentHarness>()
   #disposed = false
 
@@ -145,6 +157,7 @@ class PiAgentEngine implements AgentEngine {
     this.#toolPolicy = options.toolPolicy
     this.#persistAttachments = options.persistAttachments
     this.#loadAttachment = options.loadAttachment
+    this.#storeToolOutput = options.storeToolOutput
   }
 
   async *run(
@@ -209,6 +222,26 @@ class PiAgentEngine implements AgentEngine {
         return decision.action === 'deny'
           ? { block: true, reason: decision.reason }
           : undefined
+      })
+      // A04：超长工具输出落 Blob，消息/模型只收 8 行尾部预览 + ref
+      const unsubscribeToolOutput = harness.on('tool_result', async (event) => {
+        const preview = await prepareToolOutputPreview({
+          content: event.content,
+          sessionId: invocation.sessionId,
+          toolCallId: event.toolCallId,
+          store: (sessionId, toolCallId, text) => {
+            if (!this.#storeToolOutput) throw new Error('长输出存储未配置')
+            return this.#storeToolOutput(sessionId, toolCallId, text)
+          },
+        })
+        if (!preview) return undefined
+        return {
+          content: [{ type: 'text', text: preview.text }],
+          details: {
+            ...(isRecord(event.details) ? event.details : {}),
+            ...(preview.outputRef ? { outputRef: preview.outputRef } : {}),
+          },
+        }
       })
       const fixedContextTokens =
         estimateTextTokens(invocation.systemPrompt)
@@ -305,6 +338,7 @@ class PiAgentEngine implements AgentEngine {
         signal.removeEventListener('abort', abortHarness)
         unsubscribeContextGuard()
         unsubscribeToolPolicy()
+        unsubscribeToolOutput()
         unsubscribe()
         if (this.#active.get(invocation.sessionId) === harness) {
           this.#active.delete(invocation.sessionId)

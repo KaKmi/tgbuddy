@@ -23,6 +23,8 @@ export interface AttachmentIo {
     input: { name: string; mime?: string; bytes: Uint8Array },
   ): Promise<AttachmentRef>
   discard(ref: AttachmentRef): Promise<void>
+  /** A04：按 BlobRef.hash 读回完整工具输出（渲染层「查看完整输出」） */
+  readToolOutput(ref: AttachmentRef['blob']): Promise<string>
 }
 
 export function registerIpc(
@@ -162,6 +164,15 @@ export function registerIpc(
       ref: IpcRequest<'attachment:discard'>,
     ): Promise<IpcResponse<'attachment:discard'>> => {
       await attachmentIo.discard(ref)
+    },
+  )
+  ipcMain.handle(
+    IPC.TOOL_OUTPUT_READ,
+    async (
+      _event,
+      input: IpcRequest<'tool-output:read'>,
+    ): Promise<IpcResponse<'tool-output:read'>> => {
+      return attachmentIo.readToolOutput(input.ref)
     },
   )
 
