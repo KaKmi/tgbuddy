@@ -26,6 +26,7 @@ import {
   type SessionCommands,
   type SessionMessageHistory,
   type SecretStore,
+  type ToolSettingsService,
   type WorkspaceCommands,
 } from '../../runtime/index.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
@@ -57,6 +58,8 @@ export interface CreateLegacyRuntimeOptions {
   providerCatalog: ProviderCatalog
   /** C04：命名模型配置预设，Run 启动时固化为不可变快照 */
   profiles: ProfileService
+  /** C06：工具三档权限设置（UI 值与 Tool 实例分离） */
+  toolSettings: ToolSettingsService
   dispose?(): Promise<void>
 }
 
@@ -204,6 +207,19 @@ export function createLegacyRuntime(
       },
       deleteProfile: (profileId) => {
         options.profiles.delete(profileId)
+      },
+      listTools: () => options.toolSettings.listTools(),
+      setToolPermission: (toolId, permission) => {
+        options.toolSettings.set(toolId, permission)
+      },
+      resetToolPermission: (toolId) => {
+        options.toolSettings.reset(toolId)
+      },
+      resetAllToolPermissions: () => {
+        options.toolSettings.resetAll()
+      },
+      bulkSetAskTools: (toolIds) => {
+        options.toolSettings.bulkSetAsk(toolIds)
       },
     },
     async dispose() {

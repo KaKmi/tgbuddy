@@ -16,6 +16,7 @@ import {
   createProfileService,
   createSessionCommands,
   createSessionMessageHistory,
+  createToolSettingsService,
   createWorkspaceService,
   recoverInterruptedRuns,
   type AgentRuntime,
@@ -27,6 +28,7 @@ import {
   SqlitePermissionRuleRepository,
   SqliteProfileRepository,
   SqliteSessionRepository,
+  SqliteToolSettingsRepository,
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
 import { EncryptedFileSecretStore } from '../../infrastructure/secrets/index.ts'
@@ -102,6 +104,12 @@ export async function createApplication(
   migrateLegacyChannels(channels, channelRepository)
   // C05：内置工具统一注册，Run 启动按 snapshot 冻结启用集合。
   const toolRegistry = createBuiltinToolRegistry()
+  // C06：工具三档权限覆盖持久化，PolicyEngine 在规则之下读取。
+  const toolSettings = createToolSettingsService({
+    registry: toolRegistry,
+    repository: new SqliteToolSettingsRepository(appDatabase),
+    now: Date.now,
+  })
   const mountResolver = new NodeWorkspaceMountResolver()
   const workspaceService = createWorkspaceService({
     repository: workspaceRepository,
@@ -278,6 +286,7 @@ export async function createApplication(
             sessionRepository.get(sessionId)?.permissionMode ?? 'auto',
           getWorkspaceId: (sessionId) =>
             sessionRepository.get(sessionId)?.workspaceId,
+          getToolPermission: (toolName) => toolSettings.getPermission(toolName),
           ask: (input, signal) => permissionAskBroker.ask(input, signal),
         }),
       }),
@@ -303,6 +312,7 @@ export async function createApplication(
       channels,
       providerCatalog: createPiProviderCatalog(),
       profiles,
+      toolSettings,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)

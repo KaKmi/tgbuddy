@@ -24,3 +24,16 @@ export interface ToolDescriptor {
   /** 附加说明（如 bash 的破坏性命令提示） */
   note?: string
 }
+
+/** 设置页工具列表行：描述符 + 最终三档权限（覆盖优先，否则默认）。 */
+export interface ToolSettingView {
+  id: string
+  name: string
+  label: string
+  description: string
+  category: ToolCategory
+  source: string
+  enabled: boolean
+  permission: ToolPermission
+  note?: string
+}

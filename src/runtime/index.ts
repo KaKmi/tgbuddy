@@ -52,6 +52,16 @@ export {
   BUILTIN_TOOL_DESCRIPTORS,
   createBuiltinToolRegistry,
 } from './tools/builtin-tools.ts'
+export {
+  MemoryToolSettingsRepository,
+  type ToolPermissionSetting,
+  type ToolSettingsRepository,
+} from './tools/tool-settings-repository.ts'
+export {
+  createToolSettingsService,
+  type CreateToolSettingsServiceOptions,
+  type ToolSettingsService,
+} from './tools/tool-settings-service.ts'
 export type {
   AgentRuntimeEvent,
   AgentRuntimeEventListener,

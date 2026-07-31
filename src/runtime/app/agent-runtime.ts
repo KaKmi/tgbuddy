@@ -6,6 +6,10 @@ import type {
   ChannelSaveInput,
 } from '../../shared/contracts/channel.ts'
 import type { Profile, ProfileSaveInput } from '../../shared/contracts/profile.ts'
+import type {
+  ToolPermission,
+  ToolSettingView,
+} from '../../shared/contracts/tool.ts'
 import type { HostEvent, StreamFrame } from '../../shared/contracts/events.ts'
 import type {
   AskUserRequest,
@@ -111,6 +115,12 @@ export interface SettingsCommands {
   listProfiles(): Profile[]
   saveProfile(profile: ProfileSaveInput): void
   deleteProfile(profileId: string): void
+  /** C06：工具三档权限设置（与 registry 合并后的最终视图） */
+  listTools(): ToolSettingView[]
+  setToolPermission(toolId: string, permission: ToolPermission): void
+  resetToolPermission(toolId: string): void
+  resetAllToolPermissions(): void
+  bulkSetAskTools(toolIds: string[]): void
 }
 
 export interface AgentRuntime {

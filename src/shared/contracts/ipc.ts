@@ -19,6 +19,7 @@ import type {
   ChannelTestResult,
 } from './channel.ts'
 import type { Profile, ProfileSaveInput } from './profile.ts'
+import type { ToolPermission, ToolSettingView } from './tool.ts'
 import type { StartRunInput } from './run.ts'
 import type { SessionMeta } from './session.ts'
 import type {
@@ -95,6 +96,13 @@ export const IPC = {
   PROFILE_LIST: 'profile:list',
   PROFILE_SAVE: 'profile:save',
   PROFILE_DELETE: 'profile:delete',
+
+  // 工具三档权限
+  TOOL_LIST: 'tool:list',
+  TOOL_PERMISSION_SET: 'tool:permission-set',
+  TOOL_PERMISSION_RESET: 'tool:permission-reset',
+  TOOL_PERMISSIONS_RESET: 'tool:permissions-reset',
+  TOOL_BULK_ASK: 'tool:bulk-ask',
 } as const satisfies Record<string, keyof IpcCommandMap | keyof IpcEventMap>
 
 // ── 请求/响应类型 ─────────────────────────────────────────────────
@@ -170,6 +178,14 @@ export interface IpcCommandMap {
   'profile:list': IpcCommand<undefined, Profile[]>
   'profile:save': IpcCommand<ProfileSaveInput, void>
   'profile:delete': IpcCommand<string, void>
+  'tool:list': IpcCommand<undefined, ToolSettingView[]>
+  'tool:permission-set': IpcCommand<
+    { toolId: string; permission: ToolPermission },
+    void
+  >
+  'tool:permission-reset': IpcCommand<{ toolId: string }, void>
+  'tool:permissions-reset': IpcCommand<undefined, void>
+  'tool:bulk-ask': IpcCommand<{ toolIds: string[] }, void>
 }
 
 export type IpcCommandName = keyof IpcCommandMap
@@ -263,6 +279,20 @@ export interface TgBuddyAPI {
     list(): Promise<IpcResponse<'profile:list'>>
     save(profile: IpcRequest<'profile:save'>): Promise<IpcResponse<'profile:save'>>
     delete(id: IpcRequest<'profile:delete'>): Promise<IpcResponse<'profile:delete'>>
+  }
+  tool: {
+    list(): Promise<IpcResponse<'tool:list'>>
+    setPermission(
+      toolId: IpcRequest<'tool:permission-set'>['toolId'],
+      permission: IpcRequest<'tool:permission-set'>['permission'],
+    ): Promise<IpcResponse<'tool:permission-set'>>
+    resetPermission(
+      toolId: IpcRequest<'tool:permission-reset'>['toolId'],
+    ): Promise<IpcResponse<'tool:permission-reset'>>
+    resetAll(): Promise<IpcResponse<'tool:permissions-reset'>>
+    bulkAsk(
+      toolIds: IpcRequest<'tool:bulk-ask'>['toolIds'],
+    ): Promise<IpcResponse<'tool:bulk-ask'>>
   }
 }
 

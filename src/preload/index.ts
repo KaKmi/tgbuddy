@@ -86,6 +86,15 @@ const api = {
     save: (profile) => ipcRenderer.invoke(IPC.PROFILE_SAVE, profile),
     delete: (id) => ipcRenderer.invoke(IPC.PROFILE_DELETE, id),
   },
+  tool: {
+    list: () => ipcRenderer.invoke(IPC.TOOL_LIST),
+    setPermission: (toolId, permission) =>
+      ipcRenderer.invoke(IPC.TOOL_PERMISSION_SET, { toolId, permission }),
+    resetPermission: (toolId) =>
+      ipcRenderer.invoke(IPC.TOOL_PERMISSION_RESET, { toolId }),
+    resetAll: () => ipcRenderer.invoke(IPC.TOOL_PERMISSIONS_RESET),
+    bulkAsk: (toolIds) => ipcRenderer.invoke(IPC.TOOL_BULK_ASK, { toolIds }),
+  },
 } satisfies TgBuddyAPI
 
 contextBridge.exposeInMainWorld('tgbuddy', api)

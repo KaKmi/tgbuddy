@@ -8,6 +8,7 @@ import appWorkspacesSql from './migrations/004_app_workspaces.sql'
 import appPermissionRulesSql from './migrations/005_app_permission_rules.sql'
 import appChannelsSql from './migrations/006_app_channels.sql'
 import appProfilesSql from './migrations/007_app_profiles.sql'
+import appToolSettingsSql from './migrations/008_app_tool_settings.sql'
 
 interface SqliteModule {
   DatabaseSync: typeof import('node:sqlite').DatabaseSync
@@ -55,6 +56,10 @@ const APP_MIGRATIONS: readonly AppMigration[] = [
   {
     id: '007_app_profiles.sql',
     sql: appProfilesSql,
+  },
+  {
+    id: '008_app_tool_settings.sql',
+    sql: appToolSettingsSql,
   },
 ]
 

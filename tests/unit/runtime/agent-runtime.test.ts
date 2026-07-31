@@ -88,6 +88,11 @@ function createDependencies(calls: string[]): AgentRuntimeDependencies {
       listProfiles: () => [],
       saveProfile: () => calls.push('settings.profile-save'),
       deleteProfile: () => calls.push('settings.profile-delete'),
+      listTools: () => [],
+      setToolPermission: () => calls.push('settings.tool-set'),
+      resetToolPermission: () => calls.push('settings.tool-reset'),
+      resetAllToolPermissions: () => calls.push('settings.tools-reset'),
+      bulkSetAskTools: () => calls.push('settings.tools-bulk-ask'),
     },
   }
 }

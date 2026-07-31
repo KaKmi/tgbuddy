@@ -2,6 +2,7 @@ import type {
   PermissionMode,
   PermissionRule,
 } from '../../shared/contracts/permission.ts'
+import type { ToolPermission } from '../../shared/contracts/tool.ts'
 import {
   isNeverPersist,
   isReadOnlyCommand,
@@ -32,6 +33,11 @@ export interface PolicyEngineDependencies {
     input: PermissionAskInput,
     signal: AbortSignal,
   ): Promise<{ allowed: boolean; reason?: string }>
+  /**
+   * C06：工具三档默认（规则优先级以下）。返回 undefined 时
+   * 走内置兜底（读类放行、其余询问）。
+   */
+  getToolPermission?(toolName: string): ToolPermission | undefined
 }
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search'])
@@ -138,29 +144,53 @@ export function createPolicyEngine(
         return deny('计划模式下不允许执行写操作，请先提交计划等待批准')
       }
 
-      if (READONLY_TOOLS.has(toolName)) return { action: 'allow' }
-
       const command = typeof args.command === 'string' ? args.command : ''
       if (toolName === 'bash' && SYSTEM_TOOL_PATTERNS.some((re) => re.test(command))) {
         return deny('拒绝执行系统级工具：这类命令能绕过沙箱限制')
       }
 
+      const toolPermission = dependencies.getToolPermission?.(toolName)
       const neverPersist = isNeverPersist(toolName, args)
-      if (!neverPersist) {
-        const workspaceId = dependencies.getWorkspaceId(sessionId)
-        const hit = dependencies.rules
-          .list()
-          .find(
-            (rule) =>
-              ruleIsValid(rule, sessionId, workspaceId)
-              && matchRule(rule, toolName, args),
-          )
-        if (hit) {
-          return hit.action === 'deny'
-            ? deny(`该工具已被规则禁止：${toolName}`)
-            : { action: 'allow' }
+      if (neverPersist) {
+        // 破坏性命令是硬约束：不被规则或「允许」覆盖，但「禁止」仍然生效。
+        if (toolPermission === 'deny') {
+          return deny(`该工具已在设置中设为「禁止」：${toolName}`)
         }
+        const outcome = await dependencies.ask(
+          {
+            sessionId,
+            toolCallId: input.toolCallId,
+            toolName,
+            args,
+          },
+          signal,
+        )
+        return outcome.allowed
+          ? { action: 'allow' }
+          : deny(outcome.reason ?? '用户拒绝了授权')
       }
+
+      const workspaceId = dependencies.getWorkspaceId(sessionId)
+      const hit = dependencies.rules
+        .list()
+        .find(
+          (rule) =>
+            ruleIsValid(rule, sessionId, workspaceId)
+            && matchRule(rule, toolName, args),
+        )
+      if (hit) {
+        return hit.action === 'deny'
+          ? deny(`该工具已被规则禁止：${toolName}`)
+          : { action: 'allow' }
+      }
+
+      // C06：三档默认低于规则，高于内置兜底。
+      if (toolPermission === 'deny') {
+        return deny(`该工具已在设置中设为「禁止」：${toolName}`)
+      }
+      if (toolPermission === 'allow') return { action: 'allow' }
+
+      if (READONLY_TOOLS.has(toolName)) return { action: 'allow' }
 
       const outcome = await dependencies.ask(
         {

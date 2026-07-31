@@ -7,6 +7,10 @@ import type {
   ChannelTestResult,
 } from '../../../shared/contracts/channel.ts'
 import type { Profile, ProfileSaveInput } from '../../../shared/contracts/profile.ts'
+import type {
+  ToolPermission,
+  ToolSettingView,
+} from '../../../shared/contracts/tool.ts'
 
 export interface ChannelSettingsPanelProps {
   onClose(): void
@@ -52,6 +56,7 @@ const EMPTY_PROFILE_FORM: ProfileFormState = {
 export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [tools, setTools] = useState<ToolSettingView[]>([])
   const [form, setForm] = useState<ChannelFormState>(EMPTY_FORM)
   const [profileForm, setProfileForm] = useState<ProfileFormState>(EMPTY_PROFILE_FORM)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -63,12 +68,14 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   >({})
 
   const refresh = async (): Promise<void> => {
-    const [channelList, profileList] = await Promise.all([
+    const [channelList, profileList, toolList] = await Promise.all([
       window.tgbuddy.channel.list(),
       window.tgbuddy.profile.list(),
+      window.tgbuddy.tool.list(),
     ])
     setChannels(channelList)
     setProfiles(profileList)
+    setTools(toolList)
   }
 
   useEffect(() => {
@@ -178,6 +185,21 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function setToolPermission(toolId: string, permission: ToolPermission) {
+    await window.tgbuddy.tool.setPermission(toolId, permission)
+    await refresh()
+  }
+
+  async function bulkAskAll() {
+    await window.tgbuddy.tool.bulkAsk(tools.map((tool) => tool.id))
+    await refresh()
+  }
+
+  async function resetAllTools() {
+    await window.tgbuddy.tool.resetAll()
+    await refresh()
   }
 
   async function remove(channelId: string) {
@@ -578,11 +600,110 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
               </div>
             </div>
           )}
+
+          <div className="mb-2 mt-5 flex items-center gap-2 px-0.5">
+            <span className="text-[11px] tracking-wide text-[#6d6d75]">工具</span>
+            <div className="h-px flex-1 bg-white/5" />
+            <button
+              type="button"
+              data-testid="tools-bulk-ask"
+              onClick={() => void bulkAskAll()}
+              className="rounded-md px-2 py-1 text-[11px] text-sky-300 hover:bg-accent/60"
+            >
+              全部改为询问
+            </button>
+            <button
+              type="button"
+              data-testid="tools-reset-all"
+              onClick={() => void resetAllTools()}
+              className="rounded-md px-2 py-1 text-[11px] text-sky-300 hover:bg-accent/60"
+            >
+              恢复推荐
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {tools.map((tool) => (
+              <div
+                key={tool.id}
+                data-testid="tool-row"
+                className={`flex flex-col gap-2 rounded-[10px] bg-[#17171a] px-3 py-2.5 ${
+                  tool.enabled ? '' : 'opacity-50'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="flex-none font-mono text-[12.5px] text-[#e4e4e9]">
+                    {tool.label}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-[#75757e]">
+                    {tool.note ?? tool.description}
+                  </span>
+                  <span className="flex-none rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-[#8a8a92]">
+                    {tool.name}
+                  </span>
+                </div>
+                <div className="flex gap-1">
+                  <div className="flex rounded-lg bg-white/5 p-0.5">
+                    {PERMISSION_OPTIONS.map((option) => {
+                      const selected = tool.permission === option.id
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          data-testid={`tool-perm-${tool.id}-${option.id}`}
+                          disabled={!tool.enabled}
+                          onClick={() =>
+                            void setToolPermission(tool.id, option.id)
+                          }
+                          className="rounded-md px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40"
+                          style={{
+                            background: selected ? option.bg : 'transparent',
+                            color: selected ? option.fg : '#8a8a92',
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    data-testid={`tool-reset-${tool.id}`}
+                    onClick={() =>
+                      void window.tgbuddy.tool
+                        .resetPermission(tool.id)
+                        .then(() => refresh())
+                    }
+                    className="rounded-md px-2 py-1 text-[10.5px] text-[#63636b] hover:bg-white/10 hover:text-[#8a8a92]"
+                    title="恢复推荐"
+                  >
+                    重置
+                  </button>
+                </div>
+              </div>
+            ))}
+            {tools.length === 0 && (
+              <div className="rounded-[10px] bg-[#17171a] px-3 py-4 text-center text-[11.5px] text-[#63636b]">
+                暂无工具
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
+
+const PERMISSION_OPTIONS: Array<{
+  id: ToolPermission
+  label: string
+  bg: string
+  fg: string
+}> = [
+  { id: 'allow', label: '允许', bg: 'rgba(143,198,165,.18)', fg: '#8fc6a5' },
+  { id: 'ask', label: '询问', bg: 'rgba(224,163,62,.18)', fg: '#e0c39e' },
+  { id: 'deny', label: '禁止', bg: 'rgba(201,99,91,.18)', fg: '#e5a49d' },
+]
 
 function channelConfigured(
   editingId: string | undefined,
