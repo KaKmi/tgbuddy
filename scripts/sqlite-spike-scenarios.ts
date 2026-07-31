@@ -167,8 +167,9 @@ export async function runAppDatabaseScenario(
           '009_app_mcp_servers.sql',
           '010_app_mcp_servers_key.sql',
           '011_app_runs.sql',
+          '012_app_sessions_profile_id.sql',
         ]),
-      'app migration 必须按顺序包含 001–011',
+      'app migration 必须按顺序包含 001–012',
     )
     assertions++
 

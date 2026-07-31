@@ -1,0 +1,1 @@
+ALTER TABLE app_sessions ADD COLUMN profile_id TEXT NOT NULL DEFAULT '';

@@ -699,7 +699,22 @@ function ModelChip({
   profiles: Profile[]
 }) {
   const [open, setOpen] = useState(false)
+  const setProfiles = useSetAtom(profilesAtom)
+  const setChannels = useSetAtom(channelsAtom)
   const label = resolveModelChipLabel(meta, channels, profiles)
+
+  // 打开菜单时刷新渠道/Profile：设置页新增/编辑后输入区即时可见，
+  // 否则 profilesAtom 只在 App 挂载时加载一次，新 Profile 要重启才出现。
+  function openMenu() {
+    setOpen(true)
+    void Promise.all([
+      window.tgbuddy.channel.list(),
+      window.tgbuddy.profile.list(),
+    ]).then(([channelList, profileList]) => {
+      setChannels(channelList)
+      setProfiles(profileList)
+    })
+  }
 
   function select(selection: {
     profileId?: string
@@ -714,7 +729,7 @@ function ModelChip({
     <div className="relative">
       <button
         data-testid="model-chip"
-        onClick={() => setOpen(!open)}
+        onClick={() => (open ? setOpen(false) : openMenu())}
         className="flex items-center gap-1.5 rounded-lg bg-card px-2.5 py-1 text-xs text-foreground/80 transition-colors hover:bg-accent"
       >
         <span className="h-1.5 w-1.5 rounded-full bg-sky-400/70" />
