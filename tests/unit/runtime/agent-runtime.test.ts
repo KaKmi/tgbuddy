@@ -39,8 +39,8 @@ function createDependencies(calls: string[]): AgentRuntimeDependencies {
       updateMeta: () => calls.push('session.updateMeta'),
     },
     runs: {
-      async send(_input, emit) {
-        calls.push('run.send')
+      async start(_input, emit) {
+        calls.push('run.start')
         emit({
           sessionId: 'session-1',
           runId: 1,
@@ -95,7 +95,7 @@ describe('AgentRuntime 门面', () => {
     const dependencies = createDependencies(calls)
     const owner = {
       active: true,
-      send: dependencies.runs.send,
+      start: dependencies.runs.start,
       stop(this: { active: boolean }, sessionId: string) {
         calls.push(`run.stop:${sessionId}:${this.active}`)
       },
@@ -131,14 +131,14 @@ describe('AgentRuntime 门面', () => {
     const runtime = createAgentRuntime(createDependencies(calls))
     runtime.subscribe((event) => events.push(event))
 
-    runtime.runs.send({ sessionId: 'session-1', text: '你好' })
+    runtime.runs.start({ sessionId: 'session-1', text: '你好' })
     runtime.permissions.respond({
       requestId: 'request-1',
       allowed: true,
     })
     await Promise.resolve()
 
-    expect(calls).toEqual(['run.send', 'permission.respond'])
+    expect(calls).toEqual(['run.start', 'permission.respond'])
     expect(events).toEqual([
       {
         sessionId: 'session-1',

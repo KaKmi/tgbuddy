@@ -19,8 +19,8 @@ import {
   type SessionCommands,
   type SessionMessageHistory,
 } from '../../runtime/index.ts'
-import type { SendInput } from '../../shared/contracts/ipc.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
+import type { StartRunInput } from '../../shared/contracts/run.ts'
 import * as askUser from '../ask-user-service.ts'
 import {
   DATA_DIR,
@@ -136,7 +136,7 @@ export function createLegacyRuntime(
 }
 
 async function createAgentInvocation(
-  input: SendInput,
+  input: StartRunInput,
   sessions: SessionCommands,
 ): Promise<AgentInvocation> {
   const meta = sessions.list().find((session) => session.id === input.sessionId)

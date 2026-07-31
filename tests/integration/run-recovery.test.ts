@@ -183,7 +183,7 @@ describe('Run 崩溃恢复', () => {
     })
 
     expect(coordinator.isRunning('session-running')).toBe(false)
-    await coordinator.send(
+    await coordinator.start(
       { sessionId: 'session-running', text: '继续' },
       () => undefined,
     )

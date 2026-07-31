@@ -81,7 +81,7 @@ export function registerIpc(
   ipcMain.handle(
     IPC.AGENT_SEND,
     (_event, input: IpcRequest<'agent:send'>): IpcResponse<'agent:send'> =>
-      agentRuntime.runs.send(input),
+      agentRuntime.runs.start(input),
   )
   ipcMain.handle(
     IPC.AGENT_STOP,

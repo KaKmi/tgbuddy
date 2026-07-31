@@ -6,7 +6,7 @@ import {
   type AgentInvocation,
   type RunSessionLifecycle,
 } from '../src/runtime/index.ts'
-import type { SendInput } from '../src/shared/contracts/ipc.ts'
+import type { StartRunInput } from '../src/shared/contracts/run.ts'
 import type { StreamFrame } from '../src/shared/contracts/events.ts'
 import {
   acceptRunFrame,
@@ -40,7 +40,7 @@ function deferred(): Deferred {
   return { promise, resolve }
 }
 
-function createInvocation(input: SendInput): Promise<AgentInvocation> {
+function createInvocation(input: StartRunInput): Promise<AgentInvocation> {
   return Promise.resolve({
     sessionId: input.sessionId,
     text: input.text,
@@ -267,7 +267,7 @@ describe('RunCoordinator', () => {
       },
     })
 
-    await coordinator.send({ sessionId: 'session-1', text: '继续' }, () => {})
+    await coordinator.start({ sessionId: 'session-1', text: '继续' }, () => {})
 
     expect(calls).toEqual([
       'context.before:85',
@@ -299,16 +299,16 @@ describe('RunCoordinator', () => {
       lifecycle: createLifecycle(),
     })
 
-    const first = coordinator.send(
+    const first = coordinator.start(
       { sessionId: 'session-1', text: '一' },
       (frame) => frames.push(frame),
     )
     await flushCoordinator()
-    await coordinator.send(
+    await coordinator.start(
       { sessionId: 'session-1', text: '重复' },
       (frame) => frames.push(frame),
     )
-    const parallel = coordinator.send(
+    const parallel = coordinator.start(
       { sessionId: 'session-2', text: '二' },
       (frame) => frames.push(frame),
     )
@@ -339,7 +339,7 @@ describe('RunCoordinator', () => {
     pending.get('session-1')?.resolve()
     await first
     expect(coordinator.isRunning('session-1')).toBe(false)
-    const restarted = coordinator.send(
+    const restarted = coordinator.start(
       { sessionId: 'session-1', text: '三' },
       (frame) => frames.push(frame),
     )
@@ -380,8 +380,8 @@ describe('RunCoordinator', () => {
       createInvocation,
       lifecycle: createLifecycle(),
     })
-    void coordinator.send({ sessionId: 'session-1', text: '一' }, () => {})
-    void coordinator.send({ sessionId: 'session-2', text: '二' }, () => {})
+    void coordinator.start({ sessionId: 'session-1', text: '一' }, () => {})
+    void coordinator.start({ sessionId: 'session-2', text: '二' }, () => {})
     await flushCoordinator()
 
     await coordinator.dispose()
@@ -442,7 +442,7 @@ describe('RunCoordinator', () => {
       },
     })
 
-    const operation = coordinator.send(
+    const operation = coordinator.start(
       { sessionId: 'session-1', text: '开始' },
       (frame) => frames.push(frame),
     )

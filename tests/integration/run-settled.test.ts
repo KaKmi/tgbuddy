@@ -139,7 +139,7 @@ describe('Run settled', () => {
     const harness = lifecycleHarness()
     const frames: StreamFrame[] = []
 
-    await coordinatorFor(engine, harness.lifecycle).send(
+    await coordinatorFor(engine, harness.lifecycle).start(
       { sessionId: 'session-1', text: '开始' },
       (frame) => frames.push(frame),
     )
@@ -178,7 +178,7 @@ describe('Run settled', () => {
     const harness = lifecycleHarness()
     const frames: StreamFrame[] = []
 
-    await coordinatorFor(engine, harness.lifecycle).send(
+    await coordinatorFor(engine, harness.lifecycle).start(
       { sessionId: 'session-1', text: '开始' },
       (frame) => frames.push(frame),
     )
@@ -202,7 +202,7 @@ describe('Run settled', () => {
     const harness = lifecycleHarness()
     const frames: StreamFrame[] = []
 
-    await coordinatorFor(engine, harness.lifecycle).send(
+    await coordinatorFor(engine, harness.lifecycle).start(
       { sessionId: 'session-1', text: '开始' },
       (frame) => frames.push(frame),
     )
@@ -226,7 +226,7 @@ describe('Run settled', () => {
     const harness = lifecycleHarness()
     const frames: StreamFrame[] = []
 
-    await coordinatorFor(engine, harness.lifecycle).send(
+    await coordinatorFor(engine, harness.lifecycle).start(
       { sessionId: 'session-1', text: '开始' },
       (frame) => frames.push(frame),
     )
@@ -252,7 +252,7 @@ describe('Run settled', () => {
     const harness = lifecycleHarness()
     const frames: StreamFrame[] = []
 
-    await coordinatorFor(engine, harness.lifecycle).send(
+    await coordinatorFor(engine, harness.lifecycle).start(
       { sessionId: 'session-1', text: '开始' },
       (frame) => frames.push(frame),
     )
@@ -277,7 +277,7 @@ describe('Run settled', () => {
     const frames: StreamFrame[] = []
     const coordinator = coordinatorFor(engine, harness.lifecycle)
 
-    await coordinator.send(
+    await coordinator.start(
       { sessionId: 'session-1', text: '开始' },
       (frame) => frames.push(frame),
     )

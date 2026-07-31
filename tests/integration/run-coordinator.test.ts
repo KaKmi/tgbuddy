@@ -104,7 +104,7 @@ describe('RunCoordinator + fake AgentEngine', () => {
       },
     })
 
-    await coordinator.send(
+    await coordinator.start(
       { sessionId: 'session-1', text: '开始' },
       (frame) => frames.push(frame),
     )

@@ -14,6 +14,7 @@
 import type { StreamFrame } from './events.ts'
 import type { SessionMessage } from './message.ts'
 import type { Channel } from './channel.ts'
+import type { StartRunInput } from './run.ts'
 import type { SessionMeta } from './session.ts'
 import type {
   AskUserRequest,
@@ -72,13 +73,6 @@ export const IPC = {
 
 // ── 请求/响应类型 ─────────────────────────────────────────────────
 
-export interface SendInput {
-  sessionId: string
-  text: string
-  /** 显式调用的技能名（用户点了 /skill:xxx） */
-  invokeSkill?: string
-}
-
 export type { PermissionRequest, PermissionResponse } from './permission.ts'
 export type { SessionMeta } from './session.ts'
 
@@ -114,7 +108,7 @@ export interface IpcCommandMap {
     { sessionId: string; patch: Partial<SessionMeta> },
     void
   >
-  'agent:send': IpcCommand<SendInput, void>
+  'agent:send': IpcCommand<StartRunInput, void>
   'agent:stop': IpcCommand<string, void>
   'permission:respond': IpcCommand<PermissionResponse, void>
   'permission:pending': IpcCommand<undefined, PermissionRequest[]>

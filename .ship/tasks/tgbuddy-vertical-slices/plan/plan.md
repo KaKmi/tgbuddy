@@ -11,9 +11,11 @@
 | ID | 状态 | 交付 |
 |---|---|---|
 | B00 | ✅ | Packaged Electron SQLite Spike、崩溃恢复、WAL 备份、legacy import |
-| B01 | ✅ | 仓库边界、shared contracts、`TgBuddyRuntime`、Composition Root、架构检查 |
+| B01 | ✅ | 仓库边界、shared contracts、Runtime 门面、Composition Root、架构检查 |
+| R01 | ✅ | `AgentRuntime` 唯一门面、统一事件与 Host Adapter 语义 |
+| R02 | ✅ | `StartRunInput` 与 Runtime/RunCoordinator `start()` 语义链 |
 
-后续不重做 B00/B01，也不再以旧 Story 1B–6 为开发单位。
+后续不重做 B00/B01/R01/R02，也不再以旧 Story 1B–6 为开发单位。
 
 ### 0.2 Slice 尺寸
 
@@ -66,7 +68,7 @@ K01 -> K02 -> K03
 K04 -> K05 -> K06
 K07 -> K08 -> K09 -> K10 -> K11 -> K12 -> K13 -> K14
 K05 -> K15 -> K16 -> K17
-K17 -> S01 -> ... -> S11
+K17 -> R01 -> R02 -> S01 -> ... -> S11
 S11 -> C01 -> ... -> C12
 C12 -> A01 -> ... -> A09
 A09 -> D01 -> ... -> D04
@@ -267,7 +269,7 @@ D04 -> U01 -> ... -> U09
 
 ### S01 · Workspace catalog 与选择器
 
-- **依赖**：K17。
+- **依赖**：K17、R02。
 - **行为**：添加本地目录成为逻辑 Workspace；切换后只显示该 Workspace 的 Session。
 - **原型锚点**：`main` 顶部 Workspace 选择器、`empty`。
 - **文件**：新建 WorkspaceRepository/Service/SQLite repo；扩充 IPC；替换 App 侧栏顶部占位；新增 test。

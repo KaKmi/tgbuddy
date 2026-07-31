@@ -11,8 +11,8 @@ import type {
   PlanRequest,
   PlanResponse,
 } from '../../shared/contracts/permission.ts'
-import type { SendInput } from '../../shared/contracts/ipc.ts'
 import type { SessionMessage } from '../../shared/contracts/message.ts'
+import type { StartRunInput } from '../../shared/contracts/run.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
 import type { Workspace } from '../../shared/contracts/workspace.ts'
 import {
@@ -52,7 +52,7 @@ export interface SessionCommands {
 }
 
 export interface RunCommands {
-  send(input: SendInput): void
+  start(input: StartRunInput): void
   stop(sessionId: string): void
   isRunning(sessionId: string): boolean
 }
@@ -113,7 +113,7 @@ export interface AgentRuntimeDependencies {
   workspaces: WorkspaceCommands
   sessions: SessionCommands
   runs: {
-    send(input: SendInput, emit: (frame: StreamFrame) => void): Promise<void>
+    start(input: StartRunInput, emit: (frame: StreamFrame) => void): Promise<void>
     stop(sessionId: string): void
     isRunning(sessionId: string): boolean
   }
@@ -182,8 +182,8 @@ export function createAgentRuntime(
       },
     },
     runs: {
-      send(input) {
-        void dependencies.runs.send(input, events.emit)
+      start(input) {
+        void dependencies.runs.start(input, events.emit)
       },
       // Coordinator 使用私有字段维护运行注册表，不能把实例方法裸转交后再换接收者调用。
       stop: (sessionId) => dependencies.runs.stop(sessionId),

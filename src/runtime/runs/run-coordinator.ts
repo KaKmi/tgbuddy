@@ -2,7 +2,7 @@ import type {
   AgentEvent,
   StreamFrame,
 } from '../../shared/contracts/events.ts'
-import type { SendInput } from '../../shared/contracts/ipc.ts'
+import type { StartRunInput } from '../../shared/contracts/run.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
 import type {
   AgentEngine,
@@ -17,7 +17,7 @@ import {
 export interface CreateRunCoordinatorOptions {
   now(): number
   engine: AgentEngine
-  createInvocation(input: SendInput): Promise<AgentInvocation>
+  createInvocation(input: StartRunInput): Promise<AgentInvocation>
   lifecycle: RunSessionLifecycle
   context?: Pick<
     ContextService,
@@ -37,7 +37,7 @@ export interface RunSessionLifecycle {
 }
 
 export interface RunCoordinator {
-  send(input: SendInput, emit: (frame: StreamFrame) => void): Promise<void>
+  start(input: StartRunInput, emit: (frame: StreamFrame) => void): Promise<void>
   stop(sessionId: string): void
   isRunning(sessionId: string): boolean
   dispose(): Promise<void>
@@ -47,7 +47,7 @@ class DefaultRunCoordinator implements RunCoordinator {
   readonly #registry: RunRegistry
   readonly #engine: AgentEngine
   readonly #createInvocation: (
-    input: SendInput,
+    input: StartRunInput,
   ) => Promise<AgentInvocation>
   readonly #lifecycle: RunSessionLifecycle
   readonly #context: CreateRunCoordinatorOptions['context']
@@ -62,8 +62,8 @@ class DefaultRunCoordinator implements RunCoordinator {
     this.#context = options.context
   }
 
-  send(
-    input: SendInput,
+  start(
+    input: StartRunInput,
     emit: (frame: StreamFrame) => void,
   ): Promise<void> {
     const run = this.#registry.start(input.sessionId)
@@ -108,7 +108,7 @@ class DefaultRunCoordinator implements RunCoordinator {
   }
 
   async #execute(
-    input: SendInput,
+    input: StartRunInput,
     run: ActiveRun,
     emit: (frame: StreamFrame) => void,
   ): Promise<void> {

@@ -2,6 +2,13 @@ import type { AgentRunId, RootRunId, SessionId, WorkspaceId } from './ids.ts'
 
 export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
 
+export interface StartRunInput {
+  sessionId: string
+  text: string
+  /** 显式调用的技能名（用户点了 /skill:xxx） */
+  invokeSkill?: string
+}
+
 export interface RunLineage {
   workspaceId: WorkspaceId
   sessionId: SessionId
