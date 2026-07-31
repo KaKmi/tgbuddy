@@ -74,3 +74,27 @@ S01: "Workspace catalog 与选择器" — complete
   Files: tests/unit/runtime/session-commands.test.ts, tests/unit/runtime/workspace-service.test.ts, src/infrastructure/sqlite/app-database.ts, src/infrastructure/sqlite/index.ts, src/infrastructure/sqlite/migrations/004_app_workspaces.sql, src/infrastructure/sqlite/repositories/sqlite-workspace-repository.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/main/ipc.ts, src/preload/index.ts, src/renderer/App.tsx, src/renderer/atoms/agent.ts, src/runtime/app/agent-runtime.ts, src/runtime/index.ts, src/runtime/sessions/session-commands.ts, src/runtime/workspaces/workspace-repository.ts, src/runtime/workspaces/workspace-service.ts, src/shared/contracts/ipc.ts
   Produces: `WorkspaceRepository`（list/get/create）；`createWorkspaceService()` → `WorkspaceService`（list/create/select/current/ensureDefault，路径端口注入）；`SqliteWorkspaceRepository` + `004_app_workspaces.sql`；IPC `workspace:list/create/select/current/pick`；Preload `window.tgbuddy.workspace`；Renderer 侧栏选择器 + `workspacesAtom`/`currentWorkspaceIdAtom`；`CreateSessionCommandsOptions.workspaceId`（list 按当前工作区过滤、create 绑定工作区）；bootstrap `ensureDefault(process.cwd())` 承接无工作区会话
   Concerns: 生产文件 18 个超过 6 个护栏，因为 S01 是完整 Runtime→IPC→Renderer 纵向切片且每个文件单一职责；SQLite adapter 沿用 K02 已 packaged 证明的 repository 模式，未新增 spike 场景（S01 计划验证为 test+build+dev）；交互式"选择两个目录"验证按用户流程并入 M2 QA 阶段统一执行。自审（用户策略调整后按复杂度判断）：run cwd 仍走 `DATA_DIR/workspaces/<id>`，未使用所选目录属 S02/S03 mount/ExecutionEnv 范畴，按计划推迟，非回归。
+
+S02: "Workspace mount 可用性" — complete
+  Commits: ae55faa
+  Files: src/shared/contracts/workspace.ts, src/runtime/workspaces/workspace-mount-resolver.ts, src/runtime/workspaces/workspace-service.ts, src/runtime/app/agent-runtime.ts, src/runtime/index.ts, src/infrastructure/workspace/index.ts, src/infrastructure/workspace/node-workspace-mount-resolver.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/shared/contracts/ipc.ts, src/main/ipc.ts, src/preload/index.ts, src/renderer/App.tsx, tests/unit/infrastructure/workspace-mount-resolver.test.ts, tests/unit/runtime/workspace-mount.test.ts, tests/unit/runtime/workspace-service.test.ts, tests/integration/run-coordinator.test.ts
+  Produces: `WorkspaceMountResolver` 端口 + `mountFailureMessage()`；`NodeWorkspaceMountResolver`（每次调用重新 stat/access，不缓存永远有效的路径）；`WorkspaceCommands.mountStatus()`；IPC `workspace:mount-status` + Preload/侧栏不可用提示；`createAgentInvocation` 每次 run 前 resolve mount，失败抛可恢复动作错误（RunCoordinator 以 failed + host_error 可见，engine 不执行）
+  Concerns: Windows 上无法可靠模拟 EACCES，unreadable 分支无单测（与 missing 同构，靠代码审查）；run cwd 从 `DATA_DIR/workspaces/<id>` 切换为真实 mount.path，属 S02 目标行为。
+
+S03: "per-run ExecutionEnv 基础隔离" — complete
+  Commits: e8d39ff
+  Files: scripts/check-architecture.ts, scripts/probe.ts, src/kernel/pi/index.ts, src/kernel/pi/pi-agent-engine.ts, src/kernel/pi/pi-execution-env.ts, src/kernel/pi/pi-sandbox.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/main/tools/index.ts, src/main/tools/sandboxed-env.ts, src/runtime/index.ts, src/runtime/runs/agent-engine.ts, src/runtime/execution-env/run-execution-env.ts, tests/integration/run-coordinator.test.ts, tests/unit/kernel/pi-execution-env.test.ts, tests/unit/kernel/pi-sandbox.test.ts
+  Produces: `RunExecutionEnv`/`RunExecutionEnvFactory` 端口（pi-free）；`PiRunExecutionEnv`/`PiRunExecutionEnvFactory`（每 Run 独立沙箱，dispose → NodeExecutionEnv.cleanup 结束残留后台 shell）；`createSandboxedEnv` + `resolveSandboxedPath` 从 main/tools 迁至 kernel/pi；`AgentInvocation.workspaceId`；engine 在 run 内 try/finally 创建/释放 env；`buildBuiltinTools(cwd, env)` 改用注入 env
+  Concerns: kernel `pi-sandbox.ts` 与旧 `main/tools/sandbox.ts` 存在临时路径规则重复（旧 owner 只服务 delete/glob，S11 删除）；engine 级"settle 后释放"由代码结构保证，env dispose 幂等有单测，未做完整 harness 级集成测试；architecture checker 的 runtime port 后缀新增 `env`。
+
+S04: "canonical path 与逃逸拒绝" — complete
+  Commits: 410cebd
+  Files: src/kernel/pi/pi-execution-env.ts, src/kernel/pi/pi-sandbox.ts, src/main/tools/sandbox.ts, tests/unit/kernel/pi-execution-env.test.ts, tests/unit/kernel/pi-sandbox.test.ts
+  Produces: `resolveSandboxedPath`/`assertContainedPath` 补全 canonical 判定：`..`、绝对外部路径、symlink/junction 逃逸一律拒绝；不存在目标按最近已存在父目录判断；合法子路径大小写归一后放行；Windows 路径测试覆盖
+  Concerns: 旧 `main/tools/sandbox.ts` 的 delete/glob 路径规则与 kernel 新实现临时重复，S11 删除旧 owner；拒绝结论不依赖 Renderer（工具卡失败态沿用现有 error 呈现）。
+
+S05: "PolicyEngine 基础决策" — complete
+  Commits: 0eb7f60
+  Files: src/main/bootstrap/create-application.ts, src/runtime/index.ts, src/runtime/permissions/permission-rule-repository.ts, src/runtime/permissions/policy-engine.ts, src/shared/contracts/permission.ts, tests/unit/runtime/policy-engine.test.ts
+  Produces: `ToolPolicy` 生产实现 `createPolicyEngine({ rules, getMode, getWorkspaceId, ask })`；`PermissionRuleRepository` 端口 + `MemoryPermissionRuleRepository`（S05 只有 list，S07 补 SQLite 与 add/remove）；决策纯函数化：模式（plan/auto/bypass）、读工具默认 allow、写与命令默认 ask、deny 规则直接拒绝、neverPersist 跳过规则直接询问、系统级命令默认 deny；`PermissionAskInput`；ask 落点仍委托 legacy permission-service（S06 迁入 Runtime broker）
+  Concerns: 生产 ask 仍走 Main `PendingRequests`，属 S06 明确迁移项；规则持久化未接入（S07）；S05 的 `assessRisk`/`suggestGrants` 仍在 legacy permission-service，S06 一并迁入 Runtime。
