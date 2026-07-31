@@ -66,3 +66,26 @@ export interface Channel {
 
 /** 保存渠道的输入：新渠道可不带 id（由 Runtime 生成）。 */
 export type ChannelSaveInput = Omit<Channel, 'id'> & { id?: string }
+
+/**
+ * 渠道连通性与模型发现的稳定诊断码。Renderer 只按码展示文案，
+ * 不依赖底层 HTTP/pi 错误对象。
+ */
+export type ProviderDiagnosticCode =
+  | 'ok'
+  | 'auth_failed'
+  | 'timeout'
+  | 'network'
+  | 'empty_models'
+  | 'bad_config'
+  | 'canceled'
+  | 'unknown'
+
+/** 设置页「测试连接」的结果契约（IPC 可序列化）。 */
+export interface ChannelTestResult {
+  ok: boolean
+  code: ProviderDiagnosticCode
+  message: string
+  /** 成功发现并已应用到渠道的模型列表 */
+  models?: ChannelModel[]
+}

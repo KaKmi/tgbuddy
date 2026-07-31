@@ -177,4 +177,30 @@ describe('ChannelService', () => {
 
     expect(() => service.resolve('ch-deepseek')).toThrow(/密钥/)
   })
+
+  test('applyDiscoveredModels 保留已有精确规格并追加新模型', () => {
+    const { service } = createFixture()
+    service.save(
+      channelInput({
+        models: [
+          {
+            id: 'deepseek-v4-flash',
+            name: 'DeepSeek V4 Flash',
+            contextWindow: 1_000_000,
+            maxTokens: 384_000,
+          },
+        ],
+      }),
+    )
+
+    const saved = service.applyDiscoveredModels('ch-deepseek', [
+      { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash', contextWindow: 128_000, maxTokens: 64_000 },
+      { id: 'new-model-x', name: 'new-model-x', contextWindow: 128_000, maxTokens: 64_000 },
+    ])
+
+    expect(saved.models).toHaveLength(2)
+    const known = saved.models.find((model) => model.id === 'deepseek-v4-flash')
+    expect(known?.contextWindow).toBe(1_000_000)
+    expect(saved.models.some((model) => model.id === 'new-model-x')).toBe(true)
+  })
 })

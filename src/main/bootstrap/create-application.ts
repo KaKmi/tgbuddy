@@ -32,6 +32,7 @@ import {
   buildPlanModeTools,
   createPiAgentEngine,
   createPiContextCompactor,
+  createPiProviderCatalog,
   createPiSessionStore,
   PiRunExecutionEnvFactory,
 } from '../../kernel/pi/index.ts'
@@ -277,6 +278,7 @@ export async function createApplication(
       rules: permissionRules,
       secretStore,
       channels,
+      providerCatalog: createPiProviderCatalog(),
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)

@@ -2,6 +2,7 @@ import type { ArtifactRef } from '../../shared/contracts/artifact.ts'
 import type { CapabilityDescriptor } from '../../shared/contracts/capability.ts'
 import type {
   Channel,
+  ChannelTestResult,
   ChannelSaveInput,
 } from '../../shared/contracts/channel.ts'
 import type { HostEvent, StreamFrame } from '../../shared/contracts/events.ts'
@@ -104,7 +105,7 @@ export interface SettingsCommands {
   listChannels(): Channel[]
   saveChannel(channel: ChannelSaveInput): void
   deleteChannel(channelId: string): void
-  testChannel(channelId: string): Promise<{ success: boolean; message: string }>
+  testChannel(channelId: string): Promise<ChannelTestResult>
 }
 
 export interface AgentRuntime {

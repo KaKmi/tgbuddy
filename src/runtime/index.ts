@@ -26,6 +26,11 @@ export {
   type CreateChannelServiceOptions,
 } from './channels/channel-service.ts'
 export type {
+  ProviderCatalog,
+  ProviderDiscoveryInput,
+  ProviderDiscoveryResult,
+} from './channels/ports/provider-catalog.ts'
+export type {
   AgentRuntimeEvent,
   AgentRuntimeEventListener,
   AgentRuntimeEventPublisher,

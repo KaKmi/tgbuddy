@@ -27,6 +27,10 @@ export {
   type CreatePiSessionStoreOptions,
 } from './pi-session-store.ts'
 export {
+  createPiProviderCatalog,
+  type ModelListFetcher,
+} from './pi-provider-catalog.ts'
+export {
   compactPreparedContext,
   compactStoredContext,
   convertStoredMessagesToLlm,

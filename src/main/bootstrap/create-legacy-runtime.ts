@@ -19,6 +19,7 @@ import {
   type PermissionAskBroker,
   type PlanAskBroker,
   type PermissionRuleRepository,
+  type ProviderCatalog,
   mountFailureMessage,
   type SessionCommands,
   type SessionMessageHistory,
@@ -50,6 +51,8 @@ export interface CreateLegacyRuntimeOptions {
   secretStore: SecretStore
   /** C02：渠道 CRUD 与运行期解析（密钥只存 ref） */
   channels: ChannelService
+  /** C03：渠道连通性与模型发现（pi adapter，错误映射为稳定诊断码） */
+  providerCatalog: ProviderCatalog
   dispose?(): Promise<void>
 }
 
@@ -151,8 +154,44 @@ export function createLegacyRuntime(
       deleteChannel: (channelId) => {
         options.channels.delete(channelId)
       },
-      async testChannel(_channelId) {
-        return { success: false, message: '未实现' }
+      async testChannel(channelId) {
+        let channel
+        try {
+          channel = options.channels.resolve(channelId)
+        } catch (error) {
+          return {
+            ok: false,
+            code: 'auth_failed',
+            message: error instanceof Error ? error.message : String(error),
+          }
+        }
+        if (!channel) {
+          return {
+            ok: false,
+            code: 'bad_config',
+            message: '渠道不存在或尚未保存密钥',
+          }
+        }
+        try {
+          const result = await options.providerCatalog.discover({ channel })
+          if (!result.ok) return result
+          const saved = options.channels.applyDiscoveredModels(
+            channelId,
+            result.models,
+          )
+          return {
+            ok: true,
+            code: 'ok',
+            message: `连接成功，发现 ${result.models.length} 个模型`,
+            models: saved.models,
+          }
+        } catch (error) {
+          return {
+            ok: false,
+            code: 'unknown',
+            message: error instanceof Error ? error.message : String(error),
+          }
+        }
       },
     },
     async dispose() {

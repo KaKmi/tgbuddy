@@ -1,5 +1,6 @@
 import type {
   Channel,
+  ChannelModel,
   ChannelSaveInput,
 } from '../../shared/contracts/channel.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
@@ -27,6 +28,11 @@ export interface ChannelService {
    */
   resolve(channelId?: string): Channel | undefined
   resolveAll(): Channel[]
+  /**
+   * 合并模型发现结果：保留已有模型的精确规格，把新发现 id 追加进列表。
+   * 返回保存后的渠道（无明文）。
+   */
+  applyDiscoveredModels(channelId: string, discovered: ChannelModel[]): Channel
 }
 
 /**
@@ -89,5 +95,14 @@ export function createChannelService(
       return channel ? resolveOne(channel) : undefined
     },
     resolveAll: () => options.repository.list().map(resolveOne),
+    applyDiscoveredModels(channelId, discovered) {
+      const existing = options.repository.get(channelId)
+      if (!existing) throw new Error(`渠道不存在：${channelId}`)
+      const merged = [...existing.models]
+      for (const model of discovered) {
+        if (!merged.some((item) => item.id === model.id)) merged.push(model)
+      }
+      return save({ ...existing, models: merged })
+    },
   }
 }

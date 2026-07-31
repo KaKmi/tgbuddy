@@ -4,6 +4,7 @@ import type {
   ChannelModel,
   ChannelProtocol,
   ChannelSaveInput,
+  ChannelTestResult,
 } from '../../../shared/contracts/channel.ts'
 
 export interface ChannelSettingsPanelProps {
@@ -38,6 +39,9 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
+  const [testStates, setTestStates] = useState<
+    Record<string, { running: boolean; result?: ChannelTestResult }>
+  >({})
 
   const refresh = async (): Promise<void> => {
     setChannels(await window.tgbuddy.channel.list())
@@ -107,6 +111,38 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
     }
   }
 
+  async function testChannel(channelId: string) {
+    setTestStates((current) => ({
+      ...current,
+      [channelId]: { running: true },
+    }))
+    try {
+      const result = await window.tgbuddy.channel.test(channelId)
+      setTestStates((current) => ({
+        ...current,
+        [channelId]: { running: false, result },
+      }))
+      await refresh()
+    } catch (testError) {
+      setTestStates((current) => ({
+        ...current,
+        [channelId]: {
+          running: false,
+          result: {
+            ok: false,
+            code: 'unknown',
+            message: testError instanceof Error ? testError.message : String(testError),
+          },
+        },
+      }))
+    }
+  }
+
+  function cancelTest(channelId: string) {
+    // 主进程请求无法中断，这里先放弃等待展示；下一次测试覆盖旧状态。
+    setTestStates((current) => ({ ...current, [channelId]: { running: false } }))
+  }
+
   return (
     <div
       data-testid="channel-settings-panel"
@@ -159,37 +195,70 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
               <div
                 key={channel.id}
                 data-testid="channel-row"
-                className="flex items-center gap-3 rounded-[10px] bg-[#17171a] px-3 py-2.5"
+                className="flex flex-col gap-1 rounded-[10px] bg-[#17171a] px-3 py-2.5"
               >
-                <span
-                  className="h-[7px] w-[7px] flex-none rounded-full"
-                  style={{ background: channel.secretRef ? '#8fc6a5' : '#55555c' }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] text-[#e4e4e9]">{channel.name}</div>
-                  <div className="truncate font-mono text-[11px] text-[#8a8a92]">
-                    {channel.baseUrl}
+                <div className="flex items-center gap-3">
+                  <span
+                    className="h-[7px] w-[7px] flex-none rounded-full"
+                    style={{ background: channel.secretRef ? '#8fc6a5' : '#55555c' }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12.5px] text-[#e4e4e9]">{channel.name}</div>
+                    <div className="truncate font-mono text-[11px] text-[#8a8a92]">
+                      {channel.baseUrl}
+                    </div>
                   </div>
+                  <span className="flex-none font-mono text-[11px] text-[#8a8a92]">
+                    {channel.secretRef ? '已配置密钥' : '未配置密钥'}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="channel-edit"
+                    onClick={() => startEdit(channel)}
+                    className="flex-none rounded-md px-2 py-1 text-[11px] text-[#b6b6be] hover:bg-white/10"
+                  >
+                    编辑
+                  </button>
+                  {testStates[channel.id]?.running ? (
+                    <button
+                      type="button"
+                      data-testid="channel-test-cancel"
+                      onClick={() => cancelTest(channel.id)}
+                      className="flex-none rounded-md px-2 py-1 text-[11px] text-[#b6b6be] hover:bg-white/10"
+                    >
+                      取消
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="channel-test"
+                      onClick={() => void testChannel(channel.id)}
+                      className="flex-none rounded-md px-2 py-1 text-[11px] text-[#b6b6be] hover:bg-white/10"
+                    >
+                      测试连接
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    data-testid="channel-delete"
+                    onClick={() => remove(channel.id)}
+                    className="flex-none rounded-md px-2 py-1 text-[11px] text-[#c9635b] hover:bg-white/10"
+                  >
+                    删除
+                  </button>
                 </div>
-                <span className="flex-none font-mono text-[11px] text-[#8a8a92]">
-                  {channel.secretRef ? '已配置密钥' : '未配置密钥'}
-                </span>
-                <button
-                  type="button"
-                  data-testid="channel-edit"
-                  onClick={() => startEdit(channel)}
-                  className="flex-none rounded-md px-2 py-1 text-[11px] text-[#b6b6be] hover:bg-white/10"
-                >
-                  编辑
-                </button>
-                <button
-                  type="button"
-                  data-testid="channel-delete"
-                  onClick={() => remove(channel.id)}
-                  className="flex-none rounded-md px-2 py-1 text-[11px] text-[#c9635b] hover:bg-white/10"
-                >
-                  删除
-                </button>
+                {testStates[channel.id]?.result && !testStates[channel.id]?.running && (
+                  <div
+                    data-testid="channel-test-result"
+                    className={`text-[11px] ${
+                      testStates[channel.id]?.result?.ok
+                        ? 'text-[#8fc6a5]'
+                        : 'text-[#c9635b]'
+                    }`}
+                  >
+                    {testStates[channel.id]?.result?.message}
+                  </div>
+                )}
               </div>
             ))}
           </div>
