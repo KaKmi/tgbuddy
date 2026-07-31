@@ -259,3 +259,24 @@ M3 开发阶段（C01–C12）— complete
   Commits: cde4e35 … d7a6713（每 Slice 独立 feat commit + docs commit）
   Results: 全量 `bun test` 291/291；check:architecture / typecheck / build 全过；`bun run spike:sqlite` 全场景通过；`bun run probe` 真实模型通过
   下一步: M3 集中 review（$ship:review）→ 修复 → fresh review → E2E → QA → 里程碑收尾
+
+M3 集中 review — complete
+  Commits: 11dba73
+  Findings: P1×1（`runs:list` IPC 恒空：RunCoordinator 缺 list()）、P2×3（plan 模式读类 MCP 误拒、app_runs UNIQUE 同毫秒故障面、MCP 并发 connect 双连接）、P3×6（connect 失败旧工具未注销、SecretStore 写失败不一致与 secrets:null 格式洞、Windows 路径大小写误拒、MCP 无 dispose 残留子进程、工具工厂未用冻结快照、技能目录读取竞态）— 全部修复，fresh 复核 clean（review-m3.md）
+  验证: `bun test` 296/296、architecture、typecheck、build 全过
+
+M3 E2E — complete
+  Commits: 167f39a（fix）、c39af96（test）、b55de89（report）
+  Results: Playwright Electron 20/20（M1 回归 5 + M2 回归 8 + M3 新增 7）；单测 297/297
+  E2E 发现的真实缺陷（已修复）：MCP 新建表单哨兵 bug、mcp-key-input 误放渠道表单、MCP 连接后工具列表不刷新、账本先于 run_end 落盘（避免 UI 读到 running 记录）、单条密钥解密失败拖垮启动（safeStorage 硬杀环境）与 legacy 迁移容错
+  Concerns: M2「总是允许」跨重启用例由硬杀改优雅重启——E2E 硬杀（child.kill）会让 Electron safeStorage 的 DPAPI blob 无法被新实例解密（渠道密钥只存 ref 后的安全架构 + 环境组合），规则持久化验证不变，崩溃恢复由 run-recovery 单测与 m1 E2E 覆盖；已做应用级韧性（单条失败只影响该 ref、启动不阻塞）
+
+M3 QA — complete
+  Commits: 6d7ca08（fix）、ed2b34c（driver/report/screenshots）
+  Results: 探索式 13/13 通过（无 key 渠道、改名保留状态、删除被引用拒绝可见、模型 chip、工具单覆盖/恢复、工作区技能、技能开关、MCP 坏命令诊断/发现/断开移除、Run 账本、重启持久化）
+  QA 发现的真实缺陷（已修复）：删除渠道被拒错误只在表单内渲染（用户不可见）→ 设置页全局错误横幅；MCP 断开后工具列表未刷新 → disconnect 后 refresh
+
+M3 里程碑收尾 — complete
+  Commits: （本阶段文档提交）
+  Results: docs/08-项目进度.md 标记 M3 完成并指向 M4 A01；AGENTS.md 删除表 C12 两项标记已删除（channel-store 拆为 data-dir + legacy-channels、tools/index 迁入 kernel/pi + 注入回收站端口）；README 状态行更新
+  Concerns: 无未解决 P1/P2

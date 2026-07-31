@@ -127,8 +127,8 @@ shared <- renderer
 | `src/main/ask-user-service.ts` | ✅ S10 已删除 |
 | `src/main/tools/sandbox.ts` | ✅ S11 已删除 |
 | `src/main/tools/sandboxed-env.ts` | ✅ S11 已删除 |
-| `src/main/channel-store.ts` | C12 |
-| `src/main/tools/index.ts` | C12 |
+| `src/main/channel-store.ts` | ✅ C12 已删除（拆为 data-dir + legacy-channels） |
+| `src/main/tools/index.ts` | ✅ C12 已删除（内置工具迁入 kernel/pi，回收站经注入端口） |
 | `src/main/tools/plan-mode.ts` | ✅ S09 已删除 |
 | `src/main/tools/ask-user.ts` | ✅ S10 已删除 |
 | `src/main/ipc.ts` 单文件 owner | U08，拆为领域 handler |
