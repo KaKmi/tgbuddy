@@ -259,6 +259,7 @@ export function createBeforeToolCall(sessionId: string, send: RequestSender) {
       args,
       ...(extractPath(args) ? { affectedPaths: [extractPath(args)!] } : {}),
       risk: assessRisk(toolName, args),
+      requiresModal: assessRisk(toolName, args) === 'high',
       neverPersist,
       suggestedGrants: neverPersist ? [] : suggestGrants(toolName, args),
     }

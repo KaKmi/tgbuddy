@@ -66,6 +66,11 @@ export interface PermissionRequest {
   affectedPaths?: string[]
   risk: RiskLevel
   /**
+   * 高危 + 不可逆才升级为模态（docs/06 决定 3）。
+   * 当前高危来源只有两类：bash 破坏性命令（neverPersist）与 delete 工具。
+   */
+  requiresModal: boolean
+  /**
    * 为 true 时不显示「总是允许」——破坏性命令只能一次一次批。
    * UI 据此隐藏那个选项，而不是让用户点了才发现没保存。
    */
@@ -126,6 +131,8 @@ export function isReadOnlyCommand(command: string): boolean {
 }
 
 export function isNeverPersist(toolName: string, args: Record<string, unknown>): boolean {
+  // delete 是「无回收站」的破坏性删除，和 rm 同级，永远不能免检
+  if (toolName === 'delete') return true
   if (toolName !== 'bash') return false
   const command = typeof args.command === 'string' ? args.command : ''
   return NEVER_PERSIST_PATTERNS.some((re) => re.test(command))

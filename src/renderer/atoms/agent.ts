@@ -163,6 +163,34 @@ export const pendingPermissionsAtom = atom<Map<string, PermissionRequest[]>>(new
 /** 已持久化的「总是允许」规则（主进程 SQLite 的镜像） */
 export const permissionRulesAtom = atom<PermissionRule[]>([])
 
+/** 全会话待授权请求总数 —— 底部「N 个授权请求等待处理」跳转条用 */
+export function pendingPermissionCount(
+  pending: Map<string, PermissionRequest[]>,
+): number {
+  let count = 0
+  for (const list of pending.values()) count += list.length
+  return count
+}
+
+/** 第一个需要模态确认的高危请求（跨会话，按登记顺序） */
+export function firstModalPermissionRequest(
+  pending: Map<string, PermissionRequest[]>,
+): PermissionRequest | undefined {
+  for (const list of pending.values()) {
+    const request = list.find((item) => item.requiresModal)
+    if (request) return request
+  }
+  return undefined
+}
+
+export const pendingPermissionCountAtom = atom((get) =>
+  pendingPermissionCount(get(pendingPermissionsAtom)),
+)
+
+export const modalPermissionRequestAtom = atom((get) =>
+  firstModalPermissionRequest(get(pendingPermissionsAtom)),
+)
+
 /** sessionId → 待审批的计划 */
 export const pendingPlansAtom = atom<Map<string, PlanRequest[]>>(new Map())
 

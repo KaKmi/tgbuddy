@@ -16,6 +16,8 @@ import {
   currentPlansAtom,
   currentAskUserAtom,
   currentMarkersAtom,
+  modalPermissionRequestAtom,
+  pendingPermissionCountAtom,
   permissionRulesAtom,
   type ToolActivity,
   messagesBySessionAtom,
@@ -28,6 +30,7 @@ import { roleOf, type SessionMessage } from '../shared/types/message.ts'
 import type { SessionMeta } from '../shared/ipc.ts'
 import type { WorkspaceMountResolution } from '../shared/ipc.ts'
 import { PermissionBanner } from './components/PermissionBanner.tsx'
+import { PermissionModal } from './components/PermissionModal.tsx'
 import { ToolCard } from './components/ToolCard.tsx'
 import { PlanApproval } from './components/PlanApproval.tsx'
 import { AskUserCard } from './components/AskUserCard.tsx'
@@ -54,6 +57,17 @@ export function App() {
   const messages = useAtomValue(currentMessagesAtom)
   const stream = useAtomValue(currentStreamAtom)
   const permissions = useAtomValue(currentPermissionsAtom)
+  const modalRequest = useAtomValue(modalPermissionRequestAtom)
+  const pendingPermissionCount = useAtomValue(pendingPermissionCountAtom)
+  // 用户手动收起模态时，请求退化为 inline 卡片继续可答，不能丢。
+  const [dismissedModalId, setDismissedModalId] = useState<string | null>(null)
+  const activeModal =
+    modalRequest && modalRequest.requestId !== dismissedModalId
+      ? modalRequest
+      : undefined
+  const inlinePermissions = permissions.filter(
+    (request) => request.requestId !== activeModal?.requestId,
+  )
   const plans = useAtomValue(currentPlansAtom)
   const questions = useAtomValue(currentAskUserAtom)
   const markers = useAtomValue(currentMarkersAtom)
@@ -147,6 +161,14 @@ export function App() {
     setPermissionRules(await window.tgbuddy.permission.rules())
   }
 
+  function jumpToPendingPermission() {
+    const first = inlinePermissions[0]
+    if (!first) return
+    document
+      .getElementById(`permission-card-${first.requestId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
   async function send() {
     const text = input.trim()
     if (!text || !currentId || stream.running || queuedPrompt) return
@@ -190,6 +212,41 @@ export function App() {
 
   return (
     <div className="flex h-screen bg-background text-foreground">
+      {activeModal && (
+        <PermissionModal
+          request={activeModal}
+          onClose={() => setDismissedModalId(activeModal.requestId)}
+        />
+      )}
+
+      {/* 底部常驻授权队列提示：解决 inline 卡片被划过去的问题 */}
+      {pendingPermissionCount > 0 && (
+        <div
+          className="fixed left-1/2 z-20 flex translate-x-[-50%] items-center gap-[10px] rounded-[22px] px-3 py-2 text-xs"
+          style={{
+            bottom: 168,
+            background: '#26221a',
+            boxShadow: '0 12px 30px rgba(0,0,0,.5), inset 0 0 0 1px rgba(224,163,62,.28)',
+          }}
+        >
+          <span
+            className="h-1.5 w-1.5 animate-pulse rounded-full"
+            style={{ background: '#e0a33e' }}
+          />
+          <span style={{ color: '#e6d3ae' }}>
+            {pendingPermissionCount} 个授权请求等待处理
+          </span>
+          <button
+            type="button"
+            onClick={jumpToPendingPermission}
+            className="rounded-[6px] px-[9px] py-[3px] text-[11.5px]"
+            style={{ background: 'rgba(255,255,255,.1)', color: '#f0e6d2' }}
+          >
+            跳到该处
+          </button>
+        </div>
+      )}
+
       {/* ── 侧边栏 ────────────────────────────────────────── */}
       <aside className="flex w-60 shrink-0 flex-col border-r bg-background">
         <div className="border-b p-3">
@@ -414,8 +471,10 @@ export function App() {
               ))}
 
               {/* 授权请求 —— inline 卡片，不打断心流 */}
-              {permissions.map((p) => (
-                <PermissionBanner key={p.requestId} request={p} />
+              {inlinePermissions.map((p) => (
+                <div key={p.requestId} id={`permission-card-${p.requestId}`}>
+                  <PermissionBanner request={p} />
+                </div>
               ))}
 
               {/* 计划待审批 */}

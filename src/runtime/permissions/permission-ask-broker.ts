@@ -103,6 +103,7 @@ export function createPermissionAskBroker(
       const { sessionId, toolCallId, toolName, args } = input
       const neverPersist = isNeverPersist(toolName, args)
       const path = extractPath(args)
+      const risk = assessRisk(toolName, args)
       const request: PermissionRequest = {
         requestId: options.createId(),
         sessionId,
@@ -110,7 +111,9 @@ export function createPermissionAskBroker(
         toolName,
         args,
         ...(path ? { affectedPaths: [path] } : {}),
-        risk: assessRisk(toolName, args),
+        risk,
+        // 高危来源当前只有「不可逆」（破坏性命令 / delete），两者同真
+        requiresModal: risk === 'high',
         neverPersist,
         suggestedGrants: neverPersist ? [] : suggestGrants(toolName, args),
       }

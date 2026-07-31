@@ -153,6 +153,46 @@ describe('PermissionAskBroker', () => {
     await Promise.all([writeResult, destructiveResult])
   })
 
+  test('requiresModal：破坏性命令与 delete 升级模态，普通写工具仍 inline', async () => {
+    const { broker, emitted } = harness()
+    broker.ask(
+      writeInput({
+        toolName: 'bash',
+        args: { command: 'rm -rf C:\\work\\cache' },
+      }),
+      new AbortController().signal,
+    )
+    broker.ask(
+      writeInput({
+        toolName: 'delete',
+        args: { paths: ['C:\\work\\cache\\a.tmp'] },
+      }),
+      new AbortController().signal,
+    )
+    broker.ask(
+      writeInput({ toolName: 'bash', args: { command: 'git status' } }),
+      new AbortController().signal,
+    )
+    broker.ask(writeInput(), new AbortController().signal)
+
+    expect(emitted.map((request) => request.requiresModal)).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ])
+    // delete 与 rm 一样不可持久化：无「总是允许」候选
+    expect(emitted[0]?.neverPersist).toBe(true)
+    expect(emitted[0]?.suggestedGrants).toEqual([])
+    expect(emitted[1]?.neverPersist).toBe(true)
+    expect(emitted[1]?.suggestedGrants).toEqual([])
+
+    for (const request of emitted) {
+      broker.respond({ requestId: request.requestId, allowed: false })
+    }
+    expect(broker.pending()).toEqual([])
+  })
+
   test('PolicyEngine + broker 集成：写工具 ask 挂起，允许后放行', async () => {
     const { broker } = harness()
     const policy = createPolicyEngine({
