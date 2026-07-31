@@ -16,6 +16,7 @@ import type { SessionMessage } from './message.ts'
 import type { Channel } from './channel.ts'
 import type { StartRunInput } from './run.ts'
 import type { SessionMeta } from './session.ts'
+import type { Workspace } from './workspace.ts'
 import type {
   AskUserRequest,
   AskUserResponse,
@@ -29,6 +30,14 @@ import type {
 // ── 通道名 ────────────────────────────────────────────────────────
 
 export const IPC = {
+  // 工作区
+  WORKSPACE_LIST: 'workspace:list',
+  WORKSPACE_CREATE: 'workspace:create',
+  WORKSPACE_SELECT: 'workspace:select',
+  WORKSPACE_CURRENT: 'workspace:current',
+  /** 主进程打开系统目录选择器，只返回路径，不创建工作区 */
+  WORKSPACE_PICK: 'workspace:pick',
+
   // 会话
   SESSION_LIST: 'session:list',
   SESSION_CREATE: 'session:create',
@@ -75,6 +84,7 @@ export const IPC = {
 
 export type { PermissionRequest, PermissionResponse } from './permission.ts'
 export type { SessionMeta } from './session.ts'
+export type { Workspace } from './workspace.ts'
 
 export interface IpcCommand<Request, Response> {
   request: Request
@@ -85,6 +95,11 @@ export interface IpcCommand<Request, Response> {
  * IPC 请求/响应唯一类型源。Electron handler 与 Preload 友好 API 都从这里取类型。
  */
 export interface IpcCommandMap {
+  'workspace:list': IpcCommand<undefined, Workspace[]>
+  'workspace:create': IpcCommand<{ path: string }, Workspace>
+  'workspace:select': IpcCommand<{ workspaceId: string }, Workspace>
+  'workspace:current': IpcCommand<undefined, Workspace | undefined>
+  'workspace:pick': IpcCommand<undefined, string | null>
   'session:list': IpcCommand<undefined, SessionMeta[]>
   'session:create': IpcCommand<
     { title?: string; channelId?: string; modelId?: string },
@@ -137,6 +152,15 @@ export interface IpcEventMap {
 // ── preload 暴露给渲染进程的 API ──────────────────────────────────
 
 export interface TgBuddyAPI {
+  workspace: {
+    list(): Promise<IpcResponse<'workspace:list'>>
+    create(input: IpcRequest<'workspace:create'>): Promise<IpcResponse<'workspace:create'>>
+    select(
+      workspaceId: IpcRequest<'workspace:select'>['workspaceId'],
+    ): Promise<IpcResponse<'workspace:select'>>
+    current(): Promise<IpcResponse<'workspace:current'>>
+    pick(): Promise<IpcResponse<'workspace:pick'>>
+  }
   session: {
     list(): Promise<IpcResponse<'session:list'>>
     create(input: IpcRequest<'session:create'>): Promise<IpcResponse<'session:create'>>

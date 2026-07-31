@@ -5,7 +5,7 @@
  * 具体 service、repository 和 kernel 只能由 Composition Root 装配。
  */
 
-import { ipcMain, type BrowserWindow } from 'electron'
+import { dialog, ipcMain, type BrowserWindow } from 'electron'
 import type { AgentRuntime } from '../runtime/index.ts'
 import {
   IPC,
@@ -22,6 +22,41 @@ export function registerIpc(
     if (!win || win.isDestroyed()) return
     win.webContents.send(IPC.AGENT_STREAM, frame)
   })
+
+  ipcMain.handle(
+    IPC.WORKSPACE_LIST,
+    (): IpcResponse<'workspace:list'> => agentRuntime.workspaces.list(),
+  )
+  ipcMain.handle(
+    IPC.WORKSPACE_CREATE,
+    (
+      _event,
+      input: IpcRequest<'workspace:create'>,
+    ): IpcResponse<'workspace:create'> => agentRuntime.workspaces.create(input),
+  )
+  ipcMain.handle(
+    IPC.WORKSPACE_SELECT,
+    (
+      _event,
+      input: IpcRequest<'workspace:select'>,
+    ): IpcResponse<'workspace:select'> =>
+      agentRuntime.workspaces.select(input.workspaceId),
+  )
+  ipcMain.handle(
+    IPC.WORKSPACE_CURRENT,
+    (): IpcResponse<'workspace:current'> => agentRuntime.workspaces.current(),
+  )
+  ipcMain.handle(
+    IPC.WORKSPACE_PICK,
+    async (): Promise<IpcResponse<'workspace:pick'>> => {
+      const win = getWindow()
+      if (!win) return null
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      return result.canceled ? null : (result.filePaths[0] ?? null)
+    },
+  )
 
   ipcMain.handle(
     IPC.SESSION_LIST,

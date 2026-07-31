@@ -19,6 +19,13 @@ export type {
   AgentRuntimeEventPublisher,
 } from './app/agent-runtime-events.ts'
 export type { SessionRepository } from './sessions/session-repository.ts'
+export type { WorkspaceRepository } from './workspaces/workspace-repository.ts'
+export {
+  createWorkspaceService,
+  type CreateWorkspaceServiceOptions,
+  type WorkspacePathPort,
+  type WorkspaceService,
+} from './workspaces/workspace-service.ts'
 export {
   createSessionCommands,
   type CreateSessionCommandsOptions,

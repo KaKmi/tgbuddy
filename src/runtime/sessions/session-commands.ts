@@ -22,6 +22,8 @@ export interface CreateSessionCommandsOptions {
   createId(): string
   now(): number
   resolveCwd(): string
+  /** S01 起注入当前工作区选择器；未提供时保持全量 catalog 语义 */
+  workspaceId?(): string | undefined
   onHistoryDeleteError?(sessionId: string, error: unknown): void
 }
 
@@ -34,13 +36,22 @@ export interface CreateSessionCommandsOptions {
 export function createSessionCommands(
   options: CreateSessionCommandsOptions,
 ): SessionCommands {
+  const currentWorkspaceId = (): string | undefined => options.workspaceId?.()
+
   return {
-    list: () => options.repository.list(),
+    list: () => {
+      const workspaceId = currentWorkspaceId()
+      return workspaceId
+        ? options.repository.list(workspaceId)
+        : options.repository.list()
+    },
     async create(input) {
       const now = options.now()
+      const workspaceId = currentWorkspaceId()
       const meta = options.repository.create({
         id: options.createId(),
         title: input.title ?? '新会话',
+        ...(workspaceId ? { workspaceId } : {}),
         ...(input.channelId ? { channelId: input.channelId } : {}),
         ...(input.modelId ? { modelId: input.modelId } : {}),
         createdAt: now,

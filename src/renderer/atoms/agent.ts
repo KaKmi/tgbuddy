@@ -7,7 +7,7 @@
 
 import { atom } from 'jotai'
 import type { AgentEvent } from '../../shared/types/event.ts'
-import type { SessionMeta } from '../../shared/ipc.ts'
+import type { SessionMeta, Workspace } from '../../shared/ipc.ts'
 import type { SessionMessage } from '../../shared/types/message.ts'
 import type {
   AskUserRequest,
@@ -65,6 +65,9 @@ export const emptyStreamState = (): StreamState => ({
 
 export const sessionsAtom = atom<SessionMeta[]>([])
 export const currentSessionIdAtom = atom<string | null>(null)
+export const workspacesAtom = atom<Workspace[]>([])
+/** Runtime 选择状态的镜像：权威状态在主进程 WorkspaceService，这里只驱动 UI。 */
+export const currentWorkspaceIdAtom = atom<string | null>(null)
 
 export function replaceSession(
   sessions: SessionMeta[],

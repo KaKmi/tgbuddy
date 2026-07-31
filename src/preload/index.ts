@@ -13,6 +13,14 @@ import { IPC, type TgBuddyAPI } from '../shared/contracts/ipc.ts'
 import type { StreamFrame } from '../shared/contracts/events.ts'
 
 const api = {
+  workspace: {
+    list: () => ipcRenderer.invoke(IPC.WORKSPACE_LIST),
+    create: (input) => ipcRenderer.invoke(IPC.WORKSPACE_CREATE, input),
+    select: (workspaceId) =>
+      ipcRenderer.invoke(IPC.WORKSPACE_SELECT, { workspaceId }),
+    current: () => ipcRenderer.invoke(IPC.WORKSPACE_CURRENT),
+    pick: () => ipcRenderer.invoke(IPC.WORKSPACE_PICK),
+  },
   session: {
     list: () => ipcRenderer.invoke(IPC.SESSION_LIST),
     create: (input) => ipcRenderer.invoke(IPC.SESSION_CREATE, input),

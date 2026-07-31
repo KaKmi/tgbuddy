@@ -1,8 +1,13 @@
 import type { BrowserWindow } from 'electron'
 import {
+  basename,
+  resolve,
+} from 'node:path'
+import {
   createPermissiveToolPolicy,
   createSessionCommands,
   createSessionMessageHistory,
+  createWorkspaceService,
   recoverInterruptedRuns,
   type AgentRuntime,
   type InterruptedRunRecoveryReport,
@@ -10,6 +15,7 @@ import {
 import {
   AppDatabase,
   SqliteSessionRepository,
+  SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
 import {
   createPiAgentEngine,
@@ -46,6 +52,18 @@ export async function createApplication(
 ): Promise<TgBuddyApplication> {
   const appDatabase = AppDatabase.open(options.databasePath)
   const sessionRepository = new SqliteSessionRepository(appDatabase)
+  const workspaceRepository = new SqliteWorkspaceRepository(appDatabase)
+  const workspaceService = createWorkspaceService({
+    repository: workspaceRepository,
+    sessions: sessionRepository,
+    createId,
+    now: Date.now,
+    paths: {
+      resolve: (path) => resolve(path),
+      key: (path) => resolve(path).toLowerCase(),
+      name: (path) => basename(resolve(path)) || '默认工作区',
+    },
+  })
 
   let messageStore: ReturnType<typeof createPiSessionStore> | undefined
   let agentRuntime: AgentRuntime
@@ -59,6 +77,9 @@ export async function createApplication(
       repository: sessionRepository,
     })
     reportLegacyMigration(migration)
+    // 默认工作区承接尚无 workspaceId 的既有会话（含 legacy 导入），
+    // 保证 S01 之后侧栏不会把历史会话隐藏成数据丢失。
+    workspaceService.ensureDefault(process.cwd())
     const createdMessageStore = createPiSessionStore({
       databasePath: options.databasePath,
       cwd: process.cwd(),
@@ -90,10 +111,12 @@ export async function createApplication(
         createId,
         now: Date.now,
         resolveCwd: () => process.cwd(),
+        workspaceId: () => workspaceService.current()?.id,
         onHistoryDeleteError(sessionId, error) {
           console.error(`[application] Session ${sessionId} 消息清理失败`, error)
         },
       }),
+      workspaces: workspaceService,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)

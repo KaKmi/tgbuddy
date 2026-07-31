@@ -20,6 +20,8 @@ import {
   messagesBySessionAtom,
   queuedPromptsAtom,
   sessionsAtom,
+  workspacesAtom,
+  currentWorkspaceIdAtom,
 } from './atoms/agent.ts'
 import { roleOf, type SessionMessage } from '../shared/types/message.ts'
 import type { SessionMeta } from '../shared/ipc.ts'
@@ -43,6 +45,8 @@ import { Response } from './components/ai-elements/response.tsx'
 export function App() {
   const [sessions, setSessions] = useAtom(sessionsAtom)
   const [currentId, setCurrentId] = useAtom(currentSessionIdAtom)
+  const [workspaces, setWorkspaces] = useAtom(workspacesAtom)
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useAtom(currentWorkspaceIdAtom)
   const setMessagesMap = useSetAtom(messagesBySessionAtom)
   const [queuedPrompts, setQueuedPrompts] = useAtom(queuedPromptsAtom)
   const messages = useAtomValue(currentMessagesAtom)
@@ -54,7 +58,9 @@ export function App() {
   const currentSession = sessions.find((x) => x.id === currentId)
   const mode: PermissionMode = currentSession?.permissionMode ?? 'auto'
   const [input, setInput] = useState('')
+  const [wsOpen, setWsOpen] = useState(false)
   const queuedPrompt = currentId ? queuedPrompts.get(currentId) : undefined
+  const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId)
 
   // 工具调用 ↔ 结果的配对索引，整段历史只建一次
   const toolResults = useMemo(() => buildToolResultMap(messages), [messages])
@@ -69,6 +75,17 @@ export function App() {
   useEffect(() => {
     void window.tgbuddy.session.list().then(setSessions)
   }, [setSessions])
+
+  // 工作区 catalog 与 Runtime 选择状态（权威状态在主进程，这里只镜像）。
+  useEffect(() => {
+    void Promise.all([
+      window.tgbuddy.workspace.list(),
+      window.tgbuddy.workspace.current(),
+    ]).then(([list, current]) => {
+      setWorkspaces(list)
+      setCurrentWorkspaceId(current?.id ?? list[0]?.id ?? null)
+    })
+  }, [setWorkspaces, setCurrentWorkspaceId])
 
   // 会话元数据（状态、活动摘要）在主进程更新，流式状态一变就重新拉一次列表。
   // TODO: 主进程直接推 meta 变更事件，省掉这次轮询式的重取
@@ -86,6 +103,25 @@ export function App() {
     setCurrentId(id)
     const msgs = await window.tgbuddy.session.messages(id)
     setMessagesMap((prev) => new Map(prev).set(id, msgs))
+  }
+
+  async function selectWorkspace(id: string) {
+    const workspace = await window.tgbuddy.workspace.select(id)
+    setCurrentWorkspaceId(workspace.id)
+    setWsOpen(false)
+    const nextSessions = await window.tgbuddy.session.list()
+    setSessions(nextSessions)
+    if (currentId && !nextSessions.some((session) => session.id === currentId)) {
+      setCurrentId(null)
+    }
+  }
+
+  async function addWorkspace() {
+    const path = await window.tgbuddy.workspace.pick()
+    if (!path) return
+    const created = await window.tgbuddy.workspace.create({ path })
+    await selectWorkspace(created.id)
+    setWorkspaces(await window.tgbuddy.workspace.list())
   }
 
   async function send() {
@@ -133,6 +169,74 @@ export function App() {
     <div className="flex h-screen bg-background text-foreground">
       {/* ── 侧边栏 ────────────────────────────────────────── */}
       <aside className="flex w-60 shrink-0 flex-col border-r bg-background">
+        <div className="border-b p-3">
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="workspace-picker"
+              onClick={() => setWsOpen((open) => !open)}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                className="shrink-0 text-sky-400/70"
+              >
+                <path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-medium text-foreground">
+                  {currentWorkspace?.name ?? '选择工作区'}
+                </span>
+                <span className="block truncate font-mono text-[10.5px] text-muted-foreground">
+                  {currentWorkspace?.mount?.path ?? '还没有工作区'}
+                </span>
+              </span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">▾</span>
+            </button>
+            {wsOpen && (
+              <div className="absolute left-0 right-0 top-full z-40 mt-1.5 rounded-xl border border-white/5 bg-popover p-1.5 shadow-2xl">
+                <div className="px-2 py-1 text-[11px] tracking-wide text-muted-foreground">
+                  工作区
+                </div>
+                {workspaces.map((workspace) => (
+                  <button
+                    key={workspace.id}
+                    type="button"
+                    data-testid="workspace-option"
+                    onClick={() => selectWorkspace(workspace.id)}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
+                  >
+                    <span className="w-3 shrink-0 text-center text-xs text-sky-400">
+                      {workspace.id === currentWorkspaceId ? '✓' : ''}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] text-foreground">
+                        {workspace.name}
+                      </span>
+                      <span className="block truncate font-mono text-[10.5px] text-muted-foreground">
+                        {workspace.mount?.path}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  data-testid="workspace-add"
+                  onClick={addWorkspace}
+                  className="mt-1 flex w-full items-center gap-2 rounded-lg border-t border-white/5 px-2 pb-1 pt-2 text-left text-xs text-sky-300 transition-colors hover:bg-accent/60"
+                >
+                  + 选择其他文件夹…
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
         <div className="p-3">
           <button
             onClick={newSession}

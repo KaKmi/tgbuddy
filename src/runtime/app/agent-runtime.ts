@@ -22,6 +22,9 @@ import {
 
 export interface WorkspaceCommands {
   list(): Workspace[]
+  create(input: { path: string }): Workspace
+  select(workspaceId: string): Workspace
+  current(): Workspace | undefined
 }
 
 export interface SessionCommands {

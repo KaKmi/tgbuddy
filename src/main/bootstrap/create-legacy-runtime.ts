@@ -18,6 +18,7 @@ import {
   type ContextCompactor,
   type SessionCommands,
   type SessionMessageHistory,
+  type WorkspaceCommands,
 } from '../../runtime/index.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
@@ -32,6 +33,7 @@ import * as permission from '../permission-service.ts'
 import * as plan from '../plan-service.ts'
 
 export interface CreateLegacyRuntimeOptions {
+  workspaces: WorkspaceCommands
   sessions: SessionCommands
   history: SessionMessageHistory
   agentEngine: AgentEngine
@@ -83,9 +85,7 @@ export function createLegacyRuntime(
     },
   })
   return createAgentRuntime({
-    workspaces: {
-      list: () => [],
-    },
+    workspaces: options.workspaces,
     sessions: options.sessions,
     runs,
     permissions: {
