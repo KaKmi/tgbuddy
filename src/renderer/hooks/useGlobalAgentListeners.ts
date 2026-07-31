@@ -26,7 +26,6 @@ import {
   pendingPermissionsAtom,
   pendingPlansAtom,
   pendingAskUserAtom,
-  permissionRulesAtom,
   queuedPromptsAtom,
   replaceSession,
   settleRunFrame,
@@ -56,16 +55,6 @@ function flushQueuedPrompt(store: ReturnType<typeof useStore>, sessionId: string
   if (!result.text) return
   store.set(queuedPromptsAtom, result.prompts)
   void window.tgbuddy.agent.send({ sessionId, text: result.text })
-}
-
-/** 规则列表只在主进程变化时刷新（授权卡 grant / 手动删除），量小直接全量取 */
-function refreshPermissionRules(store: ReturnType<typeof useStore>): void {
-  void window.tgbuddy.permission
-    .rules()
-    .then((rules) => store.set(permissionRulesAtom, rules))
-    .catch((error: unknown) => {
-      console.error('[Agent 监听] 刷新权限规则失败：', error)
-    })
 }
 
 async function refreshMessagesAndFlush(
@@ -213,7 +202,6 @@ export function useGlobalAgentListeners(): void {
             if (next.length !== list.length) map.set(sid, next)
           }
           store.set(pendingPermissionsAtom, map)
-          refreshPermissionRules(store)
           break
         }
 

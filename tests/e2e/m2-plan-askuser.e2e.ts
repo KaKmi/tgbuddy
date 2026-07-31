@@ -47,7 +47,10 @@ test('计划模式下写操作被拒绝并给出原因，切回默认权限后�
   await send(tgbuddy.page, 'M2 写入')
   await expect(tgbuddy.page.getByText('请求执行 write')).toBeVisible()
   await tgbuddy.page.getByRole('button', { name: '允许', exact: true }).click()
-  await expect(tgbuddy.page.getByText('M2 写入完成', { exact: true })).toBeVisible()
+  // 计划模式下的写被拒也会让 fake server 回一条完成文本，历史里会有多条，取最后一条
+  await expect(
+    tgbuddy.page.getByText('M2 写入完成', { exact: true }).last(),
+  ).toBeVisible()
 })
 
 test('ask_user 结构化问题可回答并回到原任务', async ({ tgbuddy }) => {

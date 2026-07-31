@@ -18,7 +18,6 @@ import {
   currentMarkersAtom,
   modalPermissionRequestAtom,
   pendingPermissionCountAtom,
-  permissionRulesAtom,
   type ToolActivity,
   messagesBySessionAtom,
   queuedPromptsAtom,
@@ -81,7 +80,6 @@ export function App() {
   const plans = useAtomValue(currentPlansAtom)
   const questions = useAtomValue(currentAskUserAtom)
   const markers = useAtomValue(currentMarkersAtom)
-  const [permissionRules, setPermissionRules] = useAtom(permissionRulesAtom)
   const currentSession = sessions.find((x) => x.id === currentId)
   const mode: PermissionMode = currentSession?.permissionMode ?? 'auto'
   const [input, setInput] = useState('')
@@ -129,11 +127,6 @@ export function App() {
       setProfiles(profileList)
     })
   }, [setChannels, setProfiles])
-
-  // 规则镜像：主进程在授权卡 grant / 删除时推送变化，这里只负责初始加载和删除后的刷新。
-  useEffect(() => {
-    void window.tgbuddy.permission.rules().then(setPermissionRules)
-  }, [setPermissionRules])
 
   // 工作区 catalog 与 Runtime 选择状态（权威状态在主进程，这里只镜像）。
   useEffect(() => {
@@ -190,11 +183,6 @@ export function App() {
     const created = await window.tgbuddy.workspace.create({ path })
     await selectWorkspace(created.id)
     setWorkspaces(await window.tgbuddy.workspace.list())
-  }
-
-  async function removePermissionRule(id: string) {
-    await window.tgbuddy.permission.removeRule(id)
-    setPermissionRules(await window.tgbuddy.permission.rules())
   }
 
   function jumpToPendingPermission() {
@@ -421,38 +409,6 @@ export function App() {
           )}
         </div>
 
-        {/* S07 最小规则列表：给用户一条删除出口，正式设置页在 U04 落地 */}
-        <div className="border-t px-2 py-2">
-          <div className="px-2 pb-1 text-[11px] text-muted-foreground">
-            权限规则{permissionRules.length > 0 ? `（${permissionRules.length}）` : ''}
-          </div>
-          {permissionRules.length === 0 ? (
-            <p className="px-2 py-1 text-[11px] text-muted-foreground/60">
-              暂无「总是允许」规则
-            </p>
-          ) : (
-            <div className="max-h-40 space-y-0.5 overflow-y-auto">
-              {permissionRules.map((rule) => (
-                <div
-                  key={rule.id}
-                  className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] hover:bg-accent/50"
-                >
-                  <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">
-                    {rule.tool} · {rule.pattern}
-                  </span>
-                  <button
-                    type="button"
-                    title="删除规则"
-                    onClick={() => void removePermissionRule(rule.id)}
-                    className="shrink-0 text-muted-foreground/50 transition-colors hover:text-status-error"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
         <div className="border-t px-2 py-2">
           <button
             type="button"
