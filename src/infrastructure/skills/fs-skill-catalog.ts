@@ -1,8 +1,10 @@
 import {
+  cpSync,
   existsSync,
   readFileSync,
   readdirSync,
   statSync,
+  writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import type {
@@ -17,13 +19,77 @@ import {
 import type { SkillCatalog } from '../../runtime/skills/ports/skill-catalog.ts'
 
 export interface CreateFsSkillCatalogOptions {
-  builtinRoots: string[]
+  /** 用户级全局技能根（含 seed 进来的内置预装，靠 source.json 区分） */
   userRoots: string[]
   /** 工作区根目录随 workspaceId 解析，切换工作区即刷新 */
   workspaceRoots(workspaceId: string): string[]
 }
 
 const MANIFEST_FILE = 'skill.json'
+const SOURCE_FILE = 'source.json'
+
+/** 复制内置技能时永远跳过的目录（防 .git/依赖目录爆炸）。 */
+const SEED_BLOCKLIST = new Set(['.git', '.DS_Store', 'node_modules', 'dist'])
+
+export interface SeedBuiltinSkillsResult {
+  seeded: string[]
+  skipped: string[]
+}
+
+/**
+ * 把安装包内置技能 seed 到用户级全局目录（`~/.tgbuddy/skills/`）。
+ *
+ * - 幂等：目标已存在时跳过，绝不覆盖用户对技能的修改；
+ * - 每个 seed 进来的技能目录写 `source.json { source: "builtin" }`，
+ *   设置页据此归入「内置技能」分组，与用户自装技能区分。
+ */
+export function seedBuiltinSkills(options: {
+  sourceRoots: string[]
+  targetRoot: string
+}): SeedBuiltinSkillsResult {
+  const result: SeedBuiltinSkillsResult = { seeded: [], skipped: [] }
+  for (const sourceRoot of options.sourceRoots) {
+    if (!existsSync(sourceRoot)) continue
+    let entries: string[]
+    try {
+      entries = readdirSync(sourceRoot)
+    } catch (error) {
+      console.error(`[skills] 内置技能源读取失败，跳过：${sourceRoot}`, error)
+      continue
+    }
+    for (const entry of entries) {
+      const source = join(sourceRoot, entry)
+      let isDirectory = false
+      try {
+        isDirectory = statSync(source).isDirectory()
+      } catch {
+        continue
+      }
+      if (!isDirectory || SEED_BLOCKLIST.has(entry)) continue
+      const target = join(options.targetRoot, entry)
+      if (existsSync(target)) {
+        // 用户可能已经改过同名技能：只补缺失，不覆盖。
+        result.skipped.push(entry)
+        continue
+      }
+      try {
+        cpSync(source, target, {
+          recursive: true,
+          filter: (src) => !SEED_BLOCKLIST.has(join(src).split(/[\\/]/).at(-1) ?? ''),
+        })
+        writeFileSync(
+          join(target, SOURCE_FILE),
+          JSON.stringify({ source: 'builtin', seededAt: new Date().toISOString() }, null, 2),
+          'utf8',
+        )
+        result.seeded.push(entry)
+      } catch (error) {
+        console.error(`[skills] 内置技能 seed 失败，跳过：${entry}`, error)
+      }
+    }
+  }
+  return result
+}
 
 /**
  * 基于文件系统的技能目录：扫描各来源根目录下的 skill.json，
@@ -31,21 +97,28 @@ const MANIFEST_FILE = 'skill.json'
  * 本阶段只读元数据，不加载正文（C08）。
  */
 export class FsSkillCatalog implements SkillCatalog {
-  readonly #builtinRoots: string[]
   readonly #userRoots: string[]
   readonly #workspaceRoots: (workspaceId: string) => string[]
   readonly #disabled = new Set<string>()
 
   constructor(options: CreateFsSkillCatalogOptions) {
-    this.#builtinRoots = options.builtinRoots
     this.#userRoots = options.userRoots
     this.#workspaceRoots = options.workspaceRoots
   }
 
   groups(workspaceId?: string): SkillGroupView[] {
+    const bySource = collectFromUserRoots(this.#userRoots)
     return [
-      collectGroup('builtin', '内置技能', this.#builtinRoots),
-      collectGroup('user', '用户级技能', this.#userRoots),
+      {
+        source: 'builtin' as const,
+        title: '内置技能',
+        items: bySource.builtin,
+      },
+      {
+        source: 'user' as const,
+        title: '用户级技能',
+        items: bySource.user,
+      },
       ...(workspaceId
         ? [collectGroup('workspace', '工作区技能', this.#workspaceRoots(workspaceId))]
         : []),
@@ -74,6 +147,79 @@ export function createFsSkillCatalog(
   return new FsSkillCatalog(options)
 }
 
+/** 用户级根目录扫描：带 `source: builtin` 标记的归内置（预装），其余归用户级。 */
+function collectFromUserRoots(roots: string[]): {
+  builtin: SkillManifest[]
+  user: SkillManifest[]
+} {
+  const builtin: SkillManifest[] = []
+  const user: SkillManifest[] = []
+  for (const root of roots) {
+    if (!existsSync(root)) continue
+    let entries: string[]
+    try {
+      entries = readdirSync(root)
+    } catch (error) {
+      console.error(`[skills] 技能目录读取失败，跳过：${root}`, error)
+      continue
+    }
+    for (const entry of entries) {
+      const dir = join(root, entry)
+      let isDirectory = false
+      try {
+        isDirectory = statSync(dir).isDirectory()
+      } catch {
+        continue
+      }
+      if (!isDirectory) continue
+      const isBuiltin = readSkillSource(dir) === 'builtin'
+      // 先判定来源再解析，保证 id（`<source>:<name>`）与分组一致。
+      const skill = readSkillManifest(dir, isBuiltin ? 'builtin' : 'user')
+      if (!skill) continue
+      const bucket = isBuiltin ? builtin : user
+      if (bucket.some((item) => item.name === skill.name)) {
+        console.warn(`[skills] 跳过重复技能名 ${skill.name}（${dir}）`)
+        continue
+      }
+      bucket.push(skill)
+    }
+  }
+  return { builtin, user }
+}
+
+function readSkillSource(dir: string): string | undefined {
+  const sourcePath = join(dir, SOURCE_FILE)
+  if (!existsSync(sourcePath)) return undefined
+  try {
+    const parsed = JSON.parse(readFileSync(sourcePath, 'utf8')) as { source?: unknown }
+    return typeof parsed.source === 'string' ? parsed.source : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function readSkillManifest(
+  dir: string,
+  source: SkillSource,
+): SkillManifest | undefined {
+  const manifestPath = join(dir, MANIFEST_FILE)
+  try {
+    if (existsSync(manifestPath)) {
+      const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown
+      return parseSkillManifest(parsed, { source, root: dir })
+    }
+    const skillMdPath = join(dir, 'SKILL.md')
+    if (!existsSync(skillMdPath)) return undefined
+    return parseSkillFrontmatter(readFileSync(skillMdPath, 'utf8'), {
+      source,
+      root: dir,
+    })
+  } catch (error) {
+    console.error(`[skills] 技能 manifest 解析失败，跳过：${manifestPath}`, error)
+    return undefined
+  }
+}
+
 function collectGroup(
   source: SkillSource,
   title: string,
@@ -99,34 +245,14 @@ function collectGroup(
         continue
       }
       if (!isDirectory) continue
-      const manifestPath = join(dir, MANIFEST_FILE)
-      try {
-        let skill
-        if (existsSync(manifestPath)) {
-          // 自定义 manifest（skill.json）优先：带 title/trigger/tags 等富元数据
-          const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown
-          skill = parseSkillManifest(parsed, { source, root: dir })
-        } else {
-          // 标准 SKILL.md 技能：从 YAML frontmatter 解析元数据
-          const skillMdPath = join(dir, 'SKILL.md')
-          if (!existsSync(skillMdPath)) continue
-          skill = parseSkillFrontmatter(readFileSync(skillMdPath, 'utf8'), {
-            source,
-            root: dir,
-          })
-        }
-        if (seen.has(skill.name)) {
-          console.warn(`[skills] 跳过重复技能名 ${skill.name}（${dir}）`)
-          continue
-        }
-        seen.add(skill.name)
-        items.push(skill)
-      } catch (error) {
-        console.error(
-          `[skills] 技能 manifest 解析失败，跳过：${manifestPath}`,
-          error,
-        )
+      const skill = readSkillManifest(dir, source)
+      if (!skill) continue
+      if (seen.has(skill.name)) {
+        console.warn(`[skills] 跳过重复技能名 ${skill.name}（${dir}）`)
+        continue
       }
+      seen.add(skill.name)
+      items.push(skill)
     }
   }
   return { source, title, items }

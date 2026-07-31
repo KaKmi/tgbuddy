@@ -39,6 +39,7 @@ import { SdkMcpTransportFactory } from '../../infrastructure/mcp/index.ts'
 import {
   createFsSkillCatalog,
   createFsSkillLoader,
+  seedBuiltinSkills,
 } from '../../infrastructure/skills/index.ts'
 import { NodeWorkspaceMountResolver } from '../../infrastructure/workspace/index.ts'
 import {
@@ -114,10 +115,18 @@ export async function createApplication(
     createId,
   })
   migrateLegacyChannels(channels, channelRepository)
-  // C07：技能目录根。内置随应用资源，用户级在数据目录，工作区级随 mount。
+  // C07：技能目录。内置技能先 seed 到用户级全局目录（幂等、不覆盖用户修改），
+  // 设置页「内置技能」组读全局副本；用户级技能同目录；工作区级随 mount。
+  const userSkillsDir = join(options.legacyDataDir, 'skills')
+  const builtinSeed = seedBuiltinSkills({
+    sourceRoots: [join(process.cwd(), 'assets', 'skills', 'builtin')],
+    targetRoot: userSkillsDir,
+  })
+  if (builtinSeed.seeded.length > 0) {
+    console.info(`[skills] 已 seed 内置技能：${builtinSeed.seeded.join('、')}`)
+  }
   const skills = createFsSkillCatalog({
-    builtinRoots: [join(process.cwd(), 'assets', 'skills', 'builtin')],
-    userRoots: [join(options.legacyDataDir, 'skills')],
+    userRoots: [userSkillsDir],
     workspaceRoots: (workspaceId) => {
       const mount = workspaceService.mountStatus(workspaceId)
       return mount.ok ? [join(mount.mount.path, '.tgbuddy', 'skills')] : []

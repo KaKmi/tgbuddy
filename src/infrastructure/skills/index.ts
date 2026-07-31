@@ -1,6 +1,8 @@
 export {
   createFsSkillCatalog,
   FsSkillCatalog,
+  seedBuiltinSkills,
+  type SeedBuiltinSkillsResult,
   type CreateFsSkillCatalogOptions,
 } from './fs-skill-catalog.ts'
 export {

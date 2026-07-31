@@ -37,7 +37,11 @@ describe('skill 工具（pi adapter）', () => {
         new AbortController().signal,
         () => {},
       )
-      expect(result.content[0]).toMatchObject({ type: 'text', text: '技能正文 A' })
+      // 对齐 pi 后正文按 `<skill>` 显式调用块注入，断言内容包含正文与位置。
+      const text = result.content[0]?.text
+      expect(typeof text).toBe('string')
+      expect(text).toContain('技能正文 A')
+      expect(text).toContain('<skill name="reg-check"')
     } finally {
       for (const skill of skills) rmSync(skill.root, { recursive: true, force: true })
     }
@@ -56,10 +60,9 @@ describe('skill 工具（pi adapter）', () => {
         new AbortController().signal,
         () => {},
       )
-      expect(result.content[0]).toMatchObject({
-        type: 'text',
-        text: 'reg-check 的引用资源',
-      })
+      const text = result.content[0]?.text
+      expect(typeof text).toBe('string')
+      expect(text).toContain('reg-check 的引用资源')
     } finally {
       for (const skill of skills) rmSync(skill.root, { recursive: true, force: true })
     }
@@ -101,7 +104,9 @@ describe('skill 工具（pi adapter）', () => {
         new AbortController().signal,
         () => {},
       )
-      expect(result.content[0]).toMatchObject({ type: 'text', text: '第一版正文' })
+      const text = result.content[0]?.text
+      expect(typeof text).toBe('string')
+      expect(text).toContain('第一版正文')
     } finally {
       for (const skill of skills) rmSync(skill.root, { recursive: true, force: true })
     }

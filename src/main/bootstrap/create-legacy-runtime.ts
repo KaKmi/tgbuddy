@@ -33,6 +33,7 @@ import {
   type ToolSettingsService,
   type WorkspaceCommands,
 } from '../../runtime/index.ts'
+import { formatSkillsSystemPrompt } from '../../kernel/pi/index.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
 
@@ -355,10 +356,9 @@ function buildSystemPrompt(
       ? [
           '',
           '## 技能',
-          // 只列名字：正文按需加载，不把完整 description 常驻 prompt
-          //（既省 token，也避免描述里的触发词干扰模型/测试判定）。
-          '可用技能（需要时调用 skill 工具加载正文）：',
-          ...skills.map((skill) => `- ${skill.name}（${skill.title}）`),
+          // 复用 pi 的 formatSkillsForSystemPrompt：
+          // name + description + location 进 system prompt，正文仍按需加载。
+          formatSkillsSystemPrompt(skills),
         ]
       : []),
   ].join('\n')

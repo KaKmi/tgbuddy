@@ -35,6 +35,11 @@ export {
   type BuildSkillToolOptions,
 } from './pi-skill-tool.ts'
 export {
+  formatSkillInvocationBlock,
+  formatSkillsSystemPrompt,
+  toPiSkill,
+} from './pi-skills.ts'
+export {
   buildMcpTool,
   type BuildMcpToolOptions,
 } from './pi-mcp-tool.ts'

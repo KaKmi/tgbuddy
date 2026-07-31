@@ -2,6 +2,7 @@ import { Type } from '@earendil-works/pi-ai'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import type { SkillManifest } from '../../shared/contracts/skill.ts'
 import type { SkillLoader } from '../../runtime/skills/ports/skill-loader.ts'
+import { formatSkillInvocationBlock } from './pi-skills.ts'
 
 export interface BuildSkillToolOptions {
   /** Run 启动时冻结的启用技能摘要（正文修改只影响下一 Run 的清单） */
@@ -45,7 +46,13 @@ export function buildSkillTool(options: BuildSkillToolOptions): AgentTool {
       if (resource) {
         const loaded = await options.loader.loadResource(manifest, resource)
         return {
-          content: [{ type: 'text', text: loaded.text }],
+          // 按 pi 的显式调用格式注入：带技能名与文件位置，引用说明由 pi 生成。
+          content: [
+            {
+              type: 'text',
+              text: formatSkillInvocationBlock(manifest, loaded.text),
+            },
+          ],
           details: {
             skill: manifest.name,
             resource,
@@ -56,7 +63,12 @@ export function buildSkillTool(options: BuildSkillToolOptions): AgentTool {
       }
       const loaded = await options.loader.loadBody(manifest)
       return {
-        content: [{ type: 'text', text: loaded.text }],
+        content: [
+          {
+            type: 'text',
+            text: formatSkillInvocationBlock(manifest, loaded.text),
+          },
+        ],
         details: {
           skill: manifest.name,
           tokens: loaded.tokens,
