@@ -191,6 +191,12 @@ export function useGlobalAgentListeners(): void {
                 type: 'tool_running',
                 toolCallId: request.toolCallId,
               })
+            } else if (request) {
+              // 拒绝也要有可见落点：卡片从「等待授权」变成「已拒绝」
+              dispatch(sid, {
+                type: 'tool_denied',
+                toolCallId: request.toolCallId,
+              })
             }
             const next = list.filter((r) => r.requestId !== event.requestId)
             if (next.length !== list.length) map.set(sid, next)

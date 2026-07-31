@@ -21,7 +21,13 @@ import { Check, ChevronRight, CircleSlash, Loader2, TriangleAlert, X } from 'luc
 import { useState } from 'react'
 import { cn } from '../lib/utils.ts'
 
-export type ToolStatus = 'awaiting_permission' | 'running' | 'success' | 'error' | 'unknown'
+export type ToolStatus =
+  | 'awaiting_permission'
+  | 'running'
+  | 'success'
+  | 'error'
+  | 'denied'
+  | 'unknown'
 
 /** 逐项取自原型的 ST 表 */
 const ST = {
@@ -56,6 +62,15 @@ const ST = {
     bg: 'rgba(201,99,91,.045)',
     badge: '失败',
     badgeBg: 'rgba(201,99,91,.14)',
+  },
+  // 原型 denied 与 unknown 同款低饱和灰 —— 拒绝是“没有发生”的结果，不抢红叉的注意力
+  denied: {
+    color: '#8a8a92',
+    bar: '#55555c',
+    ring: 'rgba(255,255,255,.05)',
+    bg: '#17171a',
+    badge: '已拒绝',
+    badgeBg: 'rgba(255,255,255,.05)',
   },
   unknown: {
     color: '#8a8a92',
@@ -187,6 +202,8 @@ function StatusIcon({ status }: { status: ToolStatus }) {
       return <Check size={14} strokeWidth={2.4} />
     case 'error':
       return <X size={14} strokeWidth={2.3} />
+    case 'denied':
+      return <CircleSlash size={14} strokeWidth={2} />
     case 'running':
       return <Loader2 size={13} className="animate-spin" />
     case 'awaiting_permission':

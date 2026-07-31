@@ -14,6 +14,7 @@ import {
   type AgentEngine,
   type AgentInvocation,
   type ContextCompactor,
+  type PermissionAskBroker,
   mountFailureMessage,
   type SessionCommands,
   type SessionMessageHistory,
@@ -36,6 +37,8 @@ export interface CreateLegacyRuntimeOptions {
   history: SessionMessageHistory
   agentEngine: AgentEngine
   contextCompactor: ContextCompactor
+  /** S06：授权请求由 Runtime broker 持有；respond/pending/clearSession 都走它 */
+  permissions: PermissionAskBroker
   dispose?(): Promise<void>
 }
 
@@ -67,7 +70,7 @@ export function createLegacyRuntime(
         )
       },
       async settled(settlement) {
-        permission.clearSession(settlement.sessionId)
+        options.permissions.clearSession(settlement.sessionId)
         plan.clearSession(settlement.sessionId)
         askUser.clearSession(settlement.sessionId)
         return requireSessionUpdate(
@@ -88,8 +91,8 @@ export function createLegacyRuntime(
     sessions: options.sessions,
     runs,
     permissions: {
-      respond: permission.respond,
-      pending: permission.getPending,
+      respond: (response) => options.permissions.respond(response),
+      pending: options.permissions.pending,
       expireSessionRules: permission.expireSessionRules,
     },
     plans: {

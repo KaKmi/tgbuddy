@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { PendingRequests } from '../src/main/pending-request.ts'
+import { PendingRequests } from '../src/runtime/pending/pending-requests.ts'
 
 interface TestRequest {
   requestId: string

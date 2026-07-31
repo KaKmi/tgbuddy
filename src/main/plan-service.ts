@@ -5,7 +5,8 @@
  * 重载恢复）全部由它保证，这里只关心业务字段。
  */
 
-import { PendingRequests } from './pending-request.ts'
+import { randomUUID } from 'node:crypto'
+import { PendingRequests } from '../runtime/index.ts'
 import type { PlanApproval, PlanRequest, PlanResponse } from '../shared/types/permission.ts'
 
 const pending = new PendingRequests<PlanRequest, PlanApproval>(
@@ -21,7 +22,7 @@ export function requestApproval(
   send: PlanSender,
   signal?: AbortSignal,
 ): Promise<PlanApproval> {
-  return pending.suspend({ requestId: PendingRequests.newId(), sessionId, plan }, send, signal)
+  return pending.suspend({ requestId: randomUUID(), sessionId, plan }, send, signal)
 }
 
 export function respond(res: PlanResponse): void {

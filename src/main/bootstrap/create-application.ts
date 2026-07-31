@@ -4,6 +4,7 @@ import {
   resolve,
 } from 'node:path'
 import {
+  createPermissionAskBroker,
   createPolicyEngine,
   createSessionCommands,
   createSessionMessageHistory,
@@ -71,6 +72,23 @@ export async function createApplication(
     },
     mountResolver,
   })
+  // S06：授权请求由 Runtime broker 持有，主进程只负责把请求推给渲染进程。
+  // 旧 Main permission-service 的 pending 注册表不再接新请求（S11 删除）。
+  const permissionAskBroker = createPermissionAskBroker({
+    createId,
+    emitRequest(request) {
+      const win = options.getWindow()
+      if (!win || win.isDestroyed()) return
+      win.webContents.send(IPC.AGENT_STREAM, {
+        sessionId: request.sessionId,
+        runId: 0,
+        payload: {
+          channel: 'host',
+          event: { type: 'permission_request', request },
+        },
+      })
+    },
+  })
 
   let messageStore: ReturnType<typeof createPiSessionStore> | undefined
   let agentRuntime: AgentRuntime
@@ -114,35 +132,7 @@ export async function createApplication(
           getMode: (sessionId) => permission.getMode(sessionId),
           getWorkspaceId: (sessionId) =>
             sessionRepository.get(sessionId)?.workspaceId,
-          // S05 的 ask 落点仍委托 legacy permission-service（挂起/响应/逃生口已完备），
-          // S06 把 pending registry 迁入 Runtime 后替换此 adapter。
-          ask: (input, signal) =>
-            permission
-              .createBeforeToolCall(
-                input.sessionId,
-                (request) => {
-                  const win = options.getWindow()
-                  if (!win || win.isDestroyed()) return
-                  win.webContents.send(IPC.AGENT_STREAM, {
-                    sessionId: input.sessionId,
-                    runId: 0,
-                    payload: {
-                      channel: 'host',
-                      event: { type: 'permission_request', request },
-                    },
-                  })
-                },
-              )(
-                {
-                  toolCall: {
-                    id: input.toolCallId,
-                    name: input.toolName,
-                  },
-                  args: input.args,
-                },
-                signal,
-              )
-              .then((verdict) => verdict === undefined),
+          ask: (input, signal) => permissionAskBroker.ask(input, signal),
         }),
       }),
       contextCompactor: createPiContextCompactor(),
@@ -159,6 +149,7 @@ export async function createApplication(
         },
       }),
       workspaces: workspaceService,
+      permissions: permissionAskBroker,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)

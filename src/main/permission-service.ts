@@ -16,9 +16,10 @@
  * 少任何一个，都会出现「界面上没有任何提示，但 Agent 卡住不动」。
  */
 
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { PendingRequests } from '../runtime/index.ts'
 import { DATA_DIR, ensureDataDir } from './channel-store.ts'
-import { PendingRequests } from './pending-request.ts'
 import { readJsonFileSafe, writeJsonFileAtomic } from './safe-file.ts'
 import {
   isNeverPersist,
@@ -248,7 +249,7 @@ export function createBeforeToolCall(sessionId: string, send: RequestSender) {
 
     // ── 挂起，等用户 ──────────────────────────────────────────
     const request: PermissionRequest = {
-      requestId: PendingRequests.newId(),
+      requestId: randomUUID(),
       sessionId,
       // ★ UI 靠这个把授权请求和对应的工具卡片对上（四态里的「等待授权」）
       toolCallId: ctx.toolCall.id,

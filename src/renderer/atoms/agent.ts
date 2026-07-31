@@ -26,7 +26,7 @@ export interface ToolActivity {
    * 直接按 running 渲染会让用户看到"正在执行 rm -rf"然后才弹授权框。
    * 详见 docs/01-架构设计.md 6.2。
    */
-  status: 'awaiting_permission' | 'running' | 'success' | 'error'
+  status: 'awaiting_permission' | 'running' | 'success' | 'error' | 'denied'
   /** 开始时间，用于算耗时 */
   startedAt: number
   /** 执行耗时，tool_end 时填 */
@@ -279,7 +279,10 @@ export function settleRunFrame(
  * 渲染进程内部才有的事件，不来自主进程 —— 由 120ms 延迟定时器派发。
  * 见 docs/06-设计决策.md 决定 2。
  */
-export type LocalEvent = { type: 'tool_running'; toolCallId: string }
+export type LocalEvent =
+  | { type: 'tool_running'; toolCallId: string }
+  /** 用户拒绝了授权请求，卡片从「等待授权」落为「已拒绝」 */
+  | { type: 'tool_denied'; toolCallId: string }
 
 export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEvent): StreamState {
   switch (event.type) {
@@ -319,6 +322,18 @@ export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEven
         toolActivities: prev.toolActivities.map((t) =>
           t.toolCallId === event.toolCallId && t.status === 'awaiting_permission'
             ? { ...t, status: 'running' as const }
+            : t,
+        ),
+      }
+
+    // 用户点了拒绝：只有还停在「等待授权」的卡片才落为已拒绝。
+    // 已经在执行中的工具不可能收到授权请求，所以不需要处理 running → denied。
+    case 'tool_denied':
+      return {
+        ...prev,
+        toolActivities: prev.toolActivities.map((t) =>
+          t.toolCallId === event.toolCallId && t.status === 'awaiting_permission'
+            ? { ...t, status: 'denied' as const }
             : t,
         ),
       }

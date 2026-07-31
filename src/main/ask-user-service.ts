@@ -1,6 +1,7 @@
 /** 用户问答服务 —— 挂起 Agent，等待用户补充必要信息。 */
 
-import { PendingRequests } from './pending-request.ts'
+import { randomUUID } from 'node:crypto'
+import { PendingRequests } from '../runtime/index.ts'
 import type {
   AskUserAnswer,
   AskUserRequest,
@@ -18,7 +19,7 @@ export function requestAnswers(
   signal?: AbortSignal,
 ): Promise<AskUserAnswer[]> {
   return pending.suspend(
-    { requestId: PendingRequests.newId(), sessionId, questions },
+    { requestId: randomUUID(), sessionId, questions },
     send,
     signal,
   )

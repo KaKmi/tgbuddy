@@ -31,9 +31,16 @@ export {
   type PolicyEngineDependencies,
 } from './permissions/policy-engine.ts'
 export {
+  assessRisk,
+  createPermissionAskBroker,
+  type CreatePermissionAskBrokerOptions,
+  type PermissionAskBroker,
+} from './permissions/permission-ask-broker.ts'
+export {
   MemoryPermissionRuleRepository,
   type PermissionRuleRepository,
 } from './permissions/permission-rule-repository.ts'
+export { PendingRequests } from './pending/pending-requests.ts'
 export {
   mountFailureMessage,
   type WorkspaceMountResolver,

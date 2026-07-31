@@ -1,10 +1,11 @@
 /**
- * 跨 IPC 边界挂起一个异步调用，等用户在界面上响应。
+ * 跨进程边界挂起一个异步调用，等用户在界面上响应。
  *
- * ## 为什么要抽成泛型
+ * ## 为什么放在 Runtime
  *
- * permission / askUser / exitPlan 都需要相同的挂起、终止、清理和恢复语义，
- * 因此抽成一个泛型服务，避免多份实现发生漂移。
+ * permission / plan / ask_user 都需要相同的挂起、终止、清理和恢复语义。
+ * S06 把 permission 的挂起注册表迁入 Runtime，S09/S10 的 plan 与 ask_user
+ * 复用同一机制，避免多份实现发生漂移。
  *
  * ## 三个逃生口，一个都不能少
  *
@@ -15,8 +16,6 @@
  * 少任何一个，症状都是「界面上没有任何提示，但 Agent 卡住不动」——
  * 极难排查，因为哪里都不报错。
  */
-
-import { randomBytes } from 'node:crypto'
 
 /** 请求至少要能标识自己属于哪个会话，其余字段由使用方定义 */
 interface HasSession {
@@ -38,10 +37,6 @@ export class PendingRequests<TReq extends HasSession, TRes> {
     private readonly onAbort: () => TRes,
     private readonly onDiscard: () => TRes,
   ) {}
-
-  static newId(): string {
-    return randomBytes(8).toString('hex')
-  }
 
   /**
    * 挂起。返回的 Promise 只会被 `respond` / abort / `clearSession` 三者之一 settle。
