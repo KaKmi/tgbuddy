@@ -1,0 +1,70 @@
+# Dev Ledger
+
+K01: "AppDatabase 迁移协议与 packaged 证明" — complete
+  Commits: 6d0724a
+  Files: .ship/tasks/sqlite-packaged-electron-spike/evidence/README.md, .ship/tasks/tgbuddy-vertical-slices/dev-context.md, AGENTS.md, package.json, scripts/check-architecture.ts, scripts/sqlite-spike-main.ts, scripts/sqlite-spike-runtime.ts, scripts/sqlite-spike-scenarios.ts, src/infrastructure/sqlite/app-database.ts, src/infrastructure/sqlite/migrations/001_app_bootstrap.sql, src/sql.d.ts, tests/sqlite-spike.test.ts, tests/unit/architecture/import-boundaries.test.ts
+  Produces: `AppDatabase.open(databasePath: string): AppDatabase`; `AppDatabase.close(): void`; `AppDatabase.databasePath: string`; packaged `app-database` scenario
+  Concerns: none
+
+K02: "SQLite SessionCatalogRepository" — complete
+  Commits: e6f94e1
+  Files: .ship/tasks/sqlite-packaged-electron-spike/evidence/README.md, .ship/tasks/tgbuddy-vertical-slices/dev-context.md, scripts/sqlite-spike-main.ts, scripts/sqlite-spike-runtime.ts, scripts/sqlite-spike-scenarios.ts, src/infrastructure/sqlite/app-database.ts, src/infrastructure/sqlite/migrations/002_app_sessions.sql, src/infrastructure/sqlite/repositories/sqlite-session-repository.ts, src/runtime/index.ts, src/runtime/sessions/session-repository.ts, tests/sqlite-spike.test.ts
+  Produces: `SessionRepository`; `SqliteSessionRepository`; packaged `session-catalog` scenario
+  Concerns: none
+
+K03: "会话侧栏切换到 SQLite" — complete
+  Commits: fcca352
+  Files: .ship/tasks/sqlite-packaged-electron-spike/evidence/README.md, .ship/tasks/tgbuddy-vertical-slices/dev-context.md, scripts/sqlite-spike-scenarios.ts, src/infrastructure/sqlite/index.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/main/index.ts, src/main/session-store.ts, src/runtime/index.ts, src/runtime/sessions/session-commands.ts, tests/unit/main/session-store-catalog.test.ts, tests/unit/runtime/session-commands.test.ts
+  Produces: production `userData/tgbuddy.db` catalog wiring; `createSessionCommands()`; K03–K08 legacy metadata bridge
+  Concerns: none
+
+K04: "pi Session backend 适配器" — complete
+  Commits: 710c05b
+  Files: .ship/tasks/sqlite-packaged-electron-spike/evidence/README.md, .ship/tasks/tgbuddy-vertical-slices/dev-context.md, bun.lock, package.json, scripts/sqlite-spike-main.ts, scripts/sqlite-spike-runtime.ts, scripts/sqlite-spike-scenarios.ts, src/kernel/pi/index.ts, src/kernel/pi/pi-session-store.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/runtime/index.ts, src/runtime/sessions/message-store.ts, src/shared/contracts/message.ts, tests/sqlite-spike.test.ts, tests/unit/kernel/pi-session-store.test.ts
+  Produces: `MessageStore`; `PiSessionStore`; packaged `pi-session-store` scenario; 并发生命周期护栏
+  Concerns: none
+
+K05: "消息历史切换到 pi Session backend" — complete
+  Commits: 8e02761
+  Files: .ship/tasks/sqlite-packaged-electron-spike/evidence/README.md, .ship/tasks/tgbuddy-vertical-slices/dev-context.md, scripts/sqlite-spike-scenarios.ts, src/kernel/pi/pi-session-store.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/main/compaction-service.ts, src/main/ipc.ts, src/main/orchestrator.ts, src/main/session-store.ts, src/runtime/app/tgbuddy-runtime.ts, src/runtime/index.ts, src/runtime/sessions/message-store.ts, src/runtime/sessions/session-commands.ts, src/runtime/sessions/session-message-history.ts, src/shared/contracts/session.ts, tests/integration/session-message-history.test.ts, tests/unit/kernel/pi-session-store.test.ts, tests/unit/runtime/session-commands.test.ts, tests/unit/runtime/tgbuddy-runtime.test.ts
+  Produces: `SessionMessageHistory`; async Runtime Session history contract; `pi@0.82` metadata guard; production message/compaction/artifact/delete wiring
+  Concerns: history 删除失败会保留不可见 backend 孤儿并记录诊断；canonical catalog 已删除，不产生可见空会话
+
+K06: "legacy JSONL 一次性导入" — complete
+  Commits: 7eff451
+  Files: .ship/tasks/sqlite-packaged-electron-spike/evidence/README.md, .ship/tasks/tgbuddy-vertical-slices/dev-context.md, AGENTS.md, scripts/sqlite-spike-scenarios.ts, src/infrastructure/sqlite/index.ts, src/infrastructure/sqlite/legacy-importer.ts, src/kernel/pi/index.ts, src/kernel/pi/pi-legacy-importer.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/import-legacy-sessions.ts, src/main/index.ts, src/runtime/sessions/session-message-history.ts, tests/integration/session-message-history.test.ts, tests/sqlite-spike.test.ts
+  Produces: production legacy loader/import coordinator; `tgbuddy-jsonl-v1` marker; structured migration diagnostics; packaged first/skip/rebuild/conflict/tail/truncate evidence
+  Concerns: 生产文件超过 6 个，因为同一迁移事务必须同时覆盖 parser、pi writer、Composition Root 和现有 history consumer；已由 packaged production path 验证。逐 Slice review 按用户决定从 K07 起改为 K17 后、E2E 前集中执行；K06 的两轮 review findings 已在最终 commit 修复。
+
+K07: "RunRegistry 单 Session 单飞" — complete
+  Commits: c354373
+  Files: .ship/tasks/tgbuddy-vertical-slices/dev-context.md, .ship/tasks/tgbuddy-vertical-slices/plan/plan.md, AGENTS.md, src/main/bootstrap/create-legacy-runtime.ts, src/main/orchestrator.ts, src/runtime/index.ts, src/runtime/runs/run-coordinator.ts, src/runtime/runs/run-registry.ts, tests/agent-concurrency.test.ts
+  Produces: `RunRegistry`; `RunCoordinator`; Runtime-owned generation token; same-Session rejection; cross-Session concurrency; stop-and-wait dispose
+  Concerns: AbortController 和迟到 engine event 的完整级联留给 K10；K07 只迁移 active Run 所有权，Main 暂留 Agent executor。
+
+K08: "PiAgentEngine 文本流" — complete
+  Commits: 8eb93e0
+  Files: AGENTS.md, scripts/probe.ts, scripts/probe-compaction.ts, src/kernel/compaction.ts, src/kernel/pi/index.ts, src/kernel/pi/pi-agent-engine.ts, src/kernel/pi/pi-models.ts, src/kernel/pi/pi-session-store.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/main/orchestrator.ts, src/runtime/index.ts, src/runtime/runs/agent-engine.ts, src/runtime/runs/run-coordinator.ts, src/shared/channel-presets.ts, src/shared/contracts/channel.ts, tests/agent-concurrency.test.ts, tests/integration/run-coordinator.test.ts, tests/unit/kernel/pi-agent-engine.test.ts, tests/unit/kernel/pi-session-store.test.ts
+  Produces: Runtime `AgentEngine` port; production `PiAgentEngine` backed by pi `AgentHarness`; persisted `message_end` envelope; faithful thinking/text/error/stopReason mapping; real-model production probe
+  Concerns: K09 接入统一 settled 状态和失败持久化；K10 完成 setup 阶段取消与迟到事件丢弃；K11 再把工具能力装入 Harness。
+
+K09: "Run settled、消息落盘与失败状态" — complete
+  Commits: a6ccb48
+  Files: AGENTS.md, src/kernel/pi/index.ts, src/kernel/pi/pi-agent-engine.ts, src/main/bootstrap/create-legacy-runtime.ts, src/main/ipc.ts, src/renderer/atoms/agent.ts, src/renderer/hooks/useGlobalAgentListeners.ts, src/runtime/app/tgbuddy-runtime.ts, src/runtime/index.ts, src/runtime/runs/run-coordinator.ts, src/runtime/sessions/session-commands.ts, src/shared/contracts/events.ts, tests/agent-concurrency.test.ts, tests/integration/run-coordinator.test.ts, tests/integration/run-settled.test.ts, tests/unit/kernel/pi-agent-engine.test.ts
+  Produces: single settled path; running/done/failed Session updates; durable message-before-status ordering; provider final-message error fallback; direct sidebar `session_updated` event; pending request cleanup
+  Concerns: aborted 暂按 failed 收口；K10 将引入 Run cancellation scope、setup 阶段取消和迟到帧丢弃，并把用户停止改为 idle。
+K10: "Stop、Abort 与迟到事件丢弃" — complete
+  Commits: bd2a472
+  Files: AGENTS.md, scripts/probe.ts, src/kernel/pi/pi-agent-engine.ts, src/renderer/atoms/agent.ts, src/renderer/hooks/useGlobalAgentListeners.ts, src/runtime/runs/agent-engine.ts, src/runtime/runs/run-coordinator.ts, src/runtime/runs/run-registry.ts, tests/agent-concurrency.test.ts, tests/integration/run-coordinator.test.ts, tests/integration/run-settled.test.ts
+  Produces: per-Run AbortController; idempotent stop; AgentHarness AbortSignal cascade; stopped Session idle settlement; Runtime and Renderer late-frame rejection; real-model abort probe
+  Concerns: none
+K11: "工具调用四态闭环" — complete
+  Commits: 460f3d6
+  Files: AGENTS.md, scripts/probe.ts, src/kernel/pi/pi-agent-engine.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/main/tools/index.ts, src/renderer/App.tsx, src/renderer/atoms/agent.ts, src/renderer/components/ToolCard.tsx, src/renderer/hooks/useGlobalAgentListeners.ts, src/runtime/index.ts, src/runtime/runs/agent-engine.ts, src/shared/contracts/events.ts, tests/agent-concurrency.test.ts, tests/integration/run-coordinator.test.ts, tests/integration/run-settled.test.ts, tests/tool-activity.test.ts, tests/unit/kernel/pi-agent-engine.test.ts
+  Produces: production Harness tool injection; explicit ToolPolicy port with K11 permissive implementation; tool event output preview; awaiting/running/success/error/unknown UI transitions; eight-line preview; durable history replay
+  Concerns: K11 的 permissive ToolPolicy 只负责建立端口，S05 才接真实 allow/ask/deny 决策；Main 工具 factory 按计划保留到 C12。
+K12: "重启恢复未完成 Run" — complete
+  Commits: 924238e
+  Files: .ship/tasks/sqlite-packaged-electron-spike/evidence/README.md, AGENTS.md, scripts/sqlite-spike-scenarios.ts, src/infrastructure/sqlite/app-database.ts, src/infrastructure/sqlite/legacy-importer.ts, src/infrastructure/sqlite/migrations/003_app_sessions_interrupted.sql, src/infrastructure/sqlite/repositories/sqlite-session-repository.ts, src/main/bootstrap/create-application.ts, src/renderer/App.tsx, src/runtime/index.ts, src/runtime/runs/run-recovery.ts, src/shared/contracts/session.ts, tests/integration/run-recovery.test.ts
+  Produces: startup interrupted recovery; durable session_resumed notice; idempotent recovery report; interrupted sidebar state; forward SQLite migration 003; next-Run recovery proof
+  Concerns: catalog 提交优先于 notice；notice 写入失败只上报诊断，不能让会话永久停留 running 或阻止应用启动。
