@@ -214,3 +214,11 @@ C07: "Skill manifest 发现与设置列表" — complete
   验证: `bun test tests/unit/skills.test.ts`（8/8）、全量 `bun test` 259/259、check:architecture、typecheck、build 全过
   删除项: 无（列表阶段不加载正文，不执行 Skill）
   Concerns: 禁用状态存内存、重启丢失（计划 C07 文件清单无 settings repository，ledger 记录缺口，C12 前如 QA 暴露再补持久化）；内置技能根用 process.cwd()/assets（打包目录策略留 M6）；正文与引用资源加载在 C08。
+
+C08: "Skill 正文按调用加载" — complete
+  Commits: 0140375
+  Files: src/runtime/skills/ports/skill-loader.ts, src/infrastructure/skills/fs-skill-loader.ts, src/infrastructure/skills/index.ts, src/kernel/pi/pi-skill-tool.ts, src/kernel/pi/index.ts, src/runtime/runs/agent-engine.ts, src/runtime/tools/builtin-tools.ts, src/runtime/permissions/policy-engine.ts, src/main/bootstrap/create-legacy-runtime.ts, src/main/bootstrap/create-application.ts, src/runtime/index.ts, tests/unit/infrastructure/skill-loader.test.ts, tests/unit/kernel/pi-skill-tool.test.ts
+  Produces: `LoadedSkillContent`/`SkillLoader` 端口（loadBody/loadResource + token 估算）；`FsSkillLoader`/`createFsSkillLoader()`（正文读 SKILL.md、资源经 root 包含性校验，`..`/绝对路径拒绝、缺失可诊断）；`buildSkillTool({ skills, loader })`（pi `skill` 工具：按名称/正文/相对资源加载，构造时冻结技能清单）；`AgentInvocation.skills`（Run 启动冻结启用技能摘要）；systemPrompt 追加技能清单（名称/标题/描述/触发词）；内置描述符新增 `skill`（默认 allow，plan 模式按只读放行）
+  验证: `bun test tests/unit/infrastructure/skill-loader.test.ts`（4/4）+ pi-skill-tool（4/4）、全量 `bun test` 267/267、check:architecture、typecheck、build 全过
+  删除项: 无（Skill 内容不常驻全局 prompt，无第三方插件 ABI）
+  Concerns: token 估算为 4 字符/token 的粗略值（仅记账/用量提示，C12 精确分类记账）；skill 工具读取资源未走 per-run 沙箱（技能 root 已是工作区/数据目录内边界，越界引用由 loader 拒绝）；正文文件在运行中修改会影响当次加载（清单冻结、内容按需读取，符合原型「判断需要时才读进来」）。
