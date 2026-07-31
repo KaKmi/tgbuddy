@@ -342,3 +342,14 @@ A02 "附件选择、预览与持久化" — complete
   Concerns: 附件 ref 走 app_attachments 按 (sessionId, entryId) 挂消息，不改 pi 消息本体（信封零翻译）；
     stage 失败只记诊断（A09 兜底孤儿）；取消未发送草稿即 discard 删 blob；
     此 Slice 不做模型 multimodal 转换（A03 用 pi 原生 prompt(text,{images})）
+
+A03 "附件进入模型上下文" — complete
+  Commits: （本 Slice）
+  Files: src/kernel/pi/pi-attachment-content.ts、src/kernel/pi/pi-agent-engine.ts、
+    src/main/bootstrap/create-application.ts、tests/unit/kernel/pi-attachment-content.test.ts
+  Produces: `preparePromptWithAttachments`（图片→pi ImageContent base64、文本→[附件]块、
+    截断/诊断/模型能力校验）、engine `loadAttachment` 端口（Composition Root 注入 BlobStore.get）
+  RED/GREEN: 6 项（图片/文本/模型不支持/读取失败/超长截断/无附件短路）
+  Concerns: 图片经 pi 原生 prompt(text,{images}) 注入，pi session 会存 base64 副本；
+    原始 ref 仍在 app_attachments（UI/审计用），与「消息只存 ref」在契约层保持一致；
+    超长文本附件截断到 64KB，完整内容在 BlobStore（A04 结果区打开）

@@ -21,6 +21,7 @@ import type {
   ToolPolicy,
 } from '../../runtime/runs/agent-engine.ts'
 import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
+import { preparePromptWithAttachments } from './pi-attachment-content.ts'
 import type {
   RunExecutionEnv,
   RunExecutionEnvFactory,
@@ -55,6 +56,11 @@ export interface CreatePiAgentEngineOptions {
     entryId: string,
     refs: AttachmentRef[],
   ): void
+  /**
+   * A03：按 BlobRef 读回附件字节（Composition Root 注入 BlobStore.get）。
+   * 缺失/读取失败时只记诊断，不阻断 Run。
+   */
+  loadAttachment?(ref: AttachmentRef['blob']): Promise<Uint8Array>
 }
 
 export interface PersistedPiMessage {
@@ -128,6 +134,7 @@ class PiAgentEngine implements AgentEngine {
   readonly #envFactory: RunExecutionEnvFactory
   readonly #toolPolicy: ToolPolicy
   readonly #persistAttachments: CreatePiAgentEngineOptions['persistAttachments']
+  readonly #loadAttachment: CreatePiAgentEngineOptions['loadAttachment']
   readonly #active = new Map<string, AgentHarness>()
   #disposed = false
 
@@ -137,6 +144,7 @@ class PiAgentEngine implements AgentEngine {
     this.#envFactory = options.envFactory
     this.#toolPolicy = options.toolPolicy
     this.#persistAttachments = options.persistAttachments
+    this.#loadAttachment = options.loadAttachment
   }
 
   async *run(
@@ -268,9 +276,17 @@ class PiAgentEngine implements AgentEngine {
         )
       }
       signal.addEventListener('abort', abortHarness, { once: true })
+      // A03：附件转模型内容。图片走 pi 原生 prompt(text, {images})，
+      // 文本附件前置到正文；缺失/不支持/模型不支持图片时只注入诊断文本。
+      const { text: promptText, images } = await preparePromptWithAttachments({
+        text: invocation.text,
+        attachments: pendingAttachments,
+        load: this.#loadAttachment,
+        modelSupportsImages: model.input.includes('image'),
+      })
       const prompt = (signal.aborted
         ? Promise.resolve()
-        : harness.prompt(invocation.text))
+        : harness.prompt(promptText, { ...(images.length > 0 ? { images } : {}) }))
         .then(() => undefined, (error: unknown) => {
           promptFailed = true
           promptError = error
@@ -477,6 +493,7 @@ function lastAssistantStopReason(messages: AgentMessage[]): StopReason {
   }
   return 'stop'
 }
+
 
 function isPiMessage(message: AgentMessage): message is PiMessage {
   return (

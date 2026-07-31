@@ -278,6 +278,8 @@ export async function createApplication(
         persistAttachments: (sessionId, entryId, refs) => {
           attachmentRepository.save(sessionId, entryId, refs)
         },
+        // A03：模型调用前按 ref 读回附件字节（图片转 pi ImageContent）
+        loadAttachment: (blob) => blobStore.get(blob),
         tools: (invocation, env) => {
           const sessionId = invocation.sessionId
           // C12：工具集只来自 Run 启动时冻结的 snapshot，
