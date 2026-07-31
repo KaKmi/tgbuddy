@@ -368,3 +368,21 @@ A04 "长工具输出 Blob 化" — complete
   Concerns: 阈值按字节算（中文 3 字节/字不会被低估）；store 失败降级为纯截断不阻断 Run；
     禁止依赖 pi 原生 details 形状——details 由我们在补丁里按 ToolDetails 契约写入；
     probe 未跑（需真实渠道），E2E 里程碑统一覆盖
+
+A05 "Artifact 投影" — complete
+  Commits: （本 Slice）
+  Files: src/shared/contracts/artifact.ts（ArtifactRef 恢复+扩展）、
+    src/runtime/artifacts/artifact-projector.ts、artifact-repository.ts、
+    src/infrastructure/sqlite/migrations/014_app_artifacts.sql、sqlite-artifact-repository.ts、
+    src/kernel/pi/pi-agent-engine.ts（projectArtifact 钩子）、
+    src/main/bootstrap/create-application.ts、create-legacy-runtime.ts（artifacts.list 接仓库）、
+    src/runtime/sessions/session-message-history.ts（删除旧 countArtifacts 推导）、
+    tests/unit/runtime/artifact-projector.test.ts
+  Produces: `ArtifactRef`（kind=file/image/document/tool-output、path/blob、sourceSkill）、
+    `projectArtifact` 纯函数（write/edit 成功 + 路径参数 → 产物，不读 pi details）、
+    `ArtifactRepository`（同 sessionId+path upsert）、engine 成功结果钩子、IPC artifacts.list 数据源
+  RED/GREEN: 7 项（write/edit 投影/read/delete/bash 不投影/失败不投影/图片文档归类/
+    无路径/别名路径键/sourceSkill + 仓库同路径覆盖与会话隔离）
+  Concerns: 恢复被误覆盖的既有 ArtifactRef 契约，并演进 blobId:string → blob:BlobRef
+    （对齐 A01 BlobStore，`blobId` 无其它引用）；producerRunId 留 D01 lineage 精确填充；
+    artifacts.list 已接真实仓库，A06 结果区直接消费；旧 countArtifacts 推导及其测试一并删除

@@ -18,6 +18,7 @@ import {
   createSessionCommands,
   createSessionMessageHistory,
   createWorkspaceService,
+  projectArtifact as projectArtifactSummary,
   recoverInterruptedRuns,
   type AgentRuntime,
   type InterruptedRunRecoveryReport,
@@ -31,6 +32,7 @@ import {
   SqliteRunRepository,
   SqliteSessionRepository,
   SqliteAttachmentRepository,
+  SqliteArtifactRepository,
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
 import { createNodeFsBlobStore } from '../../infrastructure/blob/index.ts'
@@ -113,6 +115,7 @@ export async function createApplication(
     root: join(options.legacyDataDir, 'blobs'),
   })
   const attachmentRepository = new SqliteAttachmentRepository(appDatabase)
+  const artifactRepository = new SqliteArtifactRepository(appDatabase)
   const channels = createChannelService({
     repository: channelRepository,
     secrets: secretStore,
@@ -283,6 +286,19 @@ export async function createApplication(
         // A04：超长工具输出完整落 Blob，消息只存预览 + ref
         storeToolOutput: (sessionId, toolCallId, text) =>
           blobStore.put(new TextEncoder().encode(text), { mime: 'text/plain' }),
+        // A05：成功产出型工具 → Artifact 索引（同路径 upsert，替代旧 countArtifacts 推导）
+        projectArtifact: (sessionId, workspaceId, input) => {
+          const artifact = projectArtifactSummary({
+            sessionId,
+            workspaceId,
+            toolName: input.toolName,
+            args: input.args,
+            isError: input.isError,
+            createId,
+            now: Date.now,
+          })
+          if (artifact) artifactRepository.save(artifact)
+        },
         tools: (invocation, env) => {
           const sessionId = invocation.sessionId
           // C12：工具集只来自 Run 启动时冻结的 snapshot，
@@ -392,6 +408,7 @@ export async function createApplication(
       plans: planAskBroker,
       questions: askUserBroker,
       rules: permissionRules,
+      artifacts: artifactRepository,
       secretStore,
       channels,
       providerCatalog: createPiProviderCatalog(),

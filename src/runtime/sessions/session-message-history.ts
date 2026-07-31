@@ -34,7 +34,6 @@ export interface SessionMessageHistory {
     throughMessageId: string,
     cwd: string,
   ): Promise<SessionMessage[]>
-  countArtifacts(sessionId: string): Promise<number>
   delete(sessionId: string): Promise<void>
 }
 
@@ -260,23 +259,6 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
         }
         return replayActiveMessages(await target.activeEntries())
       })
-    })
-  }
-
-  async countArtifacts(sessionId: string): Promise<number> {
-    return this.#withSessionLock(sessionId, async () => {
-      const session = await this.#store.open(sessionId, KERNEL_ID)
-      if (!session) return 0
-      const activeMessages = replayActiveMessages(await session.activeEntries())
-      const marker = activeMessages[0]
-      if (!marker || marker.kind !== 'compaction') {
-        return countArtifacts(activeMessages)
-      }
-      const compacted = compactedMessagesFor(
-        await session.entries(),
-        marker.id,
-      )
-      return countArtifacts([...compacted, ...activeMessages])
     })
   }
 
@@ -574,28 +556,6 @@ function isLegacyTruncatedCompaction(
   return details.legacyTruncated === true
 }
 
-function countArtifacts(messages: SessionMessage[]): number {
-  const producing = new Set(['write', 'edit'])
-  const callPaths = new Map<string, string>()
-
-  for (const message of messages) {
-    if (message.kind !== 'kernel' || message.message.role !== 'assistant') continue
-    for (const block of message.message.content) {
-      if (block.type !== 'toolCall' || !producing.has(block.name)) continue
-      const path = isRecord(block.arguments) ? block.arguments.path : undefined
-      if (typeof path === 'string') callPaths.set(block.id, path)
-    }
-  }
-
-  const produced = new Set<string>()
-  for (const message of messages) {
-    if (message.kind !== 'kernel' || message.message.role !== 'toolResult') continue
-    if (message.message.isError) continue
-    const path = callPaths.get(message.message.toolCallId)
-    if (path) produced.add(path)
-  }
-  return produced.size
-}
 
 function toIsoTimestamp(value: number): string {
   const timestamp = new Date(value)

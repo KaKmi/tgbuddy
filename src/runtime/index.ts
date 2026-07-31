@@ -63,6 +63,15 @@ export {
   type AttachmentRepository,
 } from './attachments/attachment-repository.ts'
 export {
+  MemoryArtifactRepository,
+  type ArtifactRepository,
+} from './artifacts/artifact-repository.ts'
+export {
+  projectArtifact,
+  PRODUCING_TOOLS,
+  type ProjectArtifactInput,
+} from './artifacts/artifact-projector.ts'
+export {
   BUILTIN_TOOL_DESCRIPTORS,
   createBuiltinToolRegistry,
 } from './tools/builtin-tools.ts'

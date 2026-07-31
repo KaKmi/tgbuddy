@@ -72,6 +72,15 @@ export interface CreatePiAgentEngineOptions {
     toolCallId: string,
     text: string,
   ): Promise<BlobRef>
+  /**
+   * A05：成功的产出型工具（write/edit）从 args 投影 Artifact。
+   * Runtime 侧决定是否产出并写索引；失败/纯读工具不触发。
+   */
+  projectArtifact?(
+    sessionId: string,
+    workspaceId: string | undefined,
+    input: { toolName: string; args: Record<string, unknown>; isError: boolean },
+  ): void
 }
 
 export interface PersistedPiMessage {
@@ -147,6 +156,7 @@ class PiAgentEngine implements AgentEngine {
   readonly #persistAttachments: CreatePiAgentEngineOptions['persistAttachments']
   readonly #loadAttachment: CreatePiAgentEngineOptions['loadAttachment']
   readonly #storeToolOutput: CreatePiAgentEngineOptions['storeToolOutput']
+  readonly #projectArtifact: CreatePiAgentEngineOptions['projectArtifact']
   readonly #active = new Map<string, AgentHarness>()
   #disposed = false
 
@@ -158,6 +168,7 @@ class PiAgentEngine implements AgentEngine {
     this.#persistAttachments = options.persistAttachments
     this.#loadAttachment = options.loadAttachment
     this.#storeToolOutput = options.storeToolOutput
+    this.#projectArtifact = options.projectArtifact
   }
 
   async *run(
@@ -225,6 +236,22 @@ class PiAgentEngine implements AgentEngine {
       })
       // A04：超长工具输出落 Blob，消息/模型只收 8 行尾部预览 + ref
       const unsubscribeToolOutput = harness.on('tool_result', async (event) => {
+        if (!event.isError) {
+          // A05：成功结果投影产物（write/edit 等），失败不投影
+          try {
+            this.#projectArtifact?.(
+              invocation.sessionId,
+              invocation.workspaceId,
+              {
+                toolName: event.toolName,
+                args: event.input,
+                isError: event.isError,
+              },
+            )
+          } catch (error) {
+            console.error('[PiAgentEngine] Artifact 投影失败：', error)
+          }
+        }
         const preview = await prepareToolOutputPreview({
           content: event.content,
           sessionId: invocation.sessionId,

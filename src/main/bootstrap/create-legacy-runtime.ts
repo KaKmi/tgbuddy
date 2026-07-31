@@ -22,6 +22,7 @@ import {
   type ProfileService,
   type ProviderCatalog,
   type RunRepository,
+  type ArtifactRepository,
   mountFailureMessage,
   resolveModelSelection,
   type SessionCommands,
@@ -67,6 +68,8 @@ export interface CreateLegacyRuntimeOptions {
   mcp: McpManager
   /** C12：Run 账本持久化（能力快照 + token/cost） */
   runs?: RunRepository
+  /** A05：Artifact 索引（结果区列表数据源） */
+  artifacts?: ArtifactRepository
   createRunId?(): string
   /** C12：工具注册表快照在 Run 启动时冻结 */
   toolRegistry: ToolRegistry
@@ -162,7 +165,7 @@ export function createLegacyRuntime(
       clearSession: context.clearSession,
     },
     artifacts: {
-      list: () => [],
+      list: (sessionId) => options.artifacts?.bySession(sessionId) ?? [],
     },
     capabilities: {
       list: () => [],
