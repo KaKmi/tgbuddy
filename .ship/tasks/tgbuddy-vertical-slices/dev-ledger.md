@@ -230,3 +230,11 @@ C09: "MCP 配置、连接与状态卡" — complete
   验证: `bun test tests/unit/runtime/mcp-manager.test.ts`（7/7）、全量 `bun test` 274/274、check:architecture、typecheck、build 全过；SDK↔fixture server 冒烟（connect/listTools/callTool echo 成功）
   删除项: 无（此 Slice 不把 MCP tool 注入 Run；C10 才接工具发现）
   Concerns: 依赖新增 @modelcontextprotocol/sdk@1.30.0（打包需进 node_modules，M6 收口）；save 同步断开旧连接（fire-and-forget）；http 用 SSE transport，新版 streamable http 留后续；env 的 secret 引用由用户手填 ref（设置页未提供密钥选择器）。
+
+C10: "MCP tool 发现与能力快照" — complete
+  Commits: 363b3bd
+  Files: src/shared/contracts/mcp.ts, src/runtime/mcp/ports/mcp-transport.ts, src/runtime/mcp/mcp-manager.ts, src/runtime/tools/tool-registry.ts, src/infrastructure/mcp/sdk-mcp-transport.ts, src/infrastructure/sqlite/migrations/010_app_mcp_servers_key.sql, src/infrastructure/sqlite/repositories/sqlite-mcp-config-repository.ts, src/infrastructure/sqlite/app-database.ts, src/main/bootstrap/create-application.ts, src/renderer/features/settings/ChannelSettingsPanel.tsx, tests/unit/runtime/mcp-manager.test.ts
+  Produces: `McpServerConfig.key`（工具名前缀，save 缺省按名称 slug）；`McpToolDefinition` + `McpTransport.listTools()`（SDK tools/list 映射）；`ToolRegistry.register/unregister`（重复 id 拒绝、注销只影响下一 Run 快照）；McpManager 连接成功后 `server.method` 描述符进注册表（读类方法默认 allow、其余 ask；先校验跨服务重名冲突再注册；重连 schema 变化先注销旧清单）、断开/删除/配置变更注销工具；设置页连接器卡片可展开工具列表 + 三档权限（复用 tool:permission-set）；迁移 010 加 key 列
+  验证: `bun test tests/unit/runtime/mcp-manager.test.ts`（11/11）、全量 `bun test` 278/278、check:architecture、typecheck、build 全过
+  删除项: 无（此 Slice 不执行 MCP tool，调用在 C11）
+  Concerns: MCP 工具权限默认按方法名前缀启发式（get/list/search/read/fetch/query→allow），用户可在设置覆盖；key 变更后旧工具 id 失效，属预期（重连后刷新）；当前 Run 快照在连接建立前冻结，连接期间注册不影响已运行 Run。
