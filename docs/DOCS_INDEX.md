@@ -7,3 +7,4 @@
 | design | 001 | partially-outdated | 001 - TgBuddy 架构设计 | TgBuddy 轻量 Agent 桌面应用的运行时、数据流、存储、权限和多 Agent 边界。 | 2026-07-30 | [001](01-架构设计.md) |
 | design | 002 | partially-outdated | 002 - TgBuddy 功能范围 | TgBuddy 第一版 Agent 闭环的必做项、延后项、明确排除项和阶段门槛。 | 2026-07-30 | [002](02-功能范围.md) |
 | design | 007 | active | 007 - TgBuddy 代码仓库设计 | TgBuddy 模块职责、依赖方向、Runtime 门面、Composition Root 与分阶段迁移规则。 | 2026-07-30 | [007](07-代码仓库设计.md) |
+| reference | 008 | current | 008 - TgBuddy 项目进度 | TgBuddy 当前里程碑、已完成证据、下一 Slice 和研发恢复入口。 | 2026-07-31 | [008](08-项目进度.md) |

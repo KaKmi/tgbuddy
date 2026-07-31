@@ -11,7 +11,7 @@ TgBuddy 是一个基于 **pi 内核**的本地优先 Agent Workbench，使用 El
 ## 当前状态
 
 项目正在进行一次**架构迁移式的二次开发**，不是从零重写。M1 可恢复 Agent
-内核的 K01–K17 已完成开发，当前进入整段 review、E2E 和 QA。
+内核已完成开发、review、Electron E2E 和 QA，当前进入 M2/S01「Workspace catalog 与选择器」。
 
 Session/Run/Context 已迁入 Runtime、SQLite 和 pi `AgentHarness`；旧裸 `Agent`、
 JSONL canonical owner 与 Main compaction owner 已删除。全局 Sandbox、Workspace
@@ -74,6 +74,7 @@ Team 第一版不做独立实体、成员页、任务 DAG、parallel/chain/route
 - [架构设计](docs/01-架构设计.md)
 - [功能范围](docs/02-功能范围.md)
 - [设计决策](docs/06-设计决策.md)
+- [项目进度](docs/08-项目进度.md)
 - [文档索引](docs/DOCS_INDEX.md)
 
 ## 开发方式
@@ -87,7 +88,7 @@ Milestone
       -> 验收测试
 ```
 
-近期顺序如下；实际开发以 `AGENTS.md` 中已拆分的 Slice 计划为准：
+里程碑和下一 Slice 见 [项目进度](docs/08-项目进度.md)，详细实施以 `.ship/tasks/tgbuddy-vertical-slices/plan/plan.md` 为准：
 
 | 顺序 | Wave | 目标 |
 |---:|---|---|
@@ -167,4 +168,4 @@ UI 实现以 `tgbuddy-mockup/TgBuddy 交互原型.dc.html` 为唯一事实来源
 - 消息保存引用，不把大 Base64 图片或完整大 Tool 输出直接写入 Session payload。
 - 注释和文档使用中文，保留必要的英文术语。
 
-更完整的项目约束见 [AGENTS.md](AGENTS.md)。
+稳定的研发约束见 [AGENTS.md](AGENTS.md)，动态里程碑和下一 Slice 见 [项目进度](docs/08-项目进度.md)。

@@ -4,24 +4,26 @@
 
 ## 1. 本文件的作用
 
-本文件是 TgBuddy 的研发入口，负责说明：
+本文件是 TgBuddy 的稳定研发指引，负责说明：
 
-- 当前做到哪里；
-- 下一步做什么；
 - 哪些设计已经确定，不能在实施中重新讨论；
-- 每个阶段的交付、测试、删除项和完成门槛；
-- 本仓库真实踩过的构建、UI 和运行时陷阱。
+- 代码结构、依赖方向和 Compatibility 删除边界；
+- 每个 Slice 的执行流程、测试门槛和 Git 规范；
+- UI 还原规则以及本仓库真实踩过的构建、布局和运行时陷阱。
+
+**动态项目进度不在本文件维护。** 当前里程碑、下一 Slice、最近验证和完成证据统一见 [docs/08-项目进度.md](docs/08-项目进度.md)。
 
 不要把本文件当成完整设计规格。需要细节时按以下优先级读取事实来源：
 
 1. **已定设计决策**：[docs/06-设计决策.md](docs/06-设计决策.md)
-2. **目标代码仓库设计**：[docs/07-代码仓库设计.md](docs/07-代码仓库设计.md)
-3. **架构设计**：[docs/01-架构设计.md](docs/01-架构设计.md)
-4. **第一版功能范围**：[docs/02-功能范围.md](docs/02-功能范围.md)
-5. **UI 唯一事实来源**：`tgbuddy-mockup/TgBuddy 交互原型.dc.html`
-6. **当前纵向切片计划**：`.ship/tasks/tgbuddy-vertical-slices/plan/plan.md`
-7. **开发恢复记录**：`.ship/tasks/target-code-repository-architecture/dev-ledger.md`
-8. **历史大 Story 计划（仅供追溯，不再作为开发单位）**：`.ship/tasks/target-code-repository-architecture/plan/plan.md`
+2. **项目进度与下一 Slice**：[docs/08-项目进度.md](docs/08-项目进度.md)
+3. **目标代码仓库设计**：[docs/07-代码仓库设计.md](docs/07-代码仓库设计.md)
+4. **架构设计**：[docs/01-架构设计.md](docs/01-架构设计.md)
+5. **第一版功能范围**：[docs/02-功能范围.md](docs/02-功能范围.md)
+6. **UI 唯一事实来源**：`tgbuddy-mockup/TgBuddy 交互原型.dc.html`
+7. **当前纵向切片计划**：`.ship/tasks/tgbuddy-vertical-slices/plan/plan.md`
+8. **开发恢复记录**：`.ship/tasks/target-code-repository-architecture/dev-ledger.md`
+9. **历史大 Story 计划（仅供追溯，不再作为开发单位）**：`.ship/tasks/target-code-repository-architecture/plan/plan.md`
 
 如文档与当前代码不一致，先用测试和代码确认事实，再更新文档；不要静默选择其中一个版本。
 
@@ -58,114 +60,20 @@ TgBuddy 是按用户自有功能设计打造的、基于 **pi 内核**的通用�
 
 ---
 
-## 3. 当前进度快照
+## 3. 研发资料职责
 
-更新时间：**2026-07-31**
+从 2026-07-31 起，稳定规则与动态进度分开维护，避免每完成一个 Slice 都改写本文件。
 
-### 3.1 已完成
+| 内容 | 唯一维护位置 |
+|---|---|
+| 当前里程碑、下一 Slice、最近验证、完成提交 | `docs/08-项目进度.md` |
+| 每个 Slice 的文件、RED、GREEN、验收和删除项 | `.ship/tasks/tgbuddy-vertical-slices/plan/plan.md` |
+| 研发恢复过程和逐 Slice 产出接口 | 对应 `.ship/tasks/**/dev-ledger.md` |
+| 已定产品与架构决策 | `docs/06-设计决策.md` 与专项设计文档 |
+| UI、状态和交互事实 | `tgbuddy-mockup/TgBuddy 交互原型.dc.html` |
+| 代码结构、执行红线、验证规则和踩坑经验 | `AGENTS.md` |
 
-#### Phase 0 · Packaged Electron SQLite Spike
-
-状态：**完成**
-
-已验证：
-
-- packaged Electron 中使用目标 SQLite backend；
-- 1000 entries、交替追加和连续前缀；
-- WAL checkpoint 与备份；
-- 强杀恢复；
-- compaction、delete/cleanup；
-- legacy JSONL 解析、坏行诊断和幂等导入；
-- evidence 不泄漏运行时绝对路径。
-
-关键提交：
-
-- `62f4213 feat: complete packaged electron sqlite spike`
-- `fc8a3d1 fix: execute sqlite spike scenarios in required order`
-
-该 Spike 是 Story 1B 的回归门槛，不重复开发，也不能被生产代码直接复制为第二套实现。
-
-#### Phase 1 · Story 1A：仓库边界与 Runtime 门面
-
-状态：**完成，peer review PASS**
-
-已经建立：
-
-- `src/shared/contracts/**` 公共契约；
-- `TgBuddyRuntime`、`RuntimeDependencies`、`RuntimeEvent` 和统一订阅入口；
-- `src/main/bootstrap/create-application.ts` 唯一 Composition Root；
-- `src/main/bootstrap/create-legacy-runtime.ts` 有删除期限的迁移适配层；
-- `IpcCommandMap`、`IpcRequest`、`IpcResponse` 和 `TgBuddyAPI` 统一 IPC 类型源；
-- Preload 的 `satisfies TgBuddyAPI` 编译期校验；
-- TypeScript/Vite 一致的 alias；
-- `scripts/check-architecture.ts` 自动依赖检查；
-- 静态 import、dynamic import、目录 index、后缀、tsconfig paths、Vite alias 和真实 `src/main/ipc.ts` 的回归测试；
-- [docs/07-代码仓库设计.md](docs/07-代码仓库设计.md) 和开发 ledger。
-
-验证结果：
-
-- `bun run check:architecture`：通过；
-- `bun run typecheck`：通过；
-- `bun test`：**52/52**，119 assertions；
-- `bun run build`：通过；
-- fresh peer review：10/10 验收项通过，无 finding。
-
-关键提交：
-
-- `392b505 feat(architecture): establish runtime boundary`
-- `83a9782 fix(architecture): close boundary checker gaps`
-- `8f694c9 docs(ship): record story 1a completion`
-
-#### M1 · 可恢复 Agent 内核
-
-状态：**完成；K01–K17、集中 review、Electron E2E 与探索式 QA 全部通过**
-
-当前基座已经完成：
-
-- App catalog 与 pi Session backend 共用同一 SQLite 物理文件、独立 schema；
-- Session catalog、消息回放和 legacy JSONL 一次性导入进入生产 Composition Root；
-- Runtime 持有 RunRegistry，支持同 Session 单飞与跨 Session 并行；
-- `PiAgentEngine` 通过 pi `AgentHarness` 输出 thinking/text/error/message_end；
-- `message_end` 只在 Harness 已提交对应 Session entry 后发布，信封 ID 与重启回放一致；
-- Runtime 统一 settled 顺序；成功/失败状态直接推送侧栏，engine throw 和落盘失败不会静默；
-- Runtime 通过每个 Run 独立的 `AbortSignal` 级联停止 AgentHarness；主动停止后 Session 持久化为 interrupted/“用户已停止”，迟到事件在 Runtime 与 Renderer 双重丢弃；
-- 生产 PiAgentEngine 已装入内置 Tool 和显式 ToolPolicy 端口；工具等待、执行、成功/失败、停止后 unknown 与历史回放进入同一事件链；
-- 启动恢复会把 SQLite 中遗留的 running Session 幂等标记为 interrupted，并向 pi Session 追加可回放系统标记；历史不丢且下一 Run 可继续；
-- Runtime 统一负责手动压缩、85% 自动压缩、3 秒延迟、排队输入与取消恢复；
-- 用户可从任意历史用户消息“编辑并重发”或“从此新建会话”；前者移动线性 active leaf，后者复制 active prefix 并保留 `originRef`；
-- `src/main/session-store.ts`、裸 `orchestrator.ts`、旧 compaction owner 和 `src/kernel/*.ts` 旧适配已物理删除；
-- Session/Run/Context 的 canonical owner 已收口到 Runtime、SQLite adapter 与 `kernel/pi`。
-
-最近验证：
-
-- M1 最终 gate：`bun test` **115/115**，333 assertions；architecture、typecheck、E2E typecheck、build 通过；
-- `bun run spike:sqlite`：packaged Electron 39.8.10 / Node 22.22.1 / SQLite 3.51.2 的 12 个场景通过；
-- `bun run probe`：真实文本流、ToolPolicy、工具事件、多轮恢复和 AbortSignal 通过；
-- `bun run probe:compaction`：真实摘要调用通过；
-- `bun run dev`：Vite 与 Electron 启动、legacy 幂等迁移和 Renderer 加载通过；
-- 整个 M1 的集中 review 已 clean；Playwright Electron E2E **5/5** 通过，覆盖恢复、停止、工具、压缩、编辑重发和克隆；
-- E2E 发现并修复 Runtime 裸转交 `RunCoordinator.stop/isRunning` 导致实例接收者丢失的问题；
-- Electron 探索式 QA 覆盖空状态、新建会话、权限模式、运行/停止、正常回复、工具详情、编辑重发、分叉、键盘输入、重载恢复和上下文面板；
-- QA 发现的唯一 P2（中止会话误显示“未开始”）已修复；定向单测 **19/19**、定向 E2E **1/1**、等待 8.5 秒的 Electron 回归均通过，未解决 finding 为 0；
-- QA 报告与截图：`.ship/tasks/tgbuddy-vertical-slices/qa/electron-report.md`。
-
-M1 交付的是一个可恢复、可停止、可持久化、可执行工具和可压缩上下文的完整 Agent Harness 基座。它不是产品能力的终点：Workspace/ExecutionEnv、MCP、Skill、通用 Tool 注册、附件/Artifact 和单层 child 仍按 M2–M5 逐 Slice 接入真实 Run。
-
-### 3.2 当前下一步
-
-**M1 已关闭；下一 Slice 是 S01“Workspace catalog 与选择器”。不重做 M1、Phase 0 或 Story 1A。**
-
-```text
-M1 review ✅ -> E2E ✅ -> QA ✅
-  -> S01 Workspace catalog 与选择器
-    -> S02–S11 Workspace 与安全
-    -> C01–C12 Tool / Skill / MCP 通用能力
-      -> A01–A09 Blob / 附件 / Artifact
-        -> D01–D04 单层 child
-          -> U01–U09 产品与原型收口
-```
-
-旧 Story 1B–6 只保留为历史迁移分组，不再作为实施单位。每次 `$ship:dev` 默认只领取 1 个 Slice；除非当前 Slice 的验收标准要求，不提前实施后续 Slice，也不绕过依赖顺序。
+开始研发任务时先读取项目进度，再读取当前 Slice 计划和 ledger。不要根据 `AGENTS.md` 中的历史描述判断当前做到哪里，也不要把逐次测试数字和 commit 流水重新写回本文件。
 
 ---
 
@@ -232,128 +140,23 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 
 ---
 
-## 5. 完整开发计划
+## 5. Slice 计划与尺寸护栏
 
-完整的文件、RED、GREEN、验证和删除项见：
+完整的文件、RED、GREEN、验收和删除项见：
 
 - `.ship/tasks/tgbuddy-vertical-slices/plan/spec.md`
 - `.ship/tasks/tgbuddy-vertical-slices/plan/plan.md`
 - `.ship/tasks/tgbuddy-vertical-slices/plan/diff-report.md`
 
-本节是 Agent 开工索引。任何 Slice 不得因为本表简写而省略详细计划中的验收。
+当前里程碑与下一 Slice 见 `docs/08-项目进度.md`。本文件只保留不会随每次提交变化的执行规则，不复制里程碑状态和逐 Slice 进度表。
 
-### 5.1 里程碑
-
-| 顺序 | 里程碑 | Slice | 状态 | 可演示结果 |
-|---:|---|---|---|---|
-| 0 | SQLite packaged spike | B00 | ✅ 完成 | 打包、恢复、备份、legacy import |
-| 1 | 仓库边界与 Runtime 门面 | B01 | ✅ 完成 | contracts、Runtime、Composition Root、checker |
-| 2 | M1 可恢复 Agent 内核 | K01–K17 | ✅ 开发、review、E2E、QA 完成 | 会话、消息、流式、停止、工具、恢复、压缩 |
-| 3 | M2 Workspace 与安全 | S01–S11 | 待开始 | mount、ExecutionEnv、权限、Plan、ask_user |
-| 4 | M3 通用能力系统 | C01–C12 | 待开始 | Channel、Profile、Tool、Skill、MCP |
-| 5 | M4 附件与结果 | A01–A09 | 待开始 | Blob、附件、长输出、Artifact、结果区 |
-| 6 | M5 单层 child | D01–D04 | 待开始 | lineage、预算、取消、权限、过程组 |
-| 7 | M6 产品收口 | U01–U09 | 待开始 | 7 个原型场景、7 条 E2E |
-
-### 5.2 M1：可恢复 Agent 内核
-
-| Slice | 一个主要行为 | 用户可见/验证锚点 |
-|---|---|---|
-| K01 | AppDatabase `app_*` 迁移协议与 packaged 证明 | 同一 `tgbuddy.db`；不碰 pi 私表 |
-| K02 | SQLite SessionCatalogRepository | `002_app_sessions.sql` + CRUD/reopen |
-| K03 | AppDatabase/SessionRepo 装配和侧栏切换 | compatibility 注入、dispose、重启仍可见 |
-| K04 | pi Session backend 适配器 | 同 DB 路径、独立连接/迁移、append/reopen/isolation |
-| K05 | 消息历史切换 pi backend | `main`；完整消息重启回放 |
-| K06 | legacy JSONL 一次性幂等导入 | `sessions`；坏行有诊断 |
-| K07 | RunRegistry 单 Session 单飞 | 同 Session 拒绝、跨 Session 并行 |
-| K08 | PiAgentEngine 文本流 | `main`；thinking/text/message_end |
-| K09 | settled、消息落盘和失败状态 | `main` + `sessions` |
-| K10 | Stop、Abort 与迟到事件丢弃 | `main` 停止按钮 |
-| K11 | 工具调用四态闭环 | `tools`；保留 120ms 重排 |
-| K12 | 重启恢复 interrupted Run | `sessions` + 系统标记 |
-| K13 | 手动压缩闭环 | `context`；原消息可展开 |
-| K14 | 85% 自动压缩与 3 秒稍后 | `context`；输入可排队 |
-| K15 | 编辑并重发的线性截断 | `sessions`；不创建分支 |
-| K16 | 从此新建扁平 Session | `sessions`；复制 active prefix |
-| K17 | 删除 Session/Run legacy owner | M1 全 gate |
-
-### 5.3 M2：Workspace 与安全
-
-| Slice | 一个主要行为 | 用户可见/验证锚点 |
-|---|---|---|
-| S01 | Workspace catalog 与选择器 | `main` picker、`empty` |
-| S02 | mount 缺失与恢复 | host error + 恢复动作 |
-| S03 | per-run ExecutionEnv 隔离 | A/B Workspace 不串路径 |
-| S04 | canonical path 与逃逸拒绝 | `tools` 失败态 |
-| S05 | PolicyEngine allow/ask/deny | `perm`、`settings/tools` |
-| S06 | inline 权限队列与重载恢复 | `perm` inline card |
-| S07 | 工具×范围×有效期规则持久化 | `perm`、`settings/rules` |
-| S08 | 高危模态与 neverPersist | `perm` modal |
-| S09 | Plan 模式 | `main` mode chip + plan card |
-| S10 | ask_user 结构化提问 | `main` question card |
-| S11 | 删除安全 legacy owner | M2 全 gate |
-
-### 5.4 M3：Tool、Skill、MCP 通用能力
-
-| Slice | 一个主要行为 | 用户可见/验证锚点 |
-|---|---|---|
-| C01 | SecretStore | 明文不进 SQLite/Renderer |
-| C02 | Channel CRUD | `settings/model` |
-| C03 | Channel 测试与模型发现 | 连接诊断、模型列表 |
-| C04 | Profile 与模型选择 | 输入区 chip；下一 Run 生效 |
-| C05 | ToolRegistry 与 builtin snapshot | `settings/tools` 数据源 |
-| C06 | 工具三档权限设置 | allow/ask/deny |
-| C07 | Skill manifest 发现 | `settings/skills` 按来源分组 |
-| C08 | Skill 正文按调用加载 | 不把全部正文塞 prompt |
-| C09 | MCP 配置、连接与状态 | `settings/mcp` service card |
-| C10 | MCP tool 发现 | 进入下一 Run capability snapshot |
-| C11 | MCP tool 权限与调用 | `tools`、`perm`、host error |
-| C12 | CapabilitySnapshot 与 token 账本 | `context`；删除旧 channel/tools owner |
-
-### 5.5 M4：Blob、附件与结果
-
-| Slice | 一个主要行为 | 用户可见/验证锚点 |
-|---|---|---|
-| A01 | 内容寻址 BlobStore | dedupe/hash/atomic test |
-| A02 | 附件选择、预览与持久化 | `main` attachment chip |
-| A03 | 附件进入模型上下文 | 图片/文本可回放 |
-| A04 | >256KB 工具输出 Blob 化 | `tools` 8 行预览 + 完整输出 |
-| A05 | Artifact 投影 | 从 Tool args + 成功结果推导 |
-| A06 | 结果列表、分组与筛选 | `main` 结果区 |
-| A07 | 只读预览与外部打开 | 结果预览 |
-| A08 | “让 Agent 改这份”入口 | 只注入输入，不自动发送 |
-| A09 | Blob 引用计数与恢复清理 | M4 全 gate |
-
-### 5.6 M5：单层子 Agent
-
-| Slice | 一个主要行为 | 用户可见/验证锚点 |
-|---|---|---|
-| D01 | Run lineage 与共享预算 | depth=1、统一预算 |
-| D02 | 同步 child run 与结果回传 | child result 回父 toolResult |
-| D03 | child 取消与权限继承 | 父 stop 级联、权限标来源 |
-| D04 | 子 Agent 折叠组 UI | `tools` 过程组 |
-
-### 5.7 M6：产品与原型收口
-
-| Slice | 一个主要行为 | 用户可见/验证锚点 |
-|---|---|---|
-| U01 | 整窗空状态 | `empty` |
-| U02 | 会话分组与搜索 | `sessions` list |
-| U03 | 会话菜单动作 | rename/pin/archive/delete/线性动作 |
-| U04 | 设置 Shell | model/rules/tools/MCP/skills |
-| U05 | 主窗口与结果区视觉收口 | `empty`、`main` |
-| U06 | 工具与权限视觉收口 | `tools`、`perm` |
-| U07 | 上下文、会话与设置视觉收口 | `context`、`sessions`、`settings` |
-| U08 | IPC、Renderer feature 与 compatibility 收口 | 仅重构，七场景回归 |
-| U09 | 7 条 E2E 与第一版验收 | 真实 Electron evidence |
-
-### 5.8 Slice 尺寸护栏
+### 5.1 Slice 尺寸护栏
 
 - 每个 Slice 只允许一个主要行为，目标 0.5–1.5 个开发日。
 - 默认不超过 6 个生产文件；超过时先拆，或在 ledger 解释不能再拆的原因。
 - 连续两个纯基础设施 Slice 后必须有一个真实 Runtime/IPC/Renderer 消费者。
 - 同时含两个用户流程、两个持久化聚合或“新 IPC + 新整页 UI”时必须继续拆分。
-- 每个 Slice 独立 RED、GREEN、targeted 验证和 commit；M1 在 E2E 前集中 peer review。
+- 每个 Slice 独立 RED、GREEN、targeted 验证和 commit；里程碑结束后再做集中 review、E2E 和 QA。
 
 ---
 
@@ -369,7 +172,7 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 6. 运行 targeted test、architecture、typecheck；仅按 Slice 风险追加 build/probe/spike。
 7. 使用 Conventional Commit，只暂存本 Slice 文件。
 8. 更新 `.ship/tasks/<slice-id>/dev-ledger.md`，直接进入下一个 Slice。
-9. K17 后、E2E 前对整个 M1 做一次集中独立 peer review。
+9. 里程碑最后一个 Slice 完成后、E2E 前做一次集中独立 peer review。
 10. 集中修复 finding 并通过 fresh review 后，依次进入 `$ship:e2e`、`$ship:qa`。
 
 ### Slice 完成定义
@@ -384,7 +187,7 @@ Compatibility 层只能委托旧实现，不能新增产品入口、复制业务
 - targeted test 通过；里程碑集中评审前 `bun test` 全部通过；
 - 涉及 Main/Preload/Renderer/入口的 Slice 执行 `bun run build`；
 - Slice 要求的 probe/spike/integration/E2E 通过；
-- M1 集中 peer review 在 E2E 前为 PASS；
+- 里程碑集中 peer review 在 E2E 前为 PASS；
 - ledger 已记录 commit、文件和产出接口。
 
 不允许用以下方式制造完成：
@@ -506,6 +309,7 @@ rg -n "const decisions = \\[" "tgbuddy-mockup/TgBuddy 交互原型.dc.html"
 ```bash
 git status --short --branch
 git log -8 --oneline
+Get-Content docs/08-项目进度.md
 Get-Content .ship/tasks/target-code-repository-architecture/dev-ledger.md
 ```
 
