@@ -246,3 +246,16 @@ C11: "MCP tool 权限与调用" — complete
   验证: `bun test tests/unit/runtime/mcp-manager.test.ts`（15/15）+ pi-mcp-tool（3/3）、全量 `bun test` 285/285、check:architecture、typecheck、build 全过；SDK callTool 冒烟（echo 调用 isError=false 内容正确）
   删除项: 无（长输出暂留普通预览，A04 再 Blob 化）
   Concerns: MCP 工具参数用宽松 Record，精确 JSON Schema 校验由服务端执行（inputSchema 已存入 descriptor，后续可精确化）；plan 模式读类 MCP 判定基于方法名前缀（用户把写方法改成 allow 也不会在 plan 模式放行，写方法仍被拒）。
+
+C12: "CapabilitySnapshot 与 token 账本" — complete
+  Commits: d7a6713
+  Files: src/shared/contracts/run-snapshot.ts, src/runtime/runs/run-snapshot.ts, src/runtime/runs/run-repository.ts, src/runtime/runs/run-coordinator.ts, src/runtime/runs/agent-engine.ts, src/runtime/app/agent-runtime.ts, src/shared/contracts/ipc.ts, src/main/ipc.ts, src/preload/index.ts, src/infrastructure/sqlite/migrations/011_app_runs.sql, src/infrastructure/sqlite/repositories/sqlite-run-repository.ts, src/infrastructure/sqlite/app-database.ts, src/infrastructure/sqlite/index.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/renderer/App.tsx, src/renderer/components/ContextUsagePanel.tsx, src/kernel/pi/pi-builtin-tools.ts（由 main/tools/index.ts 迁入，删除旧文件）, src/main/data-dir.ts + src/main/legacy-channels.ts（由 channel-store.ts 拆出，删除旧文件）, src/main/index.ts, scripts/probe-compaction.ts, scripts/check-architecture.ts（移除 LEGACY_COMPATIBILITY 豁免）, scripts/sqlite-spike-scenarios.ts（app-database 断言扩到 001–011 与全部 app_* 表）, tests/unit/runtime/run-snapshot.test.ts, tests/integration/run-coordinator.test.ts, tests/unit/architecture/import-boundaries.test.ts, .ship/tasks/sqlite-packaged-electron-spike/evidence/README.md
+  Produces: `CapabilitySnapshot`/`RunRecord`/`RunUsageLedger` 等（shared 契约）；`buildCapabilitySnapshot()`（Profile/模型/工具/Skill/MCP 全部从冻结 invocation 构建，敏感配置只存 ref/名称）+ `mergeUsageLedger()`（分类 token/cost 逐轮相加，失败 Run 也有归零账本）；`RunRepository` 端口 + Memory + `SqliteRunRepository` + `011_app_runs.sql`；RunCoordinator 在启动建记录、settled 一次提交状态/账本/错误；`AgentInvocation.tools/profile`；`AgentRuntime.runs.list` + IPC `runs:list` + Preload；ContextUsagePanel 展示最近一次运行账本；**删除 Main 遗留 owner**：`src/main/tools/index.ts` 迁入 kernel/pi（回收站经 `trashItem` 端口注入 shell.trashItem）、`src/main/channel-store.ts` 拆为 data-dir + legacy-channels、checker 豁免清零
+  验证: `bun test` 291/291、check:architecture、typecheck、build 全过；`bun run spike:sqlite` 全场景通过（app-database 断言 001–011 + 9 张 app_* 表）；`bun run probe` 真实模型通过
+  删除项: `src/main/tools/index.ts`、`src/main/channel-store.ts`、checker LEGACY_COMPATIBILITY（C12 完成，无豁免残留）
+  Concerns: Run 记录无独立清理策略（会话删除时 run 账本随行保留，M4 可与 blob 引用清理一并决策）；run 持久化在 coordinator 可选注入（旧测试不传则跳过，生产已接 SQLite）；UI 账本只展示最近一次 settled run（历史账本可经 runs:list 扩展）。
+
+M3 开发阶段（C01–C12）— complete
+  Commits: cde4e35 … d7a6713（每 Slice 独立 feat commit + docs commit）
+  Results: 全量 `bun test` 291/291；check:architecture / typecheck / build 全过；`bun run spike:sqlite` 全场景通过；`bun run probe` 真实模型通过
+  下一步: M3 集中 review（$ship:review）→ 修复 → fresh review → E2E → QA → 里程碑收尾
