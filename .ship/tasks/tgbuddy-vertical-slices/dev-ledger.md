@@ -421,3 +421,19 @@ A08 "「让 Agent 改这份」入口" — complete
   RED/GREEN: 4 项（空/已有草稿注入/幂等/strip 保留用户内容/跨路径隔离）
   Concerns: 只注入文本引用，复用普通 send 流程，无 Artifact 专用执行入口；
     切换会话时按 editRef 清理旧会话注入的引用；不允许预览区直接改文件
+
+A09 "Blob 引用计数与恢复清理" — complete
+  Commits: （本 Slice）
+  Files: src/runtime/blob/blob-ref-repository.ts、blob-cleanup.ts、
+    src/infrastructure/sqlite/migrations/015_app_blob_refs.sql、sqlite-blob-ref-repository.ts、
+    src/runtime/blob/blob-store.ts（delete 改按 hash、新增 list）、node-fs-blob-store.ts、
+    src/main/bootstrap/create-application.ts（引用登记/启动扫描）、create-legacy-runtime.ts
+    （会话删除钩子）、src/runtime/index.ts、sqlite/index.ts、app-database.ts、
+    tests/unit/runtime/blob-cleanup.test.ts
+  Produces: `BlobRefRepository`（attachment/artifact/tool-output 三类引用，ref_key 以 sessionId 开头）、
+    `createBlobCleanup`（deleteSession 先删引用再物理清理、sweepOrphans 孤儿+tmp 扫描）、
+    启动幂等清理、会话删除联动、BlobStore.delete(hash)/list()
+  RED/GREEN: 4 项（共享 blob 保留/最后引用删除/孤儿+tmp 扫描/删除幂等）
+  Concerns: referencedHashes 并入 attachments/artifacts 源表（重启重建引用不遗漏）；
+    引用登记点在 persistAttachments/storeToolOutput/projectArtifact 三处；
+    M4 全 gate 通过，E2E 在里程碑收口统一回归

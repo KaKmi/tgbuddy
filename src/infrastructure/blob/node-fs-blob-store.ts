@@ -7,7 +7,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BlobRef, BlobStore } from '../../runtime/blob/blob-store.ts'
 import {
@@ -64,12 +64,19 @@ export function createNodeFsBlobStore(
       return existsSync(pathOf(ref.hash))
     },
 
-    async delete(ref) {
-      const target = pathOf(ref.hash)
+    async delete(hash) {
+      const target = pathOf(hash)
       if (existsSync(target)) {
         // 引用计数（A09）决定「何时删」；这里只负责物理删除，缺失幂等
         await unlink(target)
       }
+    },
+
+    async list() {
+      if (!existsSync(root)) return []
+      const entries = await readdir(root)
+      // 只暴露正式 blob 文件（hash 文件名），临时文件由 A09 sweep 单独清理
+      return entries.filter((name) => !name.includes('.tmp-'))
     },
   }
 }

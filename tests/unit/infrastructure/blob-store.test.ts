@@ -74,7 +74,7 @@ describe('NodeFsBlobStore（A01 内容寻址）', () => {
       const ghost = { hash: sha256(new TextEncoder().encode('不存在')), size: 9 }
 
       await expect(store.get(ghost)).rejects.toMatchObject({ code: 'NOT_FOUND' })
-      await store.delete(ghost)
+      await store.delete(ghost.hash)
       expect(existsSync(join(root, ghost.hash))).toBe(false)
     } finally {
       cleanup()

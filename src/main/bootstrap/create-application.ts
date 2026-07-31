@@ -1,5 +1,6 @@
 import { safeStorage, shell, type BrowserWindow } from 'electron'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
+import { readdir, unlink } from 'node:fs/promises'
 import {
   basename,
   dirname,
@@ -10,6 +11,7 @@ import {
   createAskUserBroker,
   createBuiltinToolRegistry,
   createChannelService,
+  createBlobCleanup,
   createMcpManager,
   createPlanAskBroker,
   createPermissionAskBroker,
@@ -33,6 +35,7 @@ import {
   SqliteSessionRepository,
   SqliteAttachmentRepository,
   SqliteArtifactRepository,
+  SqliteBlobRefRepository,
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
 import { createNodeFsBlobStore } from '../../infrastructure/blob/index.ts'
@@ -117,6 +120,31 @@ export async function createApplication(
   })
   const attachmentRepository = new SqliteAttachmentRepository(appDatabase)
   const artifactRepository = new SqliteArtifactRepository(appDatabase)
+  const blobRefRepository = new SqliteBlobRefRepository(appDatabase)
+  const blobCleanup = createBlobCleanup({
+    blobs: blobStore,
+    refs: blobRefRepository,
+    listTmpFiles: async () => {
+      try {
+        const entries = await readdir(join(options.legacyDataDir, 'blobs'))
+        return entries.filter((name) => name.includes('.tmp-'))
+      } catch {
+        return []
+      }
+    },
+    deleteFile: (fileName) =>
+      unlink(join(options.legacyDataDir, 'blobs', fileName)),
+  })
+  // A09：启动时清理孤儿 blob 与崩溃残留临时文件（幂等，失败不阻塞启动）
+  void blobCleanup.sweepOrphans().then((result) => {
+    if (result.removed.length > 0 || result.tmpRemoved.length > 0) {
+      console.info(
+        `[blob] 启动清理：孤儿 ${result.removed.length}、临时文件 ${result.tmpRemoved.length}`,
+      )
+    }
+  }).catch((error: unknown) => {
+    console.error('[blob] 启动清理失败：', error)
+  })
   const channels = createChannelService({
     repository: channelRepository,
     secrets: secretStore,
@@ -281,12 +309,28 @@ export async function createApplication(
         // A02：用户消息落库后把附件 ref 挂到 app_attachments（按 entry_id）
         persistAttachments: (sessionId, entryId, refs) => {
           attachmentRepository.save(sessionId, entryId, refs)
+          for (const ref of refs) {
+            blobRefRepository.add(
+              ref.blob.hash,
+              'attachment',
+              `${sessionId}:${entryId}:${ref.id}`,
+            )
+          }
         },
         // A03：模型调用前按 ref 读回附件字节（图片转 pi ImageContent）
         loadAttachment: (blob) => blobStore.get(blob),
         // A04：超长工具输出完整落 Blob，消息只存预览 + ref
-        storeToolOutput: (sessionId, toolCallId, text) =>
-          blobStore.put(new TextEncoder().encode(text), { mime: 'text/plain' }),
+        storeToolOutput: async (sessionId, toolCallId, text) => {
+          const ref = await blobStore.put(new TextEncoder().encode(text), {
+            mime: 'text/plain',
+          })
+          blobRefRepository.add(
+            ref.hash,
+            'tool-output',
+            `${sessionId}:${toolCallId}`,
+          )
+          return ref
+        },
         // A05：成功产出型工具 → Artifact 索引（同路径 upsert，替代旧 countArtifacts 推导）
         projectArtifact: (sessionId, workspaceId, input) => {
           const artifact = projectArtifactSummary({
@@ -298,7 +342,16 @@ export async function createApplication(
             createId,
             now: Date.now,
           })
-          if (artifact) artifactRepository.save(artifact)
+          if (artifact) {
+            artifactRepository.save(artifact)
+            if (artifact.blob) {
+              blobRefRepository.add(
+                artifact.blob.hash,
+                'artifact',
+                `${artifact.sessionId}:${artifact.id}`,
+              )
+            }
+          }
         },
         tools: (invocation, env) => {
           const sessionId = invocation.sessionId
@@ -410,6 +463,7 @@ export async function createApplication(
       questions: askUserBroker,
       rules: permissionRules,
       artifacts: artifactRepository,
+      blobCleanup,
       secretStore,
       channels,
       providerCatalog: createPiProviderCatalog(),
@@ -435,7 +489,7 @@ export async function createApplication(
           blob,
         }
       },
-      discard: (ref) => blobStore.delete(ref.blob),
+      discard: (ref) => blobStore.delete(ref.blob.hash),
       async readToolOutput(ref) {
         const bytes = await blobStore.get(ref)
         return new TextDecoder().decode(bytes)

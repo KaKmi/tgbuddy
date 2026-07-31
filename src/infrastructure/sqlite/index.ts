@@ -27,3 +27,4 @@ export {
 export { SqliteSessionRepository } from './repositories/sqlite-session-repository.ts'
 export { SqliteAttachmentRepository } from './repositories/sqlite-attachment-repository.ts'
 export { SqliteArtifactRepository } from './repositories/sqlite-artifact-repository.ts'
+export { SqliteBlobRefRepository } from './repositories/sqlite-blob-ref-repository.ts'

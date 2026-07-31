@@ -23,6 +23,7 @@ import {
   type ProviderCatalog,
   type RunRepository,
   type ArtifactRepository,
+  type BlobCleanup,
   mountFailureMessage,
   resolveModelSelection,
   type SessionCommands,
@@ -70,6 +71,8 @@ export interface CreateLegacyRuntimeOptions {
   runs?: RunRepository
   /** A05：Artifact 索引（结果区列表数据源） */
   artifacts?: ArtifactRepository
+  /** A09：会话删除后清理无引用 Blob */
+  blobCleanup?: BlobCleanup
   createRunId?(): string
   /** C12：工具注册表快照在 Run 启动时冻结 */
   toolRegistry: ToolRegistry
@@ -132,7 +135,15 @@ export function createLegacyRuntime(
   })
   return createAgentRuntime({
     workspaces: options.workspaces,
-    sessions: options.sessions,
+    sessions: options.blobCleanup
+      ? {
+          ...options.sessions,
+          delete: async (sessionId) => {
+            await options.sessions.delete(sessionId)
+            await options.blobCleanup?.deleteSession(sessionId)
+          },
+        }
+      : options.sessions,
     runs,
     permissions: {
       respond: (response) => options.permissions.respond(response),

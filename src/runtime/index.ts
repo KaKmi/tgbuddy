@@ -59,6 +59,16 @@ export type {
   BlobStore,
 } from './blob/blob-store.ts'
 export {
+  MemoryBlobRefRepository,
+  type BlobRefRepository,
+  type BlobRefType,
+} from './blob/blob-ref-repository.ts'
+export {
+  createBlobCleanup,
+  type BlobCleanup,
+  type CreateBlobCleanupOptions,
+} from './blob/blob-cleanup.ts'
+export {
   MemoryAttachmentRepository,
   type AttachmentRepository,
 } from './attachments/attachment-repository.ts'

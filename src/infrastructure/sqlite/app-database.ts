@@ -14,6 +14,7 @@ import appRunsSql from './migrations/011_app_runs.sql'
 import appSessionsProfileIdSql from './migrations/012_app_sessions_profile_id.sql'
 import appAttachmentsSql from './migrations/013_app_attachments.sql'
 import appArtifactsSql from './migrations/014_app_artifacts.sql'
+import appBlobRefsSql from './migrations/015_app_blob_refs.sql'
 
 interface SqliteModule {
   DatabaseSync: typeof import('node:sqlite').DatabaseSync
@@ -85,6 +86,10 @@ const APP_MIGRATIONS: readonly AppMigration[] = [
   {
     id: '014_app_artifacts.sql',
     sql: appArtifactsSql,
+  },
+  {
+    id: '015_app_blob_refs.sql',
+    sql: appBlobRefsSql,
   },
 ]
 
