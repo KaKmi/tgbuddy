@@ -7,6 +7,8 @@ export type McpTransportKind = 'stdio' | 'http'
 export interface McpServerConfig {
   id: string
   name: string
+  /** 工具名前缀（server.method）：短标识，如 postgres */
+  key: string
   transport: McpTransportKind
   /** stdio：启动命令（如 npx @mcp/postgres） */
   command?: string
@@ -21,8 +23,8 @@ export interface McpServerConfig {
 
 export type McpSaveInput = Omit<
   McpServerConfig,
-  'id' | 'createdAt' | 'updatedAt'
-> & { id?: string }
+  'id' | 'key' | 'createdAt' | 'updatedAt'
+> & { id?: string; key?: string }
 
 export type McpServerState = 'off' | 'connecting' | 'connected' | 'error'
 

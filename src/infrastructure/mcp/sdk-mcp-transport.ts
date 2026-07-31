@@ -5,6 +5,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { McpServerConfig } from '../../shared/contracts/mcp.ts'
 import type {
   McpTransport,
+  McpToolDefinition,
   McpTransportFactory,
 } from '../../runtime/mcp/ports/mcp-transport.ts'
 
@@ -53,5 +54,14 @@ class SdkMcpTransport implements McpTransport {
 
   isConnected(): boolean {
     return this.#client.getServerVersion() !== undefined
+  }
+
+  async listTools(): Promise<McpToolDefinition[]> {
+    const result = await this.#client.listTools()
+    return result.tools.map((tool) => ({
+      name: tool.name,
+      ...(tool.description ? { description: tool.description } : {}),
+      inputSchema: tool.inputSchema,
+    }))
   }
 }

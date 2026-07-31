@@ -5,6 +5,7 @@ import type { AppDatabase } from '../app-database.ts'
 interface McpServerRow {
   id: string
   name: string
+  key: string
   transport: McpServerConfig['transport']
   command: string
   args_json: string
@@ -16,7 +17,7 @@ interface McpServerRow {
 }
 
 const SELECT_COLUMNS = `
-  id, name, transport, command, args_json, url, env_json,
+  id, name, key, transport, command, args_json, url, env_json,
   enabled, created_at, updated_at
 `
 
@@ -24,6 +25,7 @@ function rowToConfig(row: McpServerRow): McpServerConfig {
   return {
     id: row.id,
     name: row.name,
+    key: row.key,
     transport: row.transport,
     ...(row.command ? { command: row.command } : {}),
     args: JSON.parse(row.args_json) as string[],
@@ -70,11 +72,12 @@ export class SqliteMcpConfigRepository implements McpConfigRepository {
       database
         .prepare(
           `INSERT INTO app_mcp_servers (
-             id, name, transport, command, args_json, url, env_json,
+             id, name, key, transport, command, args_json, url, env_json,
              enabled, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              name = excluded.name,
+             key = excluded.key,
              transport = excluded.transport,
              command = excluded.command,
              args_json = excluded.args_json,
@@ -86,6 +89,7 @@ export class SqliteMcpConfigRepository implements McpConfigRepository {
         .run(
           config.id,
           config.name,
+          config.key,
           config.transport,
           config.command ?? '',
           JSON.stringify(config.args ?? []),

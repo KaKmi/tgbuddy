@@ -43,6 +43,7 @@ interface ProfileFormState {
 interface McpFormState {
   id?: string
   name: string
+  key: string
   transport: 'stdio' | 'http'
   command: string
   args: string
@@ -68,6 +69,7 @@ const EMPTY_PROFILE_FORM: ProfileFormState = {
 
 const EMPTY_MCP_FORM: McpFormState = {
   name: '',
+  key: '',
   transport: 'stdio',
   command: '',
   args: '',
@@ -251,6 +253,7 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
         ? {
             id: server.id,
             name: server.name,
+            key: server.key,
             transport: server.transport,
             command: server.command ?? '',
             args: (server.args ?? []).join(' '),
@@ -282,6 +285,7 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
     const input: McpSaveInput = {
       ...(mcpForm.id ? { id: mcpForm.id } : {}),
       name,
+      key: mcpForm.key.trim() || undefined,
       transport: mcpForm.transport,
       enabled: mcpForm.enabled,
       ...(mcpForm.transport === 'stdio'
@@ -513,6 +517,20 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
                   value={form.name}
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
                   className="rounded-md border border-white/5 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-white/15"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-[#6d6d75]">
+                  服务标识（工具名前缀，如 postgres）
+                </span>
+                <input
+                  data-testid="mcp-key-input"
+                  value={mcpForm.key}
+                  onChange={(event) =>
+                    setMcpForm({ ...mcpForm, key: event.target.value })
+                  }
+                  placeholder="postgres"
+                  className="rounded-md border border-white/5 bg-background px-2 py-1.5 font-mono text-[12px] text-foreground outline-none focus:border-white/15"
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -1006,6 +1024,11 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
                       {status.error}
                     </div>
                   )}
+                  <McpToolsSection
+                    server={server}
+                    tools={tools}
+                    onChanged={() => refresh()}
+                  />
                 </div>
               )
             })}
@@ -1165,6 +1188,75 @@ const MCP_STATUS_META: Record<
   error: { label: '连接失败', dot: '#c9635b', fg: '#dfa39d' },
   off: { label: '未连接', dot: '#55555c', fg: '#8a8a92' },
   connecting: { label: '连接中…', dot: '#e0a33e', fg: '#e0c39e' },
+}
+
+function McpToolsSection({
+  server,
+  tools,
+  onChanged,
+}: {
+  server: McpServerConfig
+  tools: ToolSettingView[]
+  onChanged(): Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const serverTools = tools.filter((tool) => tool.id.startsWith(`${server.key}.`))
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        data-testid="mcp-tools-toggle"
+        onClick={() => setOpen((current) => !current)}
+        className="self-start text-[11px] text-[#8a8a92] hover:text-[#b6b6be]"
+      >
+        {open ? '▾' : '▸'} {serverTools.length} 个工具
+      </button>
+      {open && (
+        <div className="flex flex-col gap-1">
+          {serverTools.map((tool) => (
+            <div
+              key={tool.id}
+              data-testid="mcp-tool-row"
+              className="flex items-center gap-2"
+            >
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[#dcdce1]">
+                {tool.id}
+              </span>
+              <div className="flex rounded-lg bg-white/5 p-0.5">
+                {PERMISSION_OPTIONS.map((option) => {
+                  const selected = tool.permission === option.id
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      data-testid={`mcp-tool-perm-${tool.name}-${option.id}`}
+                      onClick={() =>
+                        void window.tgbuddy.tool
+                          .setPermission(tool.id, option.id)
+                          .then(onChanged)
+                      }
+                      className="rounded-md px-1.5 py-0.5 text-[10.5px]"
+                      style={{
+                        background: selected ? option.bg : 'transparent',
+                        color: selected ? option.fg : '#8a8a92',
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+          {serverTools.length === 0 && (
+            <div className="text-[11px] text-[#63636b]">
+              连接后自动发现工具
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function channelConfigured(

@@ -4,6 +4,10 @@ export interface ToolRegistry {
   /** 全部描述符（含禁用），顺序为注册顺序 */
   list(): ToolDescriptor[]
   setEnabled(toolId: string, enabled: boolean): void
+  /** C10：动态注册（MCP 工具）；重复 id 抛错 */
+  register(descriptors: ToolDescriptor[]): void
+  /** C10：注销（MCP 断开），只影响下一 Run 快照 */
+  unregister(toolIds: string[]): void
   /** Run 启动时冻结：只含启用工具，返回副本 */
   snapshot(): ToolDescriptor[]
 }
@@ -34,6 +38,17 @@ export function createToolRegistry(
       const descriptor = byId.get(toolId)
       if (!descriptor) throw new Error(`工具不存在：${toolId}`)
       byId.set(toolId, { ...descriptor, enabled })
+    },
+    register(descriptors) {
+      for (const descriptor of descriptors) {
+        if (byId.has(descriptor.id)) {
+          throw new Error(`工具 id 重复注册：${descriptor.id}`)
+        }
+        byId.set(descriptor.id, descriptor)
+      }
+    },
+    unregister(toolIds) {
+      for (const toolId of toolIds) byId.delete(toolId)
     },
     snapshot: () =>
       [...byId.values()]

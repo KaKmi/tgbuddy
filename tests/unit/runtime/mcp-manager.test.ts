@@ -14,6 +14,8 @@ import {
   createMcpManager,
   type McpManager,
 } from '../../../src/runtime/mcp/mcp-manager.ts'
+import { createToolRegistry } from '../../../src/runtime/tools/tool-registry.ts'
+import type { ToolRegistry } from '../../../src/runtime/tools/tool-registry.ts'
 
 class MemoryMcpConfigRepository implements McpConfigRepository {
   readonly #configs = new Map<string, McpServerConfig>()
@@ -38,11 +40,16 @@ class MemoryMcpConfigRepository implements McpConfigRepository {
 
 class FakeTransport implements McpTransport {
   readonly #behavior: 'ok' | 'fail' | 'hang'
+  readonly #tools: Array<{ name: string; description?: string }>
   connected = false
   disconnected = false
 
-  constructor(behavior: 'ok' | 'fail' | 'hang' = 'ok') {
+  constructor(
+    behavior: 'ok' | 'fail' | 'hang' = 'ok',
+    tools: Array<{ name: string; description?: string }> = [],
+  ) {
     this.#behavior = behavior
+    this.#tools = tools
   }
 
   async connect(signal: AbortSignal): Promise<void> {
@@ -66,6 +73,10 @@ class FakeTransport implements McpTransport {
   isConnected(): boolean {
     return this.connected
   }
+
+  async listTools(): Promise<Array<{ name: string; description?: string }>> {
+    return this.#tools
+  }
 }
 
 function createFixture(): {
@@ -74,18 +85,33 @@ function createFixture(): {
   createdConfigs: McpServerConfig[]
   repository: MemoryMcpConfigRepository
   secrets: MemorySecretStore
+  registry: ToolRegistry
+  transportsByConfig: Map<string, FakeTransport>
 } {
   const repository = new MemoryMcpConfigRepository()
   const transports: FakeTransport[] = []
   const createdConfigs: McpServerConfig[] = []
   const secrets = new MemorySecretStore()
+  const registry = createToolRegistry({ descriptors: [] })
+  const transportsByConfig = new Map<string, FakeTransport>()
   const factory: McpTransportFactory = {
     create(config) {
       createdConfigs.push(config)
+      const tools =
+        config.key === 'echo'
+          ? [{ name: 'echo', description: '回显' }]
+          : config.env?.TOOLS === 'none'
+            ? []
+            : [
+                { name: 'query', description: '查询' },
+                { name: 'exec', description: '执行写语句' },
+              ]
       const behavior = config.env?.BEHAVIOR
       const transport = new FakeTransport(
         behavior === 'fail' ? 'fail' : behavior === 'hang' ? 'hang' : 'ok',
+        tools,
       )
+      transportsByConfig.set(config.id, transport)
       transports.push(transport)
       return transport
     },
@@ -97,8 +123,17 @@ function createFixture(): {
     createId: () => 'mcp-1',
     now: () => 1_000,
     connectTimeoutMs: 50,
+    toolRegistry: registry,
   })
-  return { manager, transports, createdConfigs, repository, secrets }
+  return {
+    manager,
+    transports,
+    createdConfigs,
+    repository,
+    secrets,
+    registry,
+    transportsByConfig,
+  }
 }
 
 function serverInput(overrides: Partial<McpSaveInput> = {}): McpSaveInput {
@@ -190,5 +225,56 @@ describe('McpManager', () => {
     manager.save(serverInput({ id: 'mcp-1', name: '改名' }))
     expect(transports[0]?.disconnected).toBe(true)
     expect(manager.status('mcp-1').state).toBe('off')
+  })
+
+  test('连接成功后发现的工具进入 ToolRegistry（server.method 命名）', async () => {
+    const { manager, registry } = createFixture()
+    manager.save(serverInput({ key: 'postgres' }))
+    const status = await manager.connect('mcp-1')
+    expect(status.state).toBe('connected')
+
+    const tools = registry.list().filter((tool) => tool.category === 'mcp')
+    expect(tools.map((tool) => tool.id)).toEqual([
+      'postgres.query',
+      'postgres.exec',
+    ])
+    expect(tools[0]?.source).toBe('echo')
+  })
+
+  test('重连后 schema 变化：旧工具移除、新工具注册，当前 Run 快照不变', async () => {
+    const { manager, registry, transportsByConfig } = createFixture()
+    manager.save(serverInput({ key: 'pg' }))
+    await manager.connect('mcp-1')
+    const frozen = registry.snapshot()
+    expect(frozen.some((tool) => tool.id === 'pg.query')).toBe(true)
+
+    // 断开后 schema 变化（TOOLS=none → 不再发现工具）
+    manager.save(serverInput({ id: 'mcp-1', key: 'pg', env: { TOOLS: 'none' } }))
+    await manager.connect('mcp-1')
+
+    expect(registry.list().some((tool) => tool.id === 'pg.query')).toBe(false)
+    // 已冻结快照仍是旧工具集合
+    expect(frozen.some((tool) => tool.id === 'pg.query')).toBe(true)
+  })
+
+  test('断开后工具从注册表移除（只影响下一 Run）', async () => {
+    const { manager, registry } = createFixture()
+    manager.save(serverInput({ key: 'pg' }))
+    await manager.connect('mcp-1')
+    const frozen = registry.snapshot()
+
+    await manager.disconnect('mcp-1')
+    expect(registry.list().some((tool) => tool.id === 'pg.query')).toBe(false)
+    expect(frozen.some((tool) => tool.id === 'pg.query')).toBe(true)
+  })
+
+  test('同名工具冲突：注册被拒绝并给出可操作错误', async () => {
+    const { manager } = createFixture()
+    manager.save(serverInput({ id: 'mcp-a', key: 'pg' }))
+    manager.save(serverInput({ id: 'mcp-b', key: 'pg' }))
+    await manager.connect('mcp-a')
+    const status = await manager.connect('mcp-b')
+    expect(status.state).toBe('error')
+    expect(status.error).toMatch(/冲突|重名/)
   })
 })

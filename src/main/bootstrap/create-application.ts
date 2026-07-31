@@ -120,17 +120,19 @@ export async function createApplication(
     },
   })
   const skillLoader = createFsSkillLoader()
+  // C05：内置工具统一注册，Run 启动按 snapshot 冻结启用集合。
+  const toolRegistry = createBuiltinToolRegistry()
   // C09：MCP 服务配置落 SQLite，连接状态由 Runtime 持有；
-  // stdio/http 传输由 SDK adapter（Main 侧能力）实现。
+  // stdio/http 传输由 SDK adapter（Main 侧能力）实现；
+  // C10：发现的工具注册进统一 ToolRegistry。
   const mcp = createMcpManager({
     repository: new SqliteMcpConfigRepository(appDatabase),
     factory: new SdkMcpTransportFactory(),
     secrets: secretStore,
+    toolRegistry,
     createId,
     now: Date.now,
   })
-  // C05：内置工具统一注册，Run 启动按 snapshot 冻结启用集合。
-  const toolRegistry = createBuiltinToolRegistry()
   // C06：工具三档权限覆盖持久化，PolicyEngine 在规则之下读取。
   const toolSettings = createToolSettingsService({
     registry: toolRegistry,

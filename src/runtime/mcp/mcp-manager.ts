@@ -8,13 +8,18 @@ import type { SecretStore } from '../secrets/secret-store.ts'
 import type { McpConfigRepository } from './mcp-config-repository.ts'
 import type {
   McpTransport,
+  McpToolDefinition,
   McpTransportFactory,
 } from './ports/mcp-transport.ts'
+import type { ToolDescriptor, ToolPermission } from '../../shared/contracts/tool.ts'
+import type { ToolRegistry } from '../tools/tool-registry.ts'
 
 export interface CreateMcpManagerOptions {
   repository: McpConfigRepository
   factory: McpTransportFactory
   secrets: SecretStore
+  /** C10：发现的 MCP 工具注册进统一注册表 */
+  toolRegistry: ToolRegistry
   createId(): string
   now(): number
   connectTimeoutMs?: number
@@ -48,6 +53,7 @@ export function createMcpManager(
   options: CreateMcpManagerOptions,
 ): McpManager {
   const states = new Map<string, ConnectionState>()
+  const serverTools = new Map<string, string[]>()
   const timeoutMs = options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS
 
   const toStatus = (serverId: string, state: ConnectionState): McpServerStatus => ({
@@ -67,6 +73,12 @@ export function createMcpManager(
     states.delete(serverId)
   }
 
+  const unregisterServerTools = (serverId: string): void => {
+    const toolIds = serverTools.get(serverId)
+    if (toolIds && toolIds.length > 0) options.toolRegistry.unregister(toolIds)
+    serverTools.delete(serverId)
+  }
+
   const statusOf = (serverId: string): McpServerStatus => {
     const state = states.get(serverId)
     return state
@@ -82,6 +94,7 @@ export function createMcpManager(
       const config: McpServerConfig = {
         id: input.id ?? options.createId(),
         name: input.name,
+        key: input.key?.trim() || slugifyServerKey(input.name),
         transport: input.transport,
         ...(input.command ? { command: input.command } : {}),
         ...(input.args && input.args.length > 0 ? { args: input.args } : {}),
@@ -96,10 +109,12 @@ export function createMcpManager(
       options.repository.save(config)
       // 配置变更后旧连接不可信：断开并回到 off，等待显式重连。
       dropConnection(config.id)
+      unregisterServerTools(config.id)
       return config
     },
     delete(serverId) {
       dropConnection(serverId)
+      unregisterServerTools(serverId)
       options.repository.delete(serverId)
     },
     async connect(serverId, signal) {
@@ -140,6 +155,14 @@ export function createMcpManager(
         transport = options.factory.create(resolvedConfig)
         state.transport = transport
         await transport.connect(controller.signal)
+        const tools = await transport.listTools()
+        const descriptors = buildMcpToolDescriptors(config, tools)
+        registerMcpTools(
+          options.toolRegistry,
+          config.id,
+          descriptors,
+          serverTools,
+        )
         state.state = 'connected'
         state.lastConnectedAt = options.now()
         return toStatus(serverId, state)
@@ -161,12 +184,73 @@ export function createMcpManager(
         })
       }
       states.delete(serverId)
+      unregisterServerTools(serverId)
     },
     status: statusOf,
     statuses() {
       return options.repository.list().map((config) => statusOf(config.id))
     },
   }
+}
+
+function slugifyServerKey(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || 'mcp'
+}
+
+const READ_PREFIXES = ['get', 'list', 'search', 'read', 'fetch', 'query']
+
+function buildMcpToolDescriptors(
+  config: McpServerConfig,
+  tools: McpToolDefinition[],
+): ToolDescriptor[] {
+  return tools.map((tool) => {
+    const name = `${config.key}.${tool.name}`
+    return {
+      id: name,
+      name,
+      label: tool.name,
+      description: tool.description ?? 'MCP 服务提供的工具',
+      category: 'mcp',
+      source: config.name,
+      defaultPermission: defaultMcpPermission(tool.name),
+      enabled: true,
+    }
+  })
+}
+
+function defaultMcpPermission(method: string): ToolPermission {
+  const first = method.split(/[._-]/)[0]?.toLowerCase()
+  return first && READ_PREFIXES.includes(first) ? 'allow' : 'ask'
+}
+
+/**
+ * 注册前先校验与其它服务的重名冲突，避免注册表一半生效。
+ * 自己的旧工具先注销，再注册新清单（schema 变化场景）。
+ */
+function registerMcpTools(
+  registry: ToolRegistry,
+  serverId: string,
+  descriptors: ToolDescriptor[],
+  serverTools: Map<string, string[]>,
+): void {
+  const previous = serverTools.get(serverId) ?? []
+  const ownIds = new Set(previous)
+  const existingIds = new Set(
+    registry.list().filter((tool) => !ownIds.has(tool.id)).map((tool) => tool.id),
+  )
+  const conflict = descriptors.find((descriptor) => existingIds.has(descriptor.id))
+  if (conflict) {
+    throw new Error(
+      `工具名与其它服务冲突：${conflict.id}，请修改服务标识（key）或方法名`,
+    )
+  }
+  if (previous.length > 0) registry.unregister(previous)
+  registry.register(descriptors)
+  serverTools.set(serverId, descriptors.map((descriptor) => descriptor.id))
 }
 
 function resolveSecretEnv(
