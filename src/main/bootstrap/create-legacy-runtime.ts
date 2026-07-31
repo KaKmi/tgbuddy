@@ -21,6 +21,7 @@ import {
   mountFailureMessage,
   type SessionCommands,
   type SessionMessageHistory,
+  type SecretStore,
   type WorkspaceCommands,
 } from '../../runtime/index.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
@@ -45,6 +46,11 @@ export interface CreateLegacyRuntimeOptions {
   questions: AskUserBroker
   /** S07：规则持久化仓库（SQLite），同时服务策略引擎与规则列表 IPC */
   rules: PermissionRuleRepository
+  /**
+   * C01：密钥存储。当前只建立注入点；C02 把渠道密钥改走该 store 后，
+   * 这里不再出现任何明文写入 SQLite/JSON 的路径。
+   */
+  secretStore: SecretStore
   dispose?(): Promise<void>
 }
 

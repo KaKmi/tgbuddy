@@ -1,6 +1,8 @@
-import type { BrowserWindow } from 'electron'
+import { safeStorage, type BrowserWindow } from 'electron'
 import {
   basename,
+  dirname,
+  join,
   resolve,
 } from 'node:path'
 import {
@@ -21,6 +23,7 @@ import {
   SqliteSessionRepository,
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
+import { EncryptedFileSecretStore } from '../../infrastructure/secrets/index.ts'
 import { NodeWorkspaceMountResolver } from '../../infrastructure/workspace/index.ts'
 import {
   buildAskUserTool,
@@ -64,6 +67,13 @@ export async function createApplication(
   const workspaceRepository = new SqliteWorkspaceRepository(appDatabase)
   // S07：用户「总是允许」规则是资产，落 SQLite 跨重启保留。
   const permissionRules = new SqlitePermissionRuleRepository(appDatabase)
+  // C01：渠道密钥只经 SecretStore 保存；SQLite 只存 secret ref。
+  // 加密原语用 Electron safeStorage（Windows DPAPI / macOS Keychain），
+  // 磁盘上只有加密 blob，测试不触碰真实系统凭据。
+  const secretStore = new EncryptedFileSecretStore({
+    cipher: safeStorage,
+    filePath: join(dirname(options.databasePath), 'secrets.json'),
+  })
   const mountResolver = new NodeWorkspaceMountResolver()
   const workspaceService = createWorkspaceService({
     repository: workspaceRepository,
@@ -251,6 +261,7 @@ export async function createApplication(
       plans: planAskBroker,
       questions: askUserBroker,
       rules: permissionRules,
+      secretStore,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)

@@ -13,6 +13,12 @@ export {
   type SettingsCommands,
   type WorkspaceCommands,
 } from './app/agent-runtime.ts'
+export {
+  createSecretRef,
+  MemorySecretStore,
+  type SecretStore,
+} from './secrets/secret-store.ts'
+export type { SecretRef } from '../shared/contracts/secret.ts'
 export type {
   AgentRuntimeEvent,
   AgentRuntimeEventListener,
