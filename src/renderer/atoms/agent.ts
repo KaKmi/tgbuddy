@@ -374,7 +374,9 @@ export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEven
       return {
         ...prev,
         toolActivities: prev.toolActivities.map((t) =>
-          t.toolCallId === event.toolCallId
+          // 已被用户拒绝的工具保持 denied：pi 对 policy 拦截调用会补发
+          // tool_end(isError)，不能让它把「已拒绝」覆盖成「失败」。
+          t.toolCallId === event.toolCallId && t.status !== 'denied'
             ? {
                 ...t,
                 status: event.isError ? ('error' as const) : ('success' as const),

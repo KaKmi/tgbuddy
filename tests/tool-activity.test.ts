@@ -130,4 +130,26 @@ describe('工具调用四态', () => {
     expect(preview).not.toContain('第 9 行')
     expect(preview).toContain('其余 2 行暂不展示')
   })
+
+  test('用户拒绝后 pi 补发的 tool_end 不覆盖 denied 状态', () => {
+    const started = applyAgentEvent(emptyStreamState(), {
+      type: 'tool_start',
+      toolCallId: 'call-1',
+      toolName: 'write',
+      args: { path: 'm2-write.txt' },
+    })
+    const denied = applyAgentEvent(started, {
+      type: 'tool_denied',
+      toolCallId: 'call-1',
+    })
+    expect(denied.toolActivities[0]?.status).toBe('denied')
+
+    const lateEnd = applyAgentEvent(denied, {
+      type: 'tool_end',
+      toolCallId: 'call-1',
+      isError: true,
+      output: '用户拒绝了授权',
+    })
+    expect(lateEnd.toolActivities[0]?.status).toBe('denied')
+  })
 })

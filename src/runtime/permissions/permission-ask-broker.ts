@@ -71,8 +71,18 @@ function suggestGrants(
   const path = extractPath(args)
 
   if (path) {
-    const dir = path.replace(/[/\\][^/\\]*$/, '')
-    out.push({ match: 'path', pattern: `${dir}/**`, label: `放行 ${dir} 目录下的操作` })
+    const separatorIndex = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+    const dir = separatorIndex === -1 ? '' : path.slice(0, separatorIndex)
+    if (dir) {
+      // 目录级候选：放行 dir/** —— 注意不能覆盖文件本身（见下一条精确候选）
+      out.push({
+        match: 'path',
+        pattern: `${dir}/**`,
+        label: `放行 ${dir} 目录下的操作`,
+      })
+    }
+    // 精确文件候选：根目录文件没有父目录时，只有这条能真正命中
+    out.push({ match: 'path', pattern: path, label: `放行 ${path}` })
   }
   if (toolName === 'bash' && typeof args.command === 'string') {
     const prefix = args.command.trim().split(/\s+/).slice(0, 2).join(' ')

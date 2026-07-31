@@ -37,6 +37,44 @@ function writeInput(overrides: Partial<{ toolName: string; args: Record<string, 
 }
 
 describe('PermissionAskBroker', () => {
+  test('根目录文件的候选粒度包含精确文件匹配，避免「总是允许」建了也命中不了', () => {
+    const { broker, emitted } = harness()
+    void broker.ask(
+      writeInput({ args: { path: 'm2-write.txt' } }),
+      new AbortController().signal,
+    )
+
+    const request = emitted[0]
+    expect(request?.suggestedGrants[0]).toEqual({
+      match: 'path',
+      pattern: 'm2-write.txt',
+      label: '放行 m2-write.txt',
+    })
+    // 工具级兜底候选仍在
+    expect(request?.suggestedGrants[1]).toMatchObject({
+      match: 'tool',
+      pattern: 'write',
+    })
+
+    // 嵌套路径保留目录级候选，且精确文件候选不丢失
+    void broker.ask(
+      writeInput({ args: { path: 'docs/report.md' } }),
+      new AbortController().signal,
+    )
+    expect(emitted[1]?.suggestedGrants[0]).toMatchObject({
+      match: 'path',
+      pattern: 'docs/**',
+    })
+    expect(emitted[1]?.suggestedGrants[1]).toMatchObject({
+      match: 'path',
+      pattern: 'docs/report.md',
+    })
+    expect(emitted[1]?.suggestedGrants[2]).toMatchObject({
+      match: 'tool',
+      pattern: 'write',
+    })
+  })
+
   test('ask 登记请求并推送，pending 快照可恢复（重载）', async () => {
     const { broker, emitted } = harness()
     const result = broker.ask(writeInput(), new AbortController().signal)
