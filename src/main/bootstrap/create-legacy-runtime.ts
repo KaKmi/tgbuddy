@@ -6,8 +6,6 @@
  * - orchestrator 已在 K08 退出生产 Run；permission、plan、question 委托按后续 Slice 删除。
  * - 该文件不得成为第二个长期应用门面。
  */
-import { existsSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
 import {
   createRunCoordinator,
   createContextService,
@@ -16,6 +14,7 @@ import {
   type AgentEngine,
   type AgentInvocation,
   type ContextCompactor,
+  mountFailureMessage,
   type SessionCommands,
   type SessionMessageHistory,
   type WorkspaceCommands,
@@ -24,7 +23,6 @@ import type { PermissionMode } from '../../shared/contracts/permission.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
 import * as askUser from '../ask-user-service.ts'
 import {
-  DATA_DIR,
   ensureDataDir,
   listChannels,
   saveChannels,
@@ -54,7 +52,8 @@ export function createLegacyRuntime(
   const runs = createRunCoordinator({
     now: Date.now,
     engine: options.agentEngine,
-    createInvocation: (input) => createAgentInvocation(input, options.sessions),
+    createInvocation: (input) =>
+      createAgentInvocation(input, options.sessions, options.workspaces),
     context,
     lifecycle: {
       async started(sessionId) {
@@ -138,6 +137,7 @@ export function createLegacyRuntime(
 async function createAgentInvocation(
   input: StartRunInput,
   sessions: SessionCommands,
+  workspaces: WorkspaceCommands,
 ): Promise<AgentInvocation> {
   const meta = sessions.list().find((session) => session.id === input.sessionId)
   if (!meta) throw new Error(`会话不存在：${input.sessionId}`)
@@ -160,7 +160,14 @@ async function createAgentInvocation(
 
   const mode = meta.permissionMode ?? 'auto'
   permission.setMode(input.sessionId, mode)
-  const workspaceDir = resolveWorkspace(meta.workspaceId)
+  if (!meta.workspaceId) {
+    throw new Error('会话没有关联工作区，请先选择工作区')
+  }
+  const mount = workspaces.mountStatus(meta.workspaceId)
+  if (!mount.ok) {
+    throw new Error(mountFailureMessage(mount))
+  }
+  const workspaceDir = mount.mount.path
 
   return {
     sessionId: input.sessionId,
@@ -189,16 +196,6 @@ function buildSystemPrompt(
         ]
       : []),
   ].join('\n')
-}
-
-function resolveWorkspace(workspaceId?: string): string {
-  const directory = join(
-    DATA_DIR,
-    'workspaces',
-    workspaceId ?? 'default',
-  )
-  if (!existsSync(directory)) mkdirSync(directory, { recursive: true })
-  return directory
 }
 
 function requireSessionUpdate(

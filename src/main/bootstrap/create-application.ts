@@ -17,6 +17,7 @@ import {
   SqliteSessionRepository,
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
+import { NodeWorkspaceMountResolver } from '../../infrastructure/workspace/index.ts'
 import {
   createPiAgentEngine,
   createPiContextCompactor,
@@ -53,6 +54,7 @@ export async function createApplication(
   const appDatabase = AppDatabase.open(options.databasePath)
   const sessionRepository = new SqliteSessionRepository(appDatabase)
   const workspaceRepository = new SqliteWorkspaceRepository(appDatabase)
+  const mountResolver = new NodeWorkspaceMountResolver()
   const workspaceService = createWorkspaceService({
     repository: workspaceRepository,
     sessions: sessionRepository,
@@ -63,6 +65,7 @@ export async function createApplication(
       key: (path) => resolve(path).toLowerCase(),
       name: (path) => basename(resolve(path)) || '默认工作区',
     },
+    mountResolver,
   })
 
   let messageStore: ReturnType<typeof createPiSessionStore> | undefined

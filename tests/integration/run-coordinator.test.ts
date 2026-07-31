@@ -129,4 +129,62 @@ describe('RunCoordinator + fake AgentEngine', () => {
           : frame.payload.event.type),
     ).toEqual(emitted.map((event) => event.type))
   })
+
+  test('createInvocation 抛出工作区 mount 错误时 settled failed 并发出可见 host_error', async () => {
+    const frames: StreamFrame[] = []
+    const settlements: string[] = []
+    let engineCalls = 0
+    const engine: AgentEngine = {
+      async *run() {
+        engineCalls += 1
+        yield { type: 'run_end', stopReason: 'stop' }
+      },
+      async dispose() {},
+    }
+    const coordinator = createRunCoordinator({
+      now: () => 1,
+      engine,
+      createInvocation: async () => {
+        throw new Error('工作区目录不存在：C:\\gone。请恢复目录或重新选择文件夹')
+      },
+      lifecycle: {
+        started: (sessionId) => Promise.resolve({
+          id: sessionId,
+          title: '测试',
+          status: 'running',
+          createdAt: 1,
+          updatedAt: 2,
+        }),
+        settled: ({ sessionId, status, detail }) => {
+          settlements.push(`${sessionId}:${status}:${detail ?? ''}`)
+          return Promise.resolve({
+            id: sessionId,
+            title: '测试',
+            status,
+            ...(detail ? { statusDetail: detail } : {}),
+            createdAt: 1,
+            updatedAt: 3,
+          })
+        },
+      },
+    })
+
+    await coordinator.start(
+      { sessionId: 'session-1', text: '开始' },
+      (frame) => frames.push(frame),
+    )
+
+    expect(settlements).toEqual([
+      'session-1:failed:工作区目录不存在：C:\\gone。请恢复目录或重新选择文件夹',
+    ])
+    expect(
+      frames.some(
+        (frame) =>
+          frame.payload.channel === 'host'
+          && frame.payload.event.type === 'host_error'
+          && frame.payload.event.message.includes('工作区目录不存在'),
+      ),
+    ).toBe(true)
+    expect(engineCalls).toBe(0)
+  })
 })

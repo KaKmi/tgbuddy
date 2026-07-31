@@ -1,7 +1,11 @@
 import type { WorkspaceCommands } from '../app/agent-runtime.ts'
 import type { SessionRepository } from '../sessions/session-repository.ts'
-import type { Workspace } from '../../shared/contracts/workspace.ts'
+import type {
+  Workspace,
+  WorkspaceMountResolution,
+} from '../../shared/contracts/workspace.ts'
 import type { WorkspaceRepository } from './workspace-repository.ts'
+import type { WorkspaceMountResolver } from './workspace-mount-resolver.ts'
 
 /**
  * 路径语义端口。
@@ -24,6 +28,8 @@ export interface CreateWorkspaceServiceOptions {
   createId(): string
   now(): number
   paths: WorkspacePathPort
+  /** 磁盘可用性检查端口，S02 起每次 run 前重新解析 */
+  mountResolver: WorkspaceMountResolver
 }
 
 /**
@@ -87,6 +93,14 @@ export function createWorkspaceService(
     return list()[0]
   }
 
+  const mountStatus = (workspaceId: string): WorkspaceMountResolution => {
+    const workspace = options.repository.get(workspaceId)
+    if (!workspace?.mount) {
+      return { ok: false, code: 'missing', path: workspace?.mount?.path ?? '' }
+    }
+    return options.mountResolver.resolve(workspace.id, workspace.mount.path)
+  }
+
   const ensureDefault = (path: string): Workspace => {
     const existing = list()[0]
     const workspace = existing ?? create({ path })
@@ -104,5 +118,5 @@ export function createWorkspaceService(
     return workspace
   }
 
-  return { list, create, select, current, ensureDefault }
+  return { list, create, select, current, mountStatus, ensureDefault }
 }

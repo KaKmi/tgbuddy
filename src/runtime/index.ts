@@ -21,6 +21,10 @@ export type {
 export type { SessionRepository } from './sessions/session-repository.ts'
 export type { WorkspaceRepository } from './workspaces/workspace-repository.ts'
 export {
+  mountFailureMessage,
+  type WorkspaceMountResolver,
+} from './workspaces/workspace-mount-resolver.ts'
+export {
   createWorkspaceService,
   type CreateWorkspaceServiceOptions,
   type WorkspacePathPort,

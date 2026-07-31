@@ -25,6 +25,7 @@ import {
 } from './atoms/agent.ts'
 import { roleOf, type SessionMessage } from '../shared/types/message.ts'
 import type { SessionMeta } from '../shared/ipc.ts'
+import type { WorkspaceMountResolution } from '../shared/ipc.ts'
 import { PermissionBanner } from './components/PermissionBanner.tsx'
 import { ToolCard } from './components/ToolCard.tsx'
 import { PlanApproval } from './components/PlanApproval.tsx'
@@ -59,6 +60,7 @@ export function App() {
   const mode: PermissionMode = currentSession?.permissionMode ?? 'auto'
   const [input, setInput] = useState('')
   const [wsOpen, setWsOpen] = useState(false)
+  const [mountStatus, setMountStatus] = useState<WorkspaceMountResolution>()
   const queuedPrompt = currentId ? queuedPrompts.get(currentId) : undefined
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId)
 
@@ -86,6 +88,15 @@ export function App() {
       setCurrentWorkspaceId(current?.id ?? list[0]?.id ?? null)
     })
   }, [setWorkspaces, setCurrentWorkspaceId])
+
+  // 当前工作区磁盘可用性：不可用时选择器给出恢复提示，run 也会被阻止并显示 host error。
+  useEffect(() => {
+    if (!currentWorkspaceId) {
+      setMountStatus(undefined)
+      return
+    }
+    void window.tgbuddy.workspace.mountStatus(currentWorkspaceId).then(setMountStatus)
+  }, [currentWorkspaceId])
 
   // 会话元数据（状态、活动摘要）在主进程更新，流式状态一变就重新拉一次列表。
   // TODO: 主进程直接推 meta 变更事件，省掉这次轮询式的重取
@@ -193,8 +204,16 @@ export function App() {
                 <span className="block truncate text-[13px] font-medium text-foreground">
                   {currentWorkspace?.name ?? '选择工作区'}
                 </span>
-                <span className="block truncate font-mono text-[10.5px] text-muted-foreground">
-                  {currentWorkspace?.mount?.path ?? '还没有工作区'}
+                <span
+                  className={`block truncate font-mono text-[10.5px] ${
+                    mountStatus?.ok === false
+                      ? 'text-red-400/80'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {mountStatus?.ok === false
+                    ? '目录不可用 · 请重新选择文件夹'
+                    : currentWorkspace?.mount?.path ?? '还没有工作区'}
                 </span>
               </span>
               <span className="shrink-0 text-[10px] text-muted-foreground">▾</span>

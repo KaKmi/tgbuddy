@@ -19,6 +19,8 @@ const api = {
     select: (workspaceId) =>
       ipcRenderer.invoke(IPC.WORKSPACE_SELECT, { workspaceId }),
     current: () => ipcRenderer.invoke(IPC.WORKSPACE_CURRENT),
+    mountStatus: (workspaceId) =>
+      ipcRenderer.invoke(IPC.WORKSPACE_MOUNT_STATUS, { workspaceId }),
     pick: () => ipcRenderer.invoke(IPC.WORKSPACE_PICK),
   },
   session: {

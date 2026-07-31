@@ -16,7 +16,10 @@ import type { SessionMessage } from './message.ts'
 import type { Channel } from './channel.ts'
 import type { StartRunInput } from './run.ts'
 import type { SessionMeta } from './session.ts'
-import type { Workspace } from './workspace.ts'
+import type {
+  Workspace,
+  WorkspaceMountResolution,
+} from './workspace.ts'
 import type {
   AskUserRequest,
   AskUserResponse,
@@ -35,6 +38,7 @@ export const IPC = {
   WORKSPACE_CREATE: 'workspace:create',
   WORKSPACE_SELECT: 'workspace:select',
   WORKSPACE_CURRENT: 'workspace:current',
+  WORKSPACE_MOUNT_STATUS: 'workspace:mount-status',
   /** 主进程打开系统目录选择器，只返回路径，不创建工作区 */
   WORKSPACE_PICK: 'workspace:pick',
 
@@ -85,6 +89,7 @@ export const IPC = {
 export type { PermissionRequest, PermissionResponse } from './permission.ts'
 export type { SessionMeta } from './session.ts'
 export type { Workspace } from './workspace.ts'
+export type { WorkspaceMountResolution } from './workspace.ts'
 
 export interface IpcCommand<Request, Response> {
   request: Request
@@ -99,6 +104,10 @@ export interface IpcCommandMap {
   'workspace:create': IpcCommand<{ path: string }, Workspace>
   'workspace:select': IpcCommand<{ workspaceId: string }, Workspace>
   'workspace:current': IpcCommand<undefined, Workspace | undefined>
+  'workspace:mount-status': IpcCommand<
+    { workspaceId: string },
+    WorkspaceMountResolution
+  >
   'workspace:pick': IpcCommand<undefined, string | null>
   'session:list': IpcCommand<undefined, SessionMeta[]>
   'session:create': IpcCommand<
@@ -159,6 +168,9 @@ export interface TgBuddyAPI {
       workspaceId: IpcRequest<'workspace:select'>['workspaceId'],
     ): Promise<IpcResponse<'workspace:select'>>
     current(): Promise<IpcResponse<'workspace:current'>>
+    mountStatus(
+      workspaceId: IpcRequest<'workspace:mount-status'>['workspaceId'],
+    ): Promise<IpcResponse<'workspace:mount-status'>>
     pick(): Promise<IpcResponse<'workspace:pick'>>
   }
   session: {

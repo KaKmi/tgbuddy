@@ -14,7 +14,10 @@ import type {
 import type { SessionMessage } from '../../shared/contracts/message.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
-import type { Workspace } from '../../shared/contracts/workspace.ts'
+import type {
+  Workspace,
+  WorkspaceMountResolution,
+} from '../../shared/contracts/workspace.ts'
 import {
   createAgentRuntimeEventPublisher,
   type AgentRuntimeEventListener,
@@ -25,6 +28,7 @@ export interface WorkspaceCommands {
   create(input: { path: string }): Workspace
   select(workspaceId: string): Workspace
   current(): Workspace | undefined
+  mountStatus(workspaceId: string): WorkspaceMountResolution
 }
 
 export interface SessionCommands {

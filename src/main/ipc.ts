@@ -47,6 +47,14 @@ export function registerIpc(
     (): IpcResponse<'workspace:current'> => agentRuntime.workspaces.current(),
   )
   ipcMain.handle(
+    IPC.WORKSPACE_MOUNT_STATUS,
+    (
+      _event,
+      input: IpcRequest<'workspace:mount-status'>,
+    ): IpcResponse<'workspace:mount-status'> =>
+      agentRuntime.workspaces.mountStatus(input.workspaceId),
+  )
+  ipcMain.handle(
     IPC.WORKSPACE_PICK,
     async (): Promise<IpcResponse<'workspace:pick'>> => {
       const win = getWindow()

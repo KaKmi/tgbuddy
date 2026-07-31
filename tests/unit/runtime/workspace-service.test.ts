@@ -4,6 +4,7 @@ import {
   type WorkspaceService,
 } from '../../../src/runtime/workspaces/workspace-service.ts'
 import type { WorkspaceRepository } from '../../../src/runtime/workspaces/workspace-repository.ts'
+import type { WorkspaceMountResolver } from '../../../src/runtime/workspaces/workspace-mount-resolver.ts'
 import type { SessionRepository } from '../../../src/runtime/sessions/session-repository.ts'
 import type { SessionMeta } from '../../../src/shared/contracts/session.ts'
 import type { Workspace } from '../../../src/shared/contracts/workspace.ts'
@@ -63,16 +64,35 @@ const paths = {
     paths.resolve(path).split(/[\\/]/).filter(Boolean).at(-1) ?? '工作区',
 }
 
+function fakeResolver(): WorkspaceMountResolver & { calls: string[] } {
+  const calls: string[] = []
+  return {
+    calls,
+    resolve(workspaceId, path) {
+      calls.push(`${workspaceId}:${path}`)
+      return {
+        ok: true,
+        mount: { workspaceId, path, resolvedAt: 1000 },
+      }
+    },
+  }
+}
+
+type RecordingResolver = WorkspaceMountResolver & { calls: string[] }
+
 function createService(options?: {
   repository?: MemoryWorkspaceRepository
   sessions?: MemorySessionRepository
+  resolver?: RecordingResolver
 }): {
   service: WorkspaceService
   repository: MemoryWorkspaceRepository
   sessions: MemorySessionRepository
+  resolver: RecordingResolver
 } {
   const repository = options?.repository ?? new MemoryWorkspaceRepository()
   const sessions = options?.sessions ?? new MemorySessionRepository()
+  const resolver: RecordingResolver = options?.resolver ?? fakeResolver()
   let id = 0
   const service = createWorkspaceService({
     repository,
@@ -80,8 +100,9 @@ function createService(options?: {
     createId: () => `ws-${++id}`,
     now: () => 1000,
     paths,
+    mountResolver: resolver,
   })
-  return { service, repository, sessions }
+  return { service, repository, sessions, resolver }
 }
 
 describe('WorkspaceService', () => {
@@ -163,5 +184,33 @@ describe('WorkspaceService', () => {
     const again = service.ensureDefault('C:\\project')
     expect(again.id).toBe('ws-1')
     expect(repository.list()).toHaveLength(1)
+  })
+
+  test('mountStatus 委托给 mount resolver 并透传结果', () => {
+    const { service, resolver } = createService()
+    const workspace = service.create({ path: 'C:\\work\\risk' })
+
+    const resolution = service.mountStatus(workspace.id)
+
+    expect(resolution).toEqual({
+      ok: true,
+      mount: {
+        workspaceId: workspace.id,
+        path: 'C:\\work\\risk',
+        resolvedAt: 1000,
+      },
+    })
+    expect(resolver.calls).toEqual([`${workspace.id}:C:\\work\\risk`])
+  })
+
+  test('mountStatus 对未知或缺少 mount 的工作区返回 missing', () => {
+    const { service, resolver } = createService()
+
+    expect(service.mountStatus('unknown')).toEqual({
+      ok: false,
+      code: 'missing',
+      path: '',
+    })
+    expect(resolver.calls).toEqual([])
   })
 })
