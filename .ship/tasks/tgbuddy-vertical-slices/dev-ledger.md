@@ -280,3 +280,11 @@ M3 里程碑收尾 — complete
   Commits: （本阶段文档提交）
   Results: docs/08-项目进度.md 标记 M3 完成并指向 M4 A01；AGENTS.md 删除表 C12 两项标记已删除（channel-store 拆为 data-dir + legacy-channels、tools/index 迁入 kernel/pi + 注入回收站端口）；README 状态行更新
   Concerns: 无未解决 P1/P2
+
+M2+M3 联合 QA（用户要求，可重复执行）— complete
+  Commits: 77cf183（fix）、8c2a0e5（docs）
+  Results: `.ship/tasks/tgbuddy-vertical-slices/qa/m2m3-qa-driver.mjs` 27/27 通过（冒烟 5 + M2 7 + M3 12 + 重启持久化/双会话 2 + 工具/技能/渠道/Profile/MCP 边界），截图 21 张
+  QA 发现的真实缺陷（已修复 + 回归）：
+  - P1：`SessionMeta.profileId` 从未落库——C04 只加契约与内存仓库，`app_sessions` 表与 SqliteSessionRepository 无对应列/映射，Profile 选择在真实运行中静默失效；修复为迁移 012 + repository 全映射（NOT NULL 列写空串）+ 静态 SQL 一致性测试（列/占位符/值三者锁死，防再次错位）
+  - P2：设置页创建 Profile 后输入区模型 chip 不刷新（profilesAtom 仅挂载时加载）；修复为 ModelChip 打开菜单时刷新渠道/Profile
+  Concerns: 全量回归 301/301、E2E 20/20、architecture/typecheck/build 全过；脚本用 Enter 提交与 IPC 驱动输入侧（规避 popover 遮罩竞态），用户可见结果断言保留
