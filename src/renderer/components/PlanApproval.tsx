@@ -4,16 +4,30 @@
  * 和权限确认同构（都靠 `PendingRequests` 挂起），但语义不同：
  * **拒绝不等于放弃**，而是「按我的意见改了再来」。所以拒绝时提供一个
  * 意见输入框，内容会作为工具结果回给模型。
+ *
+ * 展示按 Codex 的设计收口：首屏只给 TL;DR 摘要，完整计划折叠，
+ * 用户需要时再展开——批准前能快速判断，又不把长计划糊一脸。
  */
 
 import { useState } from 'react'
 import type { PlanRequest } from '../../shared/types/permission.ts'
 import { Response } from './ai-elements/response.tsx'
 
+/** 取计划正文的 TL;DR：第一个非空段落（截到 160 字，超长截断加省略号） */
+function planSummary(plan: string): string {
+  const first = plan
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0)
+  const text = first ?? plan
+  return text.length > 160 ? `${text.slice(0, 157)}…` : text
+}
+
 export function PlanApproval({ request }: { request: PlanRequest }) {
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   async function respond(approved: boolean) {
     setBusy(true)
@@ -43,7 +57,21 @@ export function PlanApproval({ request }: { request: PlanRequest }) {
       </div>
 
       <div className="px-3 pb-2">
-        <Response className="prose-p:my-1.5">{request.plan}</Response>
+        <div className="rounded-lg bg-white/[.03] px-2.5 py-2 text-[12px] leading-relaxed text-foreground/85">
+          {planSummary(request.plan)}
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="mt-1.5 text-[11px] text-[#8ba7c4] hover:text-[#cfe0f2]"
+        >
+          {expanded ? '▾ 收起完整计划' : '▸ 查看完整计划'}
+        </button>
+        {expanded && (
+          <div className="mt-1.5">
+            <Response className="prose-p:my-1.5">{request.plan}</Response>
+          </div>
+        )}
       </div>
 
       {rejecting && (

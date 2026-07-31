@@ -65,7 +65,7 @@ describe('ToolRegistry', () => {
 })
 
 describe('内置工具 adapter', () => {
-  test('read/write/bash/plan/ask_user 等全部经统一 descriptor 注册', () => {
+  test('read/write/bash/ask_user 等内置工具全部经统一 descriptor 注册，计划工具已移出工具区', () => {
     const registry = createBuiltinToolRegistry()
     const ids = registry.list().map((tool) => tool.id)
     for (const expected of [
@@ -75,12 +75,12 @@ describe('内置工具 adapter', () => {
       'bash',
       'delete',
       'glob',
-      'enter_plan_mode',
-      'exit_plan_mode',
       'ask_user',
     ]) {
       expect(ids).toContain(expected)
     }
+    expect(ids).not.toContain('enter_plan_mode')
+    expect(ids).not.toContain('exit_plan_mode')
   })
 
   test('读类工具默认 allow，写与命令默认 ask', () => {

@@ -250,35 +250,6 @@ export function registerIpc(
     IPC.TOOL_LIST,
     (): IpcResponse<'tool:list'> => agentRuntime.settings.listTools(),
   )
-  ipcMain.handle(
-    IPC.TOOL_PERMISSION_SET,
-    (
-      _event,
-      input: IpcRequest<'tool:permission-set'>,
-    ): IpcResponse<'tool:permission-set'> =>
-      agentRuntime.settings.setToolPermission(input.toolId, input.permission),
-  )
-  ipcMain.handle(
-    IPC.TOOL_PERMISSION_RESET,
-    (
-      _event,
-      input: IpcRequest<'tool:permission-reset'>,
-    ): IpcResponse<'tool:permission-reset'> =>
-      agentRuntime.settings.resetToolPermission(input.toolId),
-  )
-  ipcMain.handle(
-    IPC.TOOL_PERMISSIONS_RESET,
-    (): IpcResponse<'tool:permissions-reset'> =>
-      agentRuntime.settings.resetAllToolPermissions(),
-  )
-  ipcMain.handle(
-    IPC.TOOL_BULK_ASK,
-    (
-      _event,
-      input: IpcRequest<'tool:bulk-ask'>,
-    ): IpcResponse<'tool:bulk-ask'> =>
-      agentRuntime.settings.bulkSetAskTools(input.toolIds),
-  )
 
   ipcMain.handle(
     IPC.SKILL_LIST,

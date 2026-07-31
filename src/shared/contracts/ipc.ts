@@ -19,7 +19,7 @@ import type {
   ChannelTestResult,
 } from './channel.ts'
 import type { Profile, ProfileSaveInput } from './profile.ts'
-import type { ToolPermission, ToolSettingView } from './tool.ts'
+import type { ToolSettingView } from './tool.ts'
 import type { SkillGroupView } from './skill.ts'
 import type {
   McpSaveInput,
@@ -106,10 +106,6 @@ export const IPC = {
 
   // 工具三档权限
   TOOL_LIST: 'tool:list',
-  TOOL_PERMISSION_SET: 'tool:permission-set',
-  TOOL_PERMISSION_RESET: 'tool:permission-reset',
-  TOOL_PERMISSIONS_RESET: 'tool:permissions-reset',
-  TOOL_BULK_ASK: 'tool:bulk-ask',
 
   // 技能
   SKILL_LIST: 'skill:list',
@@ -201,13 +197,6 @@ export interface IpcCommandMap {
   'profile:save': IpcCommand<ProfileSaveInput, void>
   'profile:delete': IpcCommand<string, void>
   'tool:list': IpcCommand<undefined, ToolSettingView[]>
-  'tool:permission-set': IpcCommand<
-    { toolId: string; permission: ToolPermission },
-    void
-  >
-  'tool:permission-reset': IpcCommand<{ toolId: string }, void>
-  'tool:permissions-reset': IpcCommand<undefined, void>
-  'tool:bulk-ask': IpcCommand<{ toolIds: string[] }, void>
   'skill:list': IpcCommand<{ workspaceId?: string }, SkillGroupView[]>
   'skill:set-enabled': IpcCommand<{ skillId: string; enabled: boolean }, void>
   'mcp:list': IpcCommand<undefined, McpServerConfig[]>
@@ -313,17 +302,6 @@ export interface TgBuddyAPI {
   }
   tool: {
     list(): Promise<IpcResponse<'tool:list'>>
-    setPermission(
-      toolId: IpcRequest<'tool:permission-set'>['toolId'],
-      permission: IpcRequest<'tool:permission-set'>['permission'],
-    ): Promise<IpcResponse<'tool:permission-set'>>
-    resetPermission(
-      toolId: IpcRequest<'tool:permission-reset'>['toolId'],
-    ): Promise<IpcResponse<'tool:permission-reset'>>
-    resetAll(): Promise<IpcResponse<'tool:permissions-reset'>>
-    bulkAsk(
-      toolIds: IpcRequest<'tool:bulk-ask'>['toolIds'],
-    ): Promise<IpcResponse<'tool:bulk-ask'>>
   }
   skill: {
     list(

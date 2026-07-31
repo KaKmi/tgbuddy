@@ -166,8 +166,7 @@ const server = createServer((req, res) => {
       if (prompt.includes('M2 计划')) {
         const toolResults = messages.filter((m) => m.role === 'tool').length
         if (toolResults === 0) {
-          streamToolCall(res, 'enter_plan_mode', { reason: '先出计划再执行' }, 'call_qa_plan')
-        } else if (toolResults === 1) {
+          // 计划模式由用户模式 chip/IPC 显式进入，模型只负责提交计划
           streamToolCall(res, 'exit_plan_mode', { plan: '1. 修改文件\n2. 验证' }, 'call_qa_plan')
         } else {
           await streamText(res, 'M2 计划完成')
@@ -633,36 +632,31 @@ await step('M3：Profile 创建并可从输入区选择', async () => {
 })
 
 // ══ 4. M3 · 工具权限 ═══════════════════════════════════════
-await step('M3：工具三档设为禁止后调用被拒，恢复推荐后回默认', async () => {
-  // 前序「总是允许」规则会覆盖三档默认（规则优先级更高），先清空规则。
+await step('M3：工具权限只读展示；完全访问放行、默认权限询问', async () => {
   await page.evaluate(async () => {
     const rules = await window.tgbuddy.permission.rules()
     for (const rule of rules) await window.tgbuddy.permission.removeRule(rule.id)
   })
-  await page.evaluate(() => window.tgbuddy.tool.setPermission('write', 'deny'))
+  // 工具页只读：列表带内置分类默认权限，三档设置接口已移除
+  const listed = await page.evaluate(() => window.tgbuddy.tool.list())
+  if (!listed.some((tool) => tool.name === 'write')) throw new Error('工具列表缺少 write')
+  if (typeof window.tgbuddy.tool.setPermission !== 'undefined') throw new Error('三档设置接口未移除')
+
   await createSession(page)
+  const sessionId = await currentSessionId(page)
+  if (!sessionId) throw new Error('没有当前会话')
+  // 完全访问 = 全部放行：写操作直接执行，不再询问
+  await page.evaluate((sid) => window.tgbuddy.plan.setMode(sid, 'bypass'), sessionId)
   await send(page, 'M2 写入')
-  await page.getByText(/该工具已在设置中设为「禁止」/).waitFor({ timeout: 15000 })
-  await page.evaluate(() => window.tgbuddy.tool.resetAll())
+  await page.getByText('M2 写入完成', { exact: true }).waitFor({ timeout: 15000 })
+  await shot(page, '14-tool-bypass')
+  // 切回默认权限：写操作恢复逐次询问
+  await page.evaluate((sid) => window.tgbuddy.plan.setMode(sid, 'auto'), sessionId)
   await send(page, 'M2 写入')
   await page.getByText('请求执行 write').waitFor({ timeout: 10000 })
   await page.getByRole('button', { name: '允许', exact: true }).click()
   await page.getByText('M2 写入完成', { exact: true }).waitFor({ timeout: 15000 })
-  await shot(page, '14-tool-permission-deny')
-})
-
-await step('M3：工具三档设为允许后直接放行不询问', async () => {
-  await page.evaluate(async () => {
-    const rules = await window.tgbuddy.permission.rules()
-    for (const rule of rules) await window.tgbuddy.permission.removeRule(rule.id)
-  })
-  await page.evaluate(() => window.tgbuddy.tool.setPermission('write', 'allow'))
-  await createSession(page)
-  await send(page, 'M2 写入')
-  await page.waitForTimeout(2_500)
-  if ((await page.getByText('请求执行 write').count()) !== 0) throw new Error('允许后仍询问')
-  await page.getByText('M2 写入完成', { exact: true }).waitFor({ timeout: 15000 })
-  await page.evaluate(() => window.tgbuddy.tool.resetAll())
+  await shot(page, '15-tool-auto-ask')
 })
 
 // ══ 5. M3 · 技能 ═══════════════════════════════════════════

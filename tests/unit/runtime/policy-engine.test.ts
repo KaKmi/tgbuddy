@@ -7,14 +7,12 @@ import { MemoryPermissionRuleRepository } from '../../../src/runtime/permissions
 import type { PermissionRule } from '../../../src/shared/contracts/permission.ts'
 import { isReadOnlyCommand } from '../../../src/shared/contracts/permission.ts'
 import type { ToolPolicy, ToolPolicyInput } from '../../../src/runtime/runs/agent-engine.ts'
-import type { ToolPermission } from '../../../src/shared/contracts/tool.ts'
 
 interface HarnessOptions {
   rules?: PermissionRule[]
   mode?: (sessionId: string) => 'plan' | 'auto' | 'bypass'
   workspaceId?: (sessionId: string) => string | undefined
   ask?: (input: PermissionAskInput, signal: AbortSignal) => Promise<boolean>
-  toolPermission?: (toolName: string) => ToolPermission | undefined
 }
 
 function harness(options: HarnessOptions = {}): {
@@ -37,7 +35,6 @@ function harness(options: HarnessOptions = {}): {
         ? { allowed: outcome }
         : outcome
     },
-    getToolPermission: options.toolPermission,
   })
   return { policy, askCalls, controller }
 }
@@ -138,69 +135,8 @@ describe('PolicyEngine 基础决策', () => {
     expect(askCalls).toHaveLength(0)
   })
 
-  test('C06：工具设为禁止时直接 deny，不询问', async () => {
-    const { policy, askCalls } = harness({
-      toolPermission: (toolName) => (toolName === 'write' ? 'deny' : undefined),
-    })
-    expect(await policy.evaluate(tool(), new AbortController().signal)).toEqual({
-      action: 'deny',
-      reason: expect.stringContaining('禁止'),
-    })
-    expect(askCalls).toHaveLength(0)
-  })
-
-  test('C06：工具设为允许时直接放行，不询问', async () => {
-    const { policy, askCalls } = harness({
-      toolPermission: (toolName) => (toolName === 'write' ? 'allow' : undefined),
-    })
-    expect(await policy.evaluate(tool(), new AbortController().signal)).toEqual({
-      action: 'allow',
-    })
-    expect(askCalls).toHaveLength(0)
-  })
-
-  test('C06：显式询问与默认一致走 ask 落点', async () => {
-    const { policy, askCalls } = harness({
-      toolPermission: (toolName) => (toolName === 'write' ? 'ask' : undefined),
-    })
-    expect(await policy.evaluate(tool(), new AbortController().signal)).toEqual({
-      action: 'allow',
-    })
-    expect(askCalls).toHaveLength(1)
-  })
-
-  test('C06：规则优先级高于三档默认（规则放行时工具页禁止不生效）', async () => {
-    const rules: PermissionRule[] = [
-      {
-        id: 'rule-allow-write',
-        tool: 'write',
-        match: 'tool',
-        pattern: '',
-        action: 'allow',
-        scope: 'global',
-        neverPersist: false,
-        ownerId: '',
-        source: 'user',
-        reason: '测试规则',
-        createdAt: 1,
-        hits: 0,
-      },
-    ]
-    const { policy, askCalls } = harness({
-      rules,
-      toolPermission: (toolName) => (toolName === 'write' ? 'deny' : undefined),
-    })
-    expect(await policy.evaluate(tool(), new AbortController().signal)).toEqual({
-      action: 'allow',
-    })
-    expect(askCalls).toHaveLength(0)
-  })
-
-  test('C06：破坏性命令不受「允许」覆盖，但「禁止」仍生效', async () => {
-    const neverPersistPolicy = harness({
-      toolPermission: (toolName) =>
-        toolName === 'bash' ? 'allow' : undefined,
-    })
+  test('破坏性命令是硬约束：规则与模式都不能免除逐次确认', async () => {
+    const neverPersistPolicy = harness()
     expect(
       await neverPersistPolicy.policy.evaluate(
         tool({ toolName: 'bash', args: { command: 'rm -rf tmp/cache' } }),
@@ -208,17 +144,6 @@ describe('PolicyEngine 基础决策', () => {
       ),
     ).toEqual({ action: 'allow' })
     expect(neverPersistPolicy.askCalls).toHaveLength(1)
-
-    const deniedPolicy = harness({
-      toolPermission: (toolName) => (toolName === 'bash' ? 'deny' : undefined),
-    })
-    expect(
-      await deniedPolicy.policy.evaluate(
-        tool({ toolName: 'bash', args: { command: 'rm -rf tmp/cache' } }),
-        deniedPolicy.controller.signal,
-      ),
-    ).toEqual({ action: 'deny', reason: expect.stringContaining('禁止') })
-    expect(deniedPolicy.askCalls).toHaveLength(0)
   })
 
   test('tool 匹配的 allow 规则直接放行，deny 规则直接拒绝，都不询问', async () => {

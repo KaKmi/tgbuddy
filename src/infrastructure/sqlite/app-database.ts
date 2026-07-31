@@ -8,7 +8,6 @@ import appWorkspacesSql from './migrations/004_app_workspaces.sql'
 import appPermissionRulesSql from './migrations/005_app_permission_rules.sql'
 import appChannelsSql from './migrations/006_app_channels.sql'
 import appProfilesSql from './migrations/007_app_profiles.sql'
-import appToolSettingsSql from './migrations/008_app_tool_settings.sql'
 import appMcpServersSql from './migrations/009_app_mcp_servers.sql'
 import appMcpServersKeySql from './migrations/010_app_mcp_servers_key.sql'
 import appRunsSql from './migrations/011_app_runs.sql'
@@ -60,10 +59,6 @@ const APP_MIGRATIONS: readonly AppMigration[] = [
   {
     id: '007_app_profiles.sql',
     sql: appProfilesSql,
-  },
-  {
-    id: '008_app_tool_settings.sql',
-    sql: appToolSettingsSql,
   },
   {
     id: '009_app_mcp_servers.sql',

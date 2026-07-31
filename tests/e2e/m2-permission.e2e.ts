@@ -96,7 +96,10 @@ test('「总是允许」规则跨重启生效：授权一次后不再询问', as
     await tgbuddy.page.getByTestId('session-item').click()
     await send(tgbuddy.page, 'M2 写入')
     await expect(tgbuddy.page.getByText('请求执行 write')).toHaveCount(0)
-    await expect(tgbuddy.page.getByText('M2 写入完成', { exact: true })).toBeVisible()
+    // 重启后历史消息也会渲染，取最后一条（本次 Run 的完成文本）
+    await expect(
+      tgbuddy.page.getByText('M2 写入完成', { exact: true }).last(),
+    ).toBeVisible()
   } finally {
     await rm(workspace, { recursive: true, force: true })
   }

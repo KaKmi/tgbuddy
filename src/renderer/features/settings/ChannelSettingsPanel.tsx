@@ -232,21 +232,6 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
     }
   }
 
-  async function setToolPermission(toolId: string, permission: ToolPermission) {
-    await window.tgbuddy.tool.setPermission(toolId, permission)
-    await refresh()
-  }
-
-  async function bulkAskAll() {
-    await window.tgbuddy.tool.bulkAsk(tools.map((tool) => tool.id))
-    await refresh()
-  }
-
-  async function resetAllTools() {
-    await window.tgbuddy.tool.resetAll()
-    await refresh()
-  }
-
   function startEditMcp(server?: McpServerConfig) {
     setEditingMcpId(server?.id ?? '')
     setMcpForm(
@@ -755,22 +740,9 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
           <div className="mb-2 mt-5 flex items-center gap-2 px-0.5">
             <span className="text-[11px] tracking-wide text-[#6d6d75]">工具</span>
             <div className="h-px flex-1 bg-white/5" />
-            <button
-              type="button"
-              data-testid="tools-bulk-ask"
-              onClick={() => void bulkAskAll()}
-              className="rounded-md px-2 py-1 text-[11px] text-sky-300 hover:bg-accent/60"
-            >
-              全部改为询问
-            </button>
-            <button
-              type="button"
-              data-testid="tools-reset-all"
-              onClick={() => void resetAllTools()}
-              className="rounded-md px-2 py-1 text-[11px] text-sky-300 hover:bg-accent/60"
-            >
-              恢复推荐
-            </button>
+            <span className="text-[10.5px] text-[#63636b]">
+              权限由输入框上方的权限模式与「总是允许」规则控制，此处仅展示内置分类默认
+            </span>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -793,44 +765,7 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
                     {tool.name}
                   </span>
                 </div>
-                <div className="flex gap-1">
-                  <div className="flex rounded-lg bg-white/5 p-0.5">
-                    {PERMISSION_OPTIONS.map((option) => {
-                      const selected = tool.permission === option.id
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          data-testid={`tool-perm-${tool.id}-${option.id}`}
-                          disabled={!tool.enabled}
-                          onClick={() =>
-                            void setToolPermission(tool.id, option.id)
-                          }
-                          className="rounded-md px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40"
-                          style={{
-                            background: selected ? option.bg : 'transparent',
-                            color: selected ? option.fg : '#8a8a92',
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <button
-                    type="button"
-                    data-testid={`tool-reset-${tool.id}`}
-                    onClick={() =>
-                      void window.tgbuddy.tool
-                        .resetPermission(tool.id)
-                        .then(() => refresh())
-                    }
-                    className="rounded-md px-2 py-1 text-[10.5px] text-[#63636b] hover:bg-white/10 hover:text-[#8a8a92]"
-                    title="恢复推荐"
-                  >
-                    重置
-                  </button>
-                </div>
+                <PermissionBadge permission={tool.permission} />
               </div>
             ))}
             {tools.length === 0 && (
@@ -1024,11 +959,7 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
                       {status.error}
                     </div>
                   )}
-                  <McpToolsSection
-                    server={server}
-                    tools={tools}
-                    onChanged={() => refresh()}
-                  />
+                  <McpToolsSection server={server} tools={tools} />
                 </div>
               )
             })}
@@ -1183,16 +1114,24 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   )
 }
 
-const PERMISSION_OPTIONS: Array<{
-  id: ToolPermission
-  label: string
-  bg: string
-  fg: string
-}> = [
-  { id: 'allow', label: '允许', bg: 'rgba(143,198,165,.18)', fg: '#8fc6a5' },
-  { id: 'ask', label: '询问', bg: 'rgba(224,163,62,.18)', fg: '#e0c39e' },
-  { id: 'deny', label: '禁止', bg: 'rgba(201,99,91,.18)', fg: '#e5a49d' },
-]
+/** 权限徽标（只读展示）：内置分类默认值，不是可编辑控件 */
+function PermissionBadge({ permission }: { permission: ToolPermission }) {
+  const meta: Record<ToolPermission, { label: string; bg: string; fg: string }> = {
+    allow: { label: '允许', bg: 'rgba(143,198,165,.14)', fg: '#8fc6a5' },
+    ask: { label: '询问', bg: 'rgba(224,163,62,.14)', fg: '#e0c39e' },
+    deny: { label: '禁止', bg: 'rgba(201,99,91,.14)', fg: '#e5a49d' },
+  }
+  const current = meta[permission]
+  return (
+    <span
+      data-testid={`tool-perm-badge-${permission}`}
+      className="flex-none rounded-md px-2 py-0.5 text-[10.5px]"
+      style={{ background: current.bg, color: current.fg }}
+    >
+      {current.label}
+    </span>
+  )
+}
 
 const MCP_STATUS_META: Record<
   McpServerStatus['state'],
@@ -1207,11 +1146,9 @@ const MCP_STATUS_META: Record<
 function McpToolsSection({
   server,
   tools,
-  onChanged,
 }: {
   server: McpServerConfig
   tools: ToolSettingView[]
-  onChanged(): Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const serverTools = tools.filter((tool) => tool.id.startsWith(`${server.key}.`))
@@ -1236,30 +1173,7 @@ function McpToolsSection({
               <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[#dcdce1]">
                 {tool.id}
               </span>
-              <div className="flex rounded-lg bg-white/5 p-0.5">
-                {PERMISSION_OPTIONS.map((option) => {
-                  const selected = tool.permission === option.id
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      data-testid={`mcp-tool-perm-${tool.name}-${option.id}`}
-                      onClick={() =>
-                        void window.tgbuddy.tool
-                          .setPermission(tool.id, option.id)
-                          .then(onChanged)
-                      }
-                      className="rounded-md px-1.5 py-0.5 text-[10.5px]"
-                      style={{
-                        background: selected ? option.bg : 'transparent',
-                        color: selected ? option.fg : '#8a8a92',
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  )
-                })}
-              </div>
+              <PermissionBadge permission={tool.permission} />
             </div>
           ))}
           {serverTools.length === 0 && (

@@ -88,12 +88,6 @@ const api = {
   },
   tool: {
     list: () => ipcRenderer.invoke(IPC.TOOL_LIST),
-    setPermission: (toolId, permission) =>
-      ipcRenderer.invoke(IPC.TOOL_PERMISSION_SET, { toolId, permission }),
-    resetPermission: (toolId) =>
-      ipcRenderer.invoke(IPC.TOOL_PERMISSION_RESET, { toolId }),
-    resetAll: () => ipcRenderer.invoke(IPC.TOOL_PERMISSIONS_RESET),
-    bulkAsk: (toolIds) => ipcRenderer.invoke(IPC.TOOL_BULK_ASK, { toolIds }),
   },
   skill: {
     list: (workspaceId) => ipcRenderer.invoke(IPC.SKILL_LIST, { workspaceId }),

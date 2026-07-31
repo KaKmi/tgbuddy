@@ -20,11 +20,12 @@ async function switchMode(page: Page, from: string, to: string): Promise<void> {
 
 test('计划模式完整闭环：进入调研 → 提交计划 → 批准后执行', async ({ tgbuddy }) => {
   await createSession(tgbuddy.page)
+  // 计划模式由用户模式 chip 显式进入（技能承载规划流程）
+  await switchMode(tgbuddy.page, '默认权限', '计划模式')
   await send(tgbuddy.page, 'M2 计划')
 
-  // enter_plan_mode 执行后模式变为计划
+  // 计划模式下模型调研后提交计划 → 审批卡
   await expect(tgbuddy.page.getByRole('button', { name: '计划模式', exact: true })).toBeVisible()
-  // exit_plan_mode 提交计划 → 审批卡
   await expect(tgbuddy.page.getByText('计划待审批')).toBeVisible()
   await expect(tgbuddy.page.getByText('修改 m2-write.txt')).toBeVisible()
 

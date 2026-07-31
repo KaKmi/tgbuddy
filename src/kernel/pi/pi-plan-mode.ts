@@ -1,14 +1,14 @@
 /**
- * 计划模式的两个工具（pi adapter）。
+ * 计划模式提交工具（pi adapter）。
  *
  * pi 明确把 plan mode 列为 non-goal（`docs/usage.md:306`），所以完全自建。
- * 计划模式属于宿主侧能力，由两个工具和权限判定共同实现：
- *   - `enter_plan_mode` 进入只读调研；
- *   - `exit_plan_mode` 提交计划，经 PlanAskBroker 挂起等用户审批，
- *     批准后退出计划模式开始执行，拒绝时把意见带回给模型继续修改。
+ * 计划模式已 skill 化：进入由用户通过权限模式 chip 显式切换（对应 Codex
+ * 的显式模态），规划方法论由内置「计划模式」技能承载；这里只保留一个宿主
+ * 只读能力 `exit_plan_mode`（提交计划）——像 skill 工具一样始终注入、
+ * 不进工具区、不参与权限设置。
  *
  * 判定规则在 `policy-engine.ts` 的 `mode === 'plan'` 分支：
- *   只读工具放行 / `.md` 写入放行 / 只读 bash 放行 / 其余一律拒绝。
+ *   只读工具放行 / `.md` 写入放行 / 只读 bash 放行 / 只读 MCP 放行 / 其余拒绝。
  */
 
 import { Type } from '@earendil-works/pi-ai'
@@ -30,40 +30,7 @@ export interface PlanModeHooks {
 }
 
 export function buildPlanModeTools(hooks: PlanModeHooks): AgentTool[] {
-  return [enterPlanMode(hooks), exitPlanMode(hooks)]
-}
-
-function enterPlanMode(hooks: PlanModeHooks): AgentTool {
-  return {
-    name: 'enter_plan_mode',
-    label: '进入计划模式',
-    description:
-      '当任务复杂、涉及多处修改、或你不确定用户的真实意图时，先进入计划模式。' +
-      '进入后只能读取和调研，写操作会被拒绝，直到你用 exit_plan_mode 提交计划并获得批准。',
-    parameters: Type.Object({
-      reason: Type.String({ description: '为什么需要先出计划，一句话' }),
-    }),
-    execute: async (_id, params) => {
-      const { reason } = params as { reason: string }
-      if (hooks.getMode() === 'plan') {
-        return {
-          content: [{ type: 'text', text: '已经处于计划模式，无需重复进入。' }],
-          details: { action: 'read' },
-        }
-      }
-      hooks.setMode('plan')
-      hooks.onModeChanged('plan', 'tool')
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `已进入计划模式（${reason}）。现在只能读取和调研，写操作会被拒绝。调研完成后用 exit_plan_mode 提交计划。`,
-          },
-        ],
-        details: { action: 'read' },
-      }
-    },
-  }
+  return [exitPlanMode(hooks)]
 }
 
 function exitPlanMode(hooks: PlanModeHooks): AgentTool {

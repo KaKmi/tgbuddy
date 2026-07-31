@@ -30,7 +30,6 @@ import {
   type SkillCatalog,
   type McpManager,
   type ToolRegistry,
-  type ToolSettingsService,
   type WorkspaceCommands,
 } from '../../runtime/index.ts'
 import { formatSkillsSystemPrompt } from '../../kernel/pi/index.ts'
@@ -62,8 +61,6 @@ export interface CreateLegacyRuntimeOptions {
   providerCatalog: ProviderCatalog
   /** C04：命名模型配置预设，Run 启动时固化为不可变快照 */
   profiles: ProfileService
-  /** C06：工具三档权限设置（UI 值与 Tool 实例分离） */
-  toolSettings: ToolSettingsService
   /** C07：技能目录发现（内置/用户级/工作区） */
   skills: SkillCatalog
   /** C09：MCP 服务配置与连接状态（传输实现由 Composition Root 注入） */
@@ -224,19 +221,19 @@ export function createLegacyRuntime(
       deleteProfile: (profileId) => {
         options.profiles.delete(profileId)
       },
-      listTools: () => options.toolSettings.listTools(),
-      setToolPermission: (toolId, permission) => {
-        options.toolSettings.set(toolId, permission)
-      },
-      resetToolPermission: (toolId) => {
-        options.toolSettings.reset(toolId)
-      },
-      resetAllToolPermissions: () => {
-        options.toolSettings.resetAll()
-      },
-      bulkSetAskTools: (toolIds) => {
-        options.toolSettings.bulkSetAsk(toolIds)
-      },
+      // 工具权限只读展示：权限由描述符内置分类派生，配置入口在权限模式与规则
+      listTools: () =>
+        options.toolRegistry.list().map((descriptor) => ({
+          id: descriptor.id,
+          name: descriptor.name,
+          label: descriptor.label,
+          description: descriptor.description,
+          category: descriptor.category,
+          source: descriptor.source,
+          enabled: descriptor.enabled,
+          permission: descriptor.defaultPermission,
+          ...(descriptor.note ? { note: descriptor.note } : {}),
+        })),
       listSkills: (workspaceId) => options.skills.groups(workspaceId),
       setSkillEnabled: (skillId, enabled) => {
         options.skills.setEnabled(skillId, enabled)

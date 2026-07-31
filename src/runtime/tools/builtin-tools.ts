@@ -4,7 +4,9 @@ import { createToolRegistry, type ToolRegistry } from './tool-registry.ts'
 /**
  * 内置工具的统一描述符（settings/tools 的展示与默认权限来源）。
  * 名称必须与 pi 工具实际构造名一致：read/write/edit/bash 来自
- * pi agent-core，delete/glob 是自建，plan/ask_user 是 kernel adapter。
+ * pi agent-core，delete/glob 是自建，ask_user 是 kernel adapter。
+ * 计划模式已 skill 化：enter/exit_plan_mode 不再作为工具区条目，
+ * 提交计划是宿主只读能力（始终注入，不进设置列表）。
  */
 export const BUILTIN_TOOL_DESCRIPTORS: readonly ToolDescriptor[] = [
   {
@@ -63,26 +65,6 @@ export const BUILTIN_TOOL_DESCRIPTORS: readonly ToolDescriptor[] = [
     name: 'delete',
     label: '删除文件',
     description: '删除文件或目录，默认移入系统回收站',
-    category: 'builtin',
-    source: '内置',
-    defaultPermission: 'ask',
-    enabled: true,
-  },
-  {
-    id: 'enter_plan_mode',
-    name: 'enter_plan_mode',
-    label: '进入计划模式',
-    description: '进入只读调研，写操作会被拒绝直到计划获批',
-    category: 'builtin',
-    source: '内置',
-    defaultPermission: 'ask',
-    enabled: true,
-  },
-  {
-    id: 'exit_plan_mode',
-    name: 'exit_plan_mode',
-    label: '提交计划',
-    description: '提交计划等待用户审批，批准后退出计划模式',
     category: 'builtin',
     source: '内置',
     defaultPermission: 'ask',

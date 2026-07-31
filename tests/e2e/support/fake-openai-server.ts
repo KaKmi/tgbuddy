@@ -159,13 +159,7 @@ async function handleRequest(
     if (prompt.includes('M2 计划')) {
       const toolResults = messages.filter((message) => message.role === 'tool').length
       if (toolResults === 0) {
-        streamToolCall(
-          response,
-          'enter_plan_mode',
-          { reason: '先出计划再执行' },
-          'call_e2e_plan',
-        )
-      } else if (toolResults === 1) {
+        // 计划模式由用户模式 chip 显式进入，模型只负责提交计划等待审批
         streamToolCall(
           response,
           'exit_plan_mode',

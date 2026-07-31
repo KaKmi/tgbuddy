@@ -6,10 +6,7 @@ import type {
   ChannelSaveInput,
 } from '../../shared/contracts/channel.ts'
 import type { Profile, ProfileSaveInput } from '../../shared/contracts/profile.ts'
-import type {
-  ToolPermission,
-  ToolSettingView,
-} from '../../shared/contracts/tool.ts'
+import type { ToolSettingView } from '../../shared/contracts/tool.ts'
 import type { SkillGroupView } from '../../shared/contracts/skill.ts'
 import type {
   McpSaveInput,
@@ -124,12 +121,8 @@ export interface SettingsCommands {
   listProfiles(): Profile[]
   saveProfile(profile: ProfileSaveInput): void
   deleteProfile(profileId: string): void
-  /** C06：工具三档权限设置（与 registry 合并后的最终视图） */
+  /** 工具只读展示（权限由内置分类派生，配置入口在权限模式与「总是允许」规则） */
   listTools(): ToolSettingView[]
-  setToolPermission(toolId: string, permission: ToolPermission): void
-  resetToolPermission(toolId: string): void
-  resetAllToolPermissions(): void
-  bulkSetAskTools(toolIds: string[]): void
   /** C07：技能目录（按来源分组），workspaceId 切换即刷新 */
   listSkills(workspaceId?: string): SkillGroupView[]
   setSkillEnabled(skillId: string, enabled: boolean): void

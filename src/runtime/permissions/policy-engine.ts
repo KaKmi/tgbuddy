@@ -2,7 +2,6 @@ import type {
   PermissionMode,
   PermissionRule,
 } from '../../shared/contracts/permission.ts'
-import type { ToolPermission } from '../../shared/contracts/tool.ts'
 import { isReadLikeMcpMethod } from '../mcp/mcp-manager.ts'
 import {
   isNeverPersist,
@@ -34,15 +33,12 @@ export interface PolicyEngineDependencies {
     input: PermissionAskInput,
     signal: AbortSignal,
   ): Promise<{ allowed: boolean; reason?: string }>
-  /**
-   * C06：工具三档默认（规则优先级以下）。返回 undefined 时
-   * 走内置兜底（读类放行、其余询问）。
-   */
-  getToolPermission?(toolName: string): ToolPermission | undefined
 }
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search', 'skill'])
-const CONTROL_TOOLS = new Set(['enter_plan_mode', 'exit_plan_mode', 'ask_user'])
+// 计划模式已 skill 化：提交计划（exit_plan_mode）与提问（ask_user）都是
+// 宿主只读能力，始终放行，不受权限模式与规则影响
+const CONTROL_TOOLS = new Set(['exit_plan_mode', 'ask_user'])
 
 export function isControlTool(toolName: string): boolean {
   return CONTROL_TOOLS.has(toolName)
@@ -157,13 +153,9 @@ export function createPolicyEngine(
         return deny('拒绝执行系统级工具：这类命令能绕过沙箱限制')
       }
 
-      const toolPermission = dependencies.getToolPermission?.(toolName)
       const neverPersist = isNeverPersist(toolName, args)
       if (neverPersist) {
-        // 破坏性命令是硬约束：不被规则或「允许」覆盖，但「禁止」仍然生效。
-        if (toolPermission === 'deny') {
-          return deny(`该工具已在设置中设为「禁止」：${toolName}`)
-        }
+        // 破坏性命令是硬约束：规则与模式都不能免除逐次确认
         const outcome = await dependencies.ask(
           {
             sessionId,
@@ -192,12 +184,7 @@ export function createPolicyEngine(
           : { action: 'allow' }
       }
 
-      // C06：三档默认低于规则，高于内置兜底。
-      if (toolPermission === 'deny') {
-        return deny(`该工具已在设置中设为「禁止」：${toolName}`)
-      }
-      if (toolPermission === 'allow') return { action: 'allow' }
-
+      // 内置分类兜底：只读工具直接放行，其余询问
       if (READONLY_TOOLS.has(toolName)) return { action: 'allow' }
 
       const outcome = await dependencies.ask(

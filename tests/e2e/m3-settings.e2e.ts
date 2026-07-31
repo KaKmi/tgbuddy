@@ -22,6 +22,11 @@ async function send(page: Page, prompt: string): Promise<void> {
   await page.getByRole('button', { name: '发送', exact: true }).click()
 }
 
+async function switchMode(page: Page, from: string, to: string): Promise<void> {
+  await page.getByRole('button', { name: from, exact: true }).first().click()
+  await page.getByRole('button', { name: new RegExp(`^${to}\\s`) }).click()
+}
+
 test('C02：设置页渠道 CRUD，密钥只存 ref 不回传明文', async ({ tgbuddy }) => {
   const page = tgbuddy.page
   await openSettings(page)
@@ -71,21 +76,27 @@ test('C04：输入区模型 chip 选择写入会话元数据', async ({ tgbuddy 
   expect(sessions[0]?.modelId).toBeTruthy()
 })
 
-test('C06：工具三档权限设为禁止后，调用被策略拒绝', async ({ tgbuddy }) => {
+test('工具权限只读展示；完全访问放行写操作、默认权限询问', async ({ tgbuddy }) => {
   const page = tgbuddy.page
   await openSettings(page)
 
+  // 工具页只读展示：内置分类徽标（写入 = 询问），无三档编辑控件
   const writeRow = page.getByTestId('tool-row').filter({ hasText: '写入文件' })
   await expect(writeRow).toBeVisible()
-  await writeRow.getByTestId('tool-perm-write-deny').click()
+  await expect(writeRow.getByTestId('tool-perm-badge-ask')).toBeVisible()
+  await expect(page.getByTestId('tool-perm-write-deny')).toHaveCount(0)
   await closeSettings(page)
 
   await createSession(page)
+  // 完全访问 = 全部放行：写操作直接执行，不再询问
+  await switchMode(page, '默认权限', '完全访问')
   await send(page, 'M2 写入')
-  await expect(page.getByText(/该工具已在设置中设为「禁止」/)).toBeVisible()
-  // Run 已收口，输入框可再次发送
-  await page.getByPlaceholder(/说点什么/).fill('再试一次')
-  await expect(page.getByRole('button', { name: '发送', exact: true })).toBeEnabled()
+  await expect(page.getByText('M2 写入完成', { exact: true })).toBeVisible()
+
+  // 切回默认权限：写操作恢复逐次询问
+  await switchMode(page, '完全访问', '默认权限')
+  await send(page, 'M2 写入')
+  await expect(page.getByText('请求执行 write')).toBeVisible()
 })
 
 test('C07：内置技能出现在设置列表并可切换开关', async ({ tgbuddy }) => {
@@ -98,6 +109,11 @@ test('C07：内置技能出现在设置列表并可切换开关', async ({ tgbud
   await expect(toggle).toHaveAttribute('aria-checked', 'true')
   await toggle.click()
   await expect(page.getByTestId('skill-toggle-reg-check')).toHaveAttribute('aria-checked', 'false')
+
+  // 计划模式已 skill 化：内置计划技能出现在设置列表
+  await expect(
+    page.getByTestId('skill-row').filter({ hasText: 'plan-mode' }),
+  ).toBeVisible()
 })
 
 test('C09/C10/C11：MCP 连接、工具发现与真实调用闭环', async ({ tgbuddy }) => {
