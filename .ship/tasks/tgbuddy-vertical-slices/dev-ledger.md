@@ -222,3 +222,11 @@ C08: "Skill 正文按调用加载" — complete
   验证: `bun test tests/unit/infrastructure/skill-loader.test.ts`（4/4）+ pi-skill-tool（4/4）、全量 `bun test` 267/267、check:architecture、typecheck、build 全过
   删除项: 无（Skill 内容不常驻全局 prompt，无第三方插件 ABI）
   Concerns: token 估算为 4 字符/token 的粗略值（仅记账/用量提示，C12 精确分类记账）；skill 工具读取资源未走 per-run 沙箱（技能 root 已是工作区/数据目录内边界，越界引用由 loader 拒绝）；正文文件在运行中修改会影响当次加载（清单冻结、内容按需读取，符合原型「判断需要时才读进来」）。
+
+C09: "MCP 配置、连接与状态卡" — complete
+  Commits: 6f91e63
+  Files: src/shared/contracts/mcp.ts, src/runtime/mcp/mcp-config-repository.ts, src/runtime/mcp/ports/mcp-transport.ts, src/runtime/mcp/mcp-manager.ts, src/infrastructure/mcp/sdk-mcp-transport.ts, src/infrastructure/mcp/index.ts, src/infrastructure/sqlite/migrations/009_app_mcp_servers.sql, src/infrastructure/sqlite/repositories/sqlite-mcp-config-repository.ts, src/infrastructure/sqlite/app-database.ts, src/infrastructure/sqlite/index.ts, src/runtime/app/agent-runtime.ts, src/shared/contracts/ipc.ts, src/main/ipc.ts, src/preload/index.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/renderer/features/settings/ChannelSettingsPanel.tsx, scripts/mcp-fixture-server.mjs, package.json, bun.lock, tests/unit/runtime/mcp-manager.test.ts, tests/unit/runtime/agent-runtime.test.ts
+  Produces: `McpServerConfig`/`McpSaveInput`/`McpServerStatus`（shared 契约）；`McpConfigRepository` 端口 + Memory + `SqliteMcpConfigRepository` + `009_app_mcp_servers.sql`；`McpTransport`/`McpTransportFactory` 端口 + `SdkMcpTransportFactory`（@modelcontextprotocol/sdk：stdio 子进程 / http SSE，connect 完成 initialize 握手）；`createMcpManager()`（连接状态 off/connecting/connected/error、超时 15s、环境变量 `secret:<ref>` 替换、禁用拒绝连接、断开/重连、配置变更断开旧连接）；SettingsCommands + IPC `mcp:list/save/delete/connect/disconnect/status` + Preload；设置面板连接器卡片（状态点/连接/断开/重连/错误展示，样式取自原型 connectors）；scripts/mcp-fixture-server.mjs（最小 stdio MCP echo 服务）
+  验证: `bun test tests/unit/runtime/mcp-manager.test.ts`（7/7）、全量 `bun test` 274/274、check:architecture、typecheck、build 全过；SDK↔fixture server 冒烟（connect/listTools/callTool echo 成功）
+  删除项: 无（此 Slice 不把 MCP tool 注入 Run；C10 才接工具发现）
+  Concerns: 依赖新增 @modelcontextprotocol/sdk@1.30.0（打包需进 node_modules，M6 收口）；save 同步断开旧连接（fire-and-forget）；http 用 SSE transport，新版 streamable http 留后续；env 的 secret 引用由用户手填 ref（设置页未提供密钥选择器）。
