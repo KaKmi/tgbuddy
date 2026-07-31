@@ -190,3 +190,11 @@ C04: "Profile 与输入区模型选择" — complete
   验证: `bun test tests/unit/runtime/profile-service.test.ts`（7/7）、tests/model-chip-state.test.ts（4/4）、全量 `bun test` 233/233、check:architecture、typecheck、build 全过
   删除项: 无（Run 启动已固化 channel/model/systemPrompt，不再中途读全局 mutable settings）
   Concerns: 生产文件 16 个超过 6 个护栏（纵向切片契约→Runtime→SQLite→IPC→Renderer，与 C02/C03 同因）；Profile 删除后选中它的会话回退到直接模型选择（resolveModelSelection 找不到即跳过）；「默认 Profile」取最早创建，无显式标记；模型 chip 文案纯函数有独立测试，下拉交互留 E2E。
+
+C05: "ToolRegistry 与内置工具快照" — complete
+  Commits: d45bcd2
+  Files: src/shared/contracts/tool.ts, src/runtime/tools/tool-registry.ts, src/runtime/tools/builtin-tools.ts, src/runtime/index.ts, src/main/bootstrap/create-application.ts, tests/unit/runtime/tool-registry.test.ts
+  Produces: `ToolDescriptor`/`ToolPermission`/`ToolCategory`（shared 契约）；`createToolRegistry({ descriptors })`（重复 id 拒绝、setEnabled、snapshot 冻结副本）；`BUILTIN_TOOL_DESCRIPTORS` + `createBuiltinToolRegistry()`（read/glob 默认 allow，write/edit/bash/delete/plan/ask_user 默认 ask）；engine tools factory 按 snapshot 启用集合过滤基础六工具与 plan/ask_user（顺序稳定）
+  验证: `bun test tests/unit/runtime/tool-registry.test.ts`（7/7）、全量 `bun test` 240/240、check:architecture、typecheck、build 全过
+  删除项: 无（main/tools/index.ts 构造职责保留，C12 删除；元数据已迁入 runtime 描述符）
+  Concerns: 描述符元数据与 pi 工具对象内的 description 各自维护（settings 展示用描述符、模型看到的是 pi 原文，名称已用测试对齐）；enable/disable 暂存内存，持久化与 PolicyEngine 接线在 C06。
