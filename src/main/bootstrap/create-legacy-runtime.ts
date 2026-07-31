@@ -13,6 +13,7 @@ import {
   type AgentRuntime,
   type AgentEngine,
   type AgentInvocation,
+  type AskUserBroker,
   type ContextCompactor,
   type PermissionAskBroker,
   type PlanAskBroker,
@@ -24,7 +25,6 @@ import {
 } from '../../runtime/index.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
-import * as askUser from '../ask-user-service.ts'
 import {
   ensureDataDir,
   listChannels,
@@ -42,6 +42,8 @@ export interface CreateLegacyRuntimeOptions {
   permissions: PermissionAskBroker
   /** S09：计划审批由 Runtime broker 持有；respond/pending/clearSession 都走它 */
   plans: PlanAskBroker
+  /** S10：用户问答由 Runtime broker 持有；respond/pending/clearSession 都走它 */
+  questions: AskUserBroker
   /** S07：规则持久化仓库（SQLite），同时服务策略引擎与规则列表 IPC */
   rules: PermissionRuleRepository
   dispose?(): Promise<void>
@@ -77,7 +79,7 @@ export function createLegacyRuntime(
       async settled(settlement) {
         options.permissions.clearSession(settlement.sessionId)
         options.plans.clearSession(settlement.sessionId)
-        askUser.clearSession(settlement.sessionId)
+        options.questions.clearSession(settlement.sessionId)
         return requireSessionUpdate(
           settlement.sessionId,
           options.sessions.updateMeta(settlement.sessionId, {
@@ -114,8 +116,8 @@ export function createLegacyRuntime(
       setMode: permission.setMode,
     },
     questions: {
-      respond: askUser.respond,
-      pending: askUser.getPending,
+      respond: (response) => options.questions.respond(response),
+      pending: options.questions.pending,
     },
     context: {
       start: context.start,

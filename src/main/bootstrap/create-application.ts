@@ -4,6 +4,7 @@ import {
   resolve,
 } from 'node:path'
 import {
+  createAskUserBroker,
   createPlanAskBroker,
   createPermissionAskBroker,
   createPolicyEngine,
@@ -22,6 +23,7 @@ import {
 } from '../../infrastructure/sqlite/index.ts'
 import { NodeWorkspaceMountResolver } from '../../infrastructure/workspace/index.ts'
 import {
+  buildAskUserTool,
   buildPlanModeTools,
   createPiAgentEngine,
   createPiContextCompactor,
@@ -127,6 +129,22 @@ export async function createApplication(
       })
     },
   })
+  // S10：ask_user 的结构化问题同样由 Runtime broker 持有。
+  const askUserBroker = createAskUserBroker({
+    createId,
+    emitRequest(request) {
+      const win = options.getWindow()
+      if (!win || win.isDestroyed()) return
+      win.webContents.send(IPC.AGENT_STREAM, {
+        sessionId: request.sessionId,
+        runId: 0,
+        payload: {
+          channel: 'host',
+          event: { type: 'ask_user_request', request },
+        },
+      })
+    },
+  })
 
   let messageStore: ReturnType<typeof createPiSessionStore> | undefined
   let agentRuntime: AgentRuntime
@@ -195,6 +213,10 @@ export async function createApplication(
               requestApproval: (plan, signal) =>
                 planAskBroker.requestApproval({ sessionId, plan }, signal),
             }),
+            buildAskUserTool({
+              requestAnswers: (questions, signal) =>
+                askUserBroker.requestAnswers({ sessionId, questions }, signal),
+            }),
           ]
         },
         toolPolicy: createPolicyEngine({
@@ -221,6 +243,7 @@ export async function createApplication(
       workspaces: workspaceService,
       permissions: permissionAskBroker,
       plans: planAskBroker,
+      questions: askUserBroker,
       rules: permissionRules,
       dispose: () => createdMessageStore.dispose(),
     })

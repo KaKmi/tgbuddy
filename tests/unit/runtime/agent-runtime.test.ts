@@ -206,4 +206,26 @@ describe('AgentRuntime 门面', () => {
       },
     })
   })
+
+  test('ask_user 响应只通过统一订阅契约发布', async () => {
+    const calls: string[] = []
+    const events: AgentRuntimeEvent[] = []
+    const runtime = createAgentRuntime(createDependencies(calls))
+    runtime.subscribe((event) => events.push(event))
+
+    runtime.questions.respond({
+      requestId: 'question-1',
+      answers: [{ questionId: 'q1', value: '后端' }],
+    })
+
+    expect(calls).toEqual(['question.respond'])
+    expect(events).toContainEqual({
+      sessionId: '',
+      runId: 0,
+      payload: {
+        channel: 'host',
+        event: { type: 'ask_user_resolved', requestId: 'question-1' },
+      },
+    })
+  })
 })

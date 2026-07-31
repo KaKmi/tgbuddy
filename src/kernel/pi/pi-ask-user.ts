@@ -1,8 +1,8 @@
-/** ask_user 工具 —— 需要澄清时用结构化问题暂停当前任务。 */
+/** ask_user 工具（pi adapter）—— 需要澄清时用结构化问题暂停当前任务。 */
 
 import { Type } from '@earendil-works/pi-ai'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import type { AskUserQuestion } from '../../shared/types/permission.ts'
+import type { AskUserQuestion } from '../../shared/contracts/permission.ts'
 
 export interface AskUserHooks {
   requestAnswers: (

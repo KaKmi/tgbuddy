@@ -13,6 +13,10 @@ export {
   type PlanModeHooks,
 } from './pi-plan-mode.ts'
 export {
+  buildAskUserTool,
+  type AskUserHooks,
+} from './pi-ask-user.ts'
+export {
   createSandboxedEnv,
   PiRunExecutionEnv,
   PiRunExecutionEnvFactory,

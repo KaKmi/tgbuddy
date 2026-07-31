@@ -49,7 +49,6 @@ export const LEGACY_COMPATIBILITY = [
   { prefix: 'src/main/tools/sandbox.ts', deleteIn: 'Story 2' },
   { prefix: 'src/main/tools/sandboxed-env.ts', deleteIn: 'Story 2' },
   { prefix: 'src/main/tools/index.ts', deleteIn: 'Story 4' },
-  { prefix: 'src/main/tools/ask-user.ts', deleteIn: 'Story 4' },
 ] as const
 
 function normalizePath(path: string): string {
