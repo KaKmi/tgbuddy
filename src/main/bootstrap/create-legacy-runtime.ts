@@ -19,8 +19,10 @@ import {
   type PermissionAskBroker,
   type PlanAskBroker,
   type PermissionRuleRepository,
+  type ProfileService,
   type ProviderCatalog,
   mountFailureMessage,
+  resolveModelSelection,
   type SessionCommands,
   type SessionMessageHistory,
   type SecretStore,
@@ -53,6 +55,8 @@ export interface CreateLegacyRuntimeOptions {
   channels: ChannelService
   /** C03：渠道连通性与模型发现（pi adapter，错误映射为稳定诊断码） */
   providerCatalog: ProviderCatalog
+  /** C04：命名模型配置预设，Run 启动时固化为不可变快照 */
+  profiles: ProfileService
   dispose?(): Promise<void>
 }
 
@@ -76,6 +80,7 @@ export function createLegacyRuntime(
         options.sessions,
         options.workspaces,
         options.channels,
+        options.profiles,
       ),
     context,
     lifecycle: {
@@ -193,6 +198,13 @@ export function createLegacyRuntime(
           }
         }
       },
+      listProfiles: () => options.profiles.list(),
+      saveProfile: (profile) => {
+        options.profiles.save(profile)
+      },
+      deleteProfile: (profileId) => {
+        options.profiles.delete(profileId)
+      },
     },
     async dispose() {
       context.dispose()
@@ -207,22 +219,26 @@ async function createAgentInvocation(
   sessions: SessionCommands,
   workspaces: WorkspaceCommands,
   channels: ChannelService,
+  profiles: ProfileService,
 ): Promise<AgentInvocation> {
   const meta = sessions.list().find((session) => session.id === input.sessionId)
   if (!meta) throw new Error(`会话不存在：${input.sessionId}`)
 
+  // C04：Run 启动时固化模型选择快照，禁止中途读全局 mutable settings。
+  const selection = resolveModelSelection(meta, profiles)
+
   // 运行期解析会带回明文 apiKey（只在内核调用前存在内存里）。
-  const channel = channels.resolve(meta.channelId)
+  const channel = channels.resolve(selection?.channelId) ?? channels.resolve()
   if (!channel) {
     throw new Error(
       '还没有配置任何渠道。请先在设置中配置模型渠道',
     )
   }
 
-  const modelId = meta.modelId ?? channel.models[0]?.id
+  const modelId = selection?.modelId || channel.models[0]?.id
   if (!modelId) throw new Error(`渠道「${channel.name}」下没有可用模型`)
   if (!channel.models.some((model) => model.id === modelId)) {
-    throw new Error(`模型未注册：${channel.id}/${modelId}`)
+    throw new Error(`模型未注册：${channel.id}/${modelId}，请先在设置中刷新模型列表`)
   }
 
   const mode = meta.permissionMode ?? 'auto'
@@ -242,7 +258,8 @@ async function createAgentInvocation(
     cwd: workspaceDir,
     channel,
     modelId,
-    systemPrompt: buildSystemPrompt(workspaceDir, mode),
+    systemPrompt:
+      selection?.systemPrompt ?? buildSystemPrompt(workspaceDir, mode),
   }
 }
 

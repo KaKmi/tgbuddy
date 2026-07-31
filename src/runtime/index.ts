@@ -19,6 +19,7 @@ export {
   type SecretStore,
 } from './secrets/secret-store.ts'
 export type { SecretRef } from '../shared/contracts/secret.ts'
+export type { Profile, ProfileSaveInput } from '../shared/contracts/profile.ts'
 export type { ChannelRepository } from './channels/channel-repository.ts'
 export {
   createChannelService,
@@ -30,6 +31,17 @@ export type {
   ProviderDiscoveryInput,
   ProviderDiscoveryResult,
 } from './channels/ports/provider-catalog.ts'
+export {
+  createProfileService,
+  resolveModelSelection,
+  type ModelSelectionSnapshot,
+  type ProfileService,
+  type CreateProfileServiceOptions,
+} from './profiles/profile-service.ts'
+export {
+  MemoryProfileRepository,
+  type ProfileRepository,
+} from './profiles/profile-repository.ts'
 export type {
   AgentRuntimeEvent,
   AgentRuntimeEventListener,

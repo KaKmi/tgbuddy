@@ -18,6 +18,7 @@ import type {
   ChannelSaveInput,
   ChannelTestResult,
 } from './channel.ts'
+import type { Profile, ProfileSaveInput } from './profile.ts'
 import type { StartRunInput } from './run.ts'
 import type { SessionMeta } from './session.ts'
 import type {
@@ -89,6 +90,11 @@ export const IPC = {
   CHANNEL_SAVE: 'channel:save',
   CHANNEL_DELETE: 'channel:delete',
   CHANNEL_TEST: 'channel:test',
+
+  // Profile
+  PROFILE_LIST: 'profile:list',
+  PROFILE_SAVE: 'profile:save',
+  PROFILE_DELETE: 'profile:delete',
 } as const satisfies Record<string, keyof IpcCommandMap | keyof IpcEventMap>
 
 // ── 请求/响应类型 ─────────────────────────────────────────────────
@@ -122,7 +128,7 @@ export interface IpcCommandMap {
   'workspace:pick': IpcCommand<undefined, string | null>
   'session:list': IpcCommand<undefined, SessionMeta[]>
   'session:create': IpcCommand<
-    { title?: string; channelId?: string; modelId?: string },
+    { title?: string; channelId?: string; modelId?: string; profileId?: string },
     SessionMeta
   >
   'session:delete': IpcCommand<string, void>
@@ -161,6 +167,9 @@ export interface IpcCommandMap {
   'channel:save': IpcCommand<ChannelSaveInput, void>
   'channel:delete': IpcCommand<string, void>
   'channel:test': IpcCommand<string, ChannelTestResult>
+  'profile:list': IpcCommand<undefined, Profile[]>
+  'profile:save': IpcCommand<ProfileSaveInput, void>
+  'profile:delete': IpcCommand<string, void>
 }
 
 export type IpcCommandName = keyof IpcCommandMap
@@ -249,6 +258,11 @@ export interface TgBuddyAPI {
     save(channel: IpcRequest<'channel:save'>): Promise<IpcResponse<'channel:save'>>
     delete(id: IpcRequest<'channel:delete'>): Promise<IpcResponse<'channel:delete'>>
     test(id: IpcRequest<'channel:test'>): Promise<IpcResponse<'channel:test'>>
+  }
+  profile: {
+    list(): Promise<IpcResponse<'profile:list'>>
+    save(profile: IpcRequest<'profile:save'>): Promise<IpcResponse<'profile:save'>>
+    delete(id: IpcRequest<'profile:delete'>): Promise<IpcResponse<'profile:delete'>>
   }
 }
 

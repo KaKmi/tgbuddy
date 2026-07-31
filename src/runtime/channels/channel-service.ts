@@ -4,6 +4,7 @@ import type {
   ChannelSaveInput,
 } from '../../shared/contracts/channel.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
+import type { Profile } from '../../shared/contracts/profile.ts'
 import { createSecretRef, type SecretStore } from '../secrets/secret-store.ts'
 import type { ChannelRepository } from './channel-repository.ts'
 
@@ -12,6 +13,8 @@ export interface CreateChannelServiceOptions {
   secrets: SecretStore
   /** 删除渠道前检查是否仍被会话引用 */
   sessions: { list(): SessionMeta[] }
+  /** 删除渠道前检查是否仍被 Profile 引用 */
+  profiles: { list(): Profile[] }
   createId(): string
 }
 
@@ -82,6 +85,12 @@ export function createChannelService(
         .some((session) => session.channelId === channelId)
       if (referenced) {
         throw new Error('仍有会话使用该渠道，请先切换会话模型再删除')
+      }
+      const profileReferenced = options.profiles
+        .list()
+        .some((profile) => profile.channelId === channelId)
+      if (profileReferenced) {
+        throw new Error('仍有 Profile 使用该渠道，请先调整 Profile 再删除')
       }
       const channel = options.repository.get(channelId)
       if (!channel) return

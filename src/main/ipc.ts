@@ -229,5 +229,22 @@ export function registerIpc(
     ): Promise<IpcResponse<'channel:test'>> => agentRuntime.settings.testChannel(channelId),
   )
 
+  ipcMain.handle(
+    IPC.PROFILE_LIST,
+    (): IpcResponse<'profile:list'> => agentRuntime.settings.listProfiles(),
+  )
+  ipcMain.handle(
+    IPC.PROFILE_SAVE,
+    (_event, profile: IpcRequest<'profile:save'>): IpcResponse<'profile:save'> =>
+      agentRuntime.settings.saveProfile(profile),
+  )
+  ipcMain.handle(
+    IPC.PROFILE_DELETE,
+    (
+      _event,
+      profileId: IpcRequest<'profile:delete'>,
+    ): IpcResponse<'profile:delete'> => agentRuntime.settings.deleteProfile(profileId),
+  )
+
   return unsubscribe
 }

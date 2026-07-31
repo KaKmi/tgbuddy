@@ -6,6 +6,7 @@ import type {
   ChannelSaveInput,
   ChannelTestResult,
 } from '../../../shared/contracts/channel.ts'
+import type { Profile, ProfileSaveInput } from '../../../shared/contracts/profile.ts'
 
 export interface ChannelSettingsPanelProps {
   onClose(): void
@@ -20,12 +21,27 @@ interface ChannelFormState {
   models: ChannelModel[]
 }
 
+interface ProfileFormState {
+  id?: string
+  name: string
+  channelId: string
+  modelId: string
+  systemPrompt: string
+}
+
 const EMPTY_FORM: ChannelFormState = {
   name: '',
   protocol: 'openai',
   baseUrl: '',
   apiKey: '',
   models: [],
+}
+
+const EMPTY_PROFILE_FORM: ProfileFormState = {
+  name: '',
+  channelId: '',
+  modelId: '',
+  systemPrompt: '',
 }
 
 /**
@@ -35,8 +51,11 @@ const EMPTY_FORM: ChannelFormState = {
  */
 export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   const [channels, setChannels] = useState<Channel[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
   const [form, setForm] = useState<ChannelFormState>(EMPTY_FORM)
+  const [profileForm, setProfileForm] = useState<ProfileFormState>(EMPTY_PROFILE_FORM)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null)
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [testStates, setTestStates] = useState<
@@ -44,7 +63,12 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   >({})
 
   const refresh = async (): Promise<void> => {
-    setChannels(await window.tgbuddy.channel.list())
+    const [channelList, profileList] = await Promise.all([
+      window.tgbuddy.channel.list(),
+      window.tgbuddy.profile.list(),
+    ])
+    setChannels(channelList)
+    setProfiles(profileList)
   }
 
   useEffect(() => {
@@ -92,6 +116,65 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
       await refresh()
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function startEditProfile(profile?: Profile) {
+    setEditingProfileId(profile?.id ?? null)
+    setProfileForm(
+      profile
+        ? {
+            id: profile.id,
+            name: profile.name,
+            channelId: profile.channelId,
+            modelId: profile.modelId,
+            systemPrompt: profile.systemPrompt ?? '',
+          }
+        : EMPTY_PROFILE_FORM,
+    )
+    setError(undefined)
+  }
+
+  async function saveProfile() {
+    const name = profileForm.name.trim()
+    if (!name || !profileForm.channelId || !profileForm.modelId) {
+      setError('Profile 名称、渠道和模型不能为空')
+      return
+    }
+    setBusy(true)
+    setError(undefined)
+    try {
+      const input: ProfileSaveInput = {
+        ...(profileForm.id ? { id: profileForm.id } : {}),
+        name,
+        channelId: profileForm.channelId,
+        modelId: profileForm.modelId,
+        ...(profileForm.systemPrompt.trim()
+          ? { systemPrompt: profileForm.systemPrompt.trim() }
+          : {}),
+      }
+      await window.tgbuddy.profile.save(input)
+      setEditingProfileId(null)
+      setProfileForm(EMPTY_PROFILE_FORM)
+      await refresh()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeProfile(profileId: string) {
+    if (!window.confirm('删除该 Profile 后，选中它的会话将回退到直接模型选择。确认删除？')) return
+    setBusy(true)
+    setError(undefined)
+    try {
+      await window.tgbuddy.profile.delete(profileId)
+      await refresh()
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : String(deleteError))
     } finally {
       setBusy(false)
     }
@@ -335,6 +418,157 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
                   onClick={() => {
                     setEditingId(null)
                     setForm(EMPTY_FORM)
+                    setError(undefined)
+                  }}
+                  className="rounded-md bg-white/5 px-3 py-1.5 text-[12px] text-[#b6b6be] hover:bg-white/10"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mb-2 mt-5 flex items-center gap-2 px-0.5">
+            <span className="text-[11px] tracking-wide text-[#6d6d75]">Profile / 专家</span>
+            <div className="h-px flex-1 bg-white/5" />
+            <button
+              type="button"
+              data-testid="profile-add"
+              onClick={() => startEditProfile()}
+              className="rounded-md px-2 py-1 text-[11px] text-sky-300 hover:bg-accent/60"
+            >
+              + 添加 Profile
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {profiles.map((profile) => {
+              const channel = channels.find((item) => item.id === profile.channelId)
+              return (
+                <div
+                  key={profile.id}
+                  data-testid="profile-row"
+                  className="flex items-center gap-3 rounded-[10px] bg-[#17171a] px-3 py-2.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12.5px] text-[#e4e4e9]">{profile.name}</div>
+                    <div className="truncate font-mono text-[11px] text-[#8a8a92]">
+                      {profile.modelId} · {channel?.name ?? profile.channelId}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="profile-edit"
+                    onClick={() => startEditProfile(profile)}
+                    className="flex-none rounded-md px-2 py-1 text-[11px] text-[#b6b6be] hover:bg-white/10"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="profile-delete"
+                    onClick={() => removeProfile(profile.id)}
+                    className="flex-none rounded-md px-2 py-1 text-[11px] text-[#c9635b] hover:bg-white/10"
+                  >
+                    删除
+                  </button>
+                </div>
+              )
+            })}
+            {profiles.length === 0 && !editingProfileId && (
+              <div className="rounded-[10px] bg-[#17171a] px-3 py-4 text-center text-[11.5px] text-[#63636b]">
+                还没有 Profile。可以把常用的「渠道 + 模型」存成命名预设。
+              </div>
+            )}
+          </div>
+
+          {editingProfileId !== null && (
+            <div className="mt-4 flex flex-col gap-2.5 rounded-[10px] bg-[#17171a] p-3">
+              <div className="text-[12.5px] text-[#e4e4e9]">
+                {profileForm.id ? '编辑 Profile' : '新 Profile'}
+              </div>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-[#6d6d75]">名称</span>
+                <input
+                  data-testid="profile-name-input"
+                  value={profileForm.name}
+                  onChange={(event) =>
+                    setProfileForm({ ...profileForm, name: event.target.value })
+                  }
+                  placeholder="风险分析专家"
+                  className="rounded-md border border-white/5 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-white/15"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-[#6d6d75]">渠道</span>
+                <select
+                  data-testid="profile-channel-input"
+                  value={profileForm.channelId}
+                  onChange={(event) => {
+                    const channelId = event.target.value
+                    setProfileForm({
+                      ...profileForm,
+                      channelId,
+                      modelId: '',
+                    })
+                  }}
+                  className="rounded-md border border-white/5 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-white/15"
+                >
+                  <option value="">选择渠道</option>
+                  {channels.map((channel) => (
+                    <option key={channel.id} value={channel.id}>
+                      {channel.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-[#6d6d75]">模型</span>
+                <select
+                  data-testid="profile-model-input"
+                  value={profileForm.modelId}
+                  onChange={(event) =>
+                    setProfileForm({ ...profileForm, modelId: event.target.value })
+                  }
+                  className="rounded-md border border-white/5 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-white/15"
+                >
+                  <option value="">选择模型</option>
+                  {channels
+                    .find((channel) => channel.id === profileForm.channelId)
+                    ?.models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-[#6d6d75]">系统提示词（可选）</span>
+                <textarea
+                  data-testid="profile-prompt-input"
+                  value={profileForm.systemPrompt}
+                  onChange={(event) =>
+                    setProfileForm({ ...profileForm, systemPrompt: event.target.value })
+                  }
+                  rows={2}
+                  className="resize-none rounded-md border border-white/5 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-white/15"
+                />
+              </label>
+              <div className="mt-1 flex gap-2">
+                <button
+                  type="button"
+                  data-testid="profile-save"
+                  disabled={busy}
+                  onClick={() => void saveProfile()}
+                  className="flex-1 rounded-md bg-sky-500/80 px-2 py-1.5 text-[12px] text-white hover:bg-sky-500 disabled:opacity-50"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingProfileId(null)
+                    setProfileForm(EMPTY_PROFILE_FORM)
                     setError(undefined)
                   }}
                   className="rounded-md bg-white/5 px-3 py-1.5 text-[12px] text-[#b6b6be] hover:bg-white/10"

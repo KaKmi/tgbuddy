@@ -1,5 +1,6 @@
 export { AppDatabase } from './app-database.ts'
 export { SqliteChannelRepository } from './repositories/sqlite-channel-repository.ts'
+export { SqliteProfileRepository } from './repositories/sqlite-profile-repository.ts'
 export { SqlitePermissionRuleRepository } from './repositories/sqlite-permission-rule-repository.ts'
 export { SqliteWorkspaceRepository } from './repositories/sqlite-workspace-repository.ts'
 export {

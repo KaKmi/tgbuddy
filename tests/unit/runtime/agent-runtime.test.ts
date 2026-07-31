@@ -83,8 +83,11 @@ function createDependencies(calls: string[]): AgentRuntimeDependencies {
       saveChannel: () => calls.push('settings.save'),
       deleteChannel: () => calls.push('settings.delete'),
       async testChannel() {
-        return { success: false, message: '未实现' }
+        return { ok: false, code: 'unknown', message: '未实现' }
       },
+      listProfiles: () => [],
+      saveProfile: () => calls.push('settings.profile-save'),
+      deleteProfile: () => calls.push('settings.profile-delete'),
     },
   }
 }

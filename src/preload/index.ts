@@ -81,6 +81,11 @@ const api = {
     delete: (id) => ipcRenderer.invoke(IPC.CHANNEL_DELETE, id),
     test: (id) => ipcRenderer.invoke(IPC.CHANNEL_TEST, id),
   },
+  profile: {
+    list: () => ipcRenderer.invoke(IPC.PROFILE_LIST),
+    save: (profile) => ipcRenderer.invoke(IPC.PROFILE_SAVE, profile),
+    delete: (id) => ipcRenderer.invoke(IPC.PROFILE_DELETE, id),
+  },
 } satisfies TgBuddyAPI
 
 contextBridge.exposeInMainWorld('tgbuddy', api)

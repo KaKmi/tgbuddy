@@ -8,6 +8,8 @@
 import { atom } from 'jotai'
 import type { AgentEvent } from '../../shared/types/event.ts'
 import type { SessionMeta, Workspace } from '../../shared/ipc.ts'
+import type { Channel } from '../../shared/contracts/channel.ts'
+import type { Profile } from '../../shared/contracts/profile.ts'
 import type { SessionMessage } from '../../shared/types/message.ts'
 import type {
   AskUserRequest,
@@ -69,6 +71,32 @@ export const currentSessionIdAtom = atom<string | null>(null)
 export const workspacesAtom = atom<Workspace[]>([])
 /** Runtime 选择状态的镜像：权威状态在主进程 WorkspaceService，这里只驱动 UI。 */
 export const currentWorkspaceIdAtom = atom<string | null>(null)
+/** C02/C04：渠道与 Profile 的设置镜像（主进程是权威）。 */
+export const channelsAtom = atom<Channel[]>([])
+export const profilesAtom = atom<Profile[]>([])
+
+/**
+ * 输入区「模型」chip 的显示文本：Profile 名优先，其次会话直接指定的
+ * 模型名，最后渠道首个模型；都没有时提示选择。
+ */
+export function resolveModelChipLabel(
+  meta: Pick<SessionMeta, 'profileId' | 'channelId' | 'modelId'> | undefined,
+  channels: Channel[],
+  profiles: Profile[],
+): string {
+  if (meta?.profileId) {
+    const profile = profiles.find((item) => item.id === meta.profileId)
+    if (profile) return profile.name
+  }
+  if (meta?.modelId) {
+    const modelName = channels
+      .flatMap((channel) => channel.models)
+      .find((model) => model.id === meta.modelId)?.name
+    if (modelName) return modelName
+  }
+  const firstModel = channels[0]?.models[0]
+  return firstModel?.name ?? '选择模型'
+}
 
 export function replaceSession(
   sessions: SessionMeta[],

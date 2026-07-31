@@ -37,6 +37,8 @@ export interface SessionMeta {
   workspaceId?: string
   channelId?: string
   modelId?: string
+  /** C04：会话选中的 Profile（命名模型配置），下一 Run 固化其快照 */
+  profileId?: string
   expertId?: string
   pinned?: boolean
   archived?: boolean

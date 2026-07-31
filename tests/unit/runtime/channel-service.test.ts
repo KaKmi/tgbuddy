@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { Channel } from '../../../src/shared/contracts/channel.ts'
 import type { SessionMeta } from '../../../src/shared/contracts/session.ts'
+import type { Profile } from '../../../src/shared/contracts/profile.ts'
 import type { SecretRef } from '../../../src/shared/contracts/secret.ts'
 import {
   MemorySecretStore,
@@ -41,6 +42,14 @@ class MemorySessionList {
   }
 }
 
+class MemoryProfileList {
+  readonly items: Profile[] = []
+
+  list(): Profile[] {
+    return this.items
+  }
+}
+
 function channelInput(
   overrides: Partial<Channel> = {},
 ): Channel {
@@ -60,18 +69,21 @@ function createFixture(): {
   secrets: SecretStore
   repository: MemoryChannelRepository
   sessions: MemorySessionList
+  profiles: MemoryProfileList
 } {
   const repository = new MemoryChannelRepository()
   const secrets = new MemorySecretStore()
   const sessions = new MemorySessionList()
+  const profiles = new MemoryProfileList()
   let counter = 0
   const service = createChannelService({
     repository,
     secrets,
     sessions,
+    profiles,
     createId: () => `id-${++counter}`,
   })
-  return { service, secrets, repository, sessions }
+  return { service, secrets, repository, sessions, profiles }
 }
 
 describe('ChannelService', () => {
@@ -139,6 +151,22 @@ describe('ChannelService', () => {
     })
 
     expect(() => service.delete('ch-deepseek')).toThrow(/会话/)
+    expect(service.list()).toHaveLength(1)
+  })
+
+  test('删除被 Profile 引用的渠道被拒绝', () => {
+    const { service, profiles } = createFixture()
+    service.save(channelInput())
+    profiles.items.push({
+      id: 'profile-1',
+      name: '专家',
+      channelId: 'ch-deepseek',
+      modelId: 'deepseek-v4-pro',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+
+    expect(() => service.delete('ch-deepseek')).toThrow(/Profile/)
     expect(service.list()).toHaveLength(1)
   })
 

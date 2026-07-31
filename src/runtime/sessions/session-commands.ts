@@ -54,6 +54,7 @@ export function createSessionCommands(
         ...(workspaceId ? { workspaceId } : {}),
         ...(input.channelId ? { channelId: input.channelId } : {}),
         ...(input.modelId ? { modelId: input.modelId } : {}),
+        ...(input.profileId ? { profileId: input.profileId } : {}),
         createdAt: now,
         updatedAt: now,
       })
@@ -90,6 +91,7 @@ export function createSessionCommands(
         ...(source.workspaceId ? { workspaceId: source.workspaceId } : {}),
         ...(source.channelId ? { channelId: source.channelId } : {}),
         ...(source.modelId ? { modelId: source.modelId } : {}),
+        ...(source.profileId ? { profileId: source.profileId } : {}),
         ...(source.expertId ? { expertId: source.expertId } : {}),
         ...(source.permissionMode ? { permissionMode: source.permissionMode } : {}),
         originRef: {

@@ -11,6 +11,7 @@ import {
   createPlanAskBroker,
   createPermissionAskBroker,
   createPolicyEngine,
+  createProfileService,
   createSessionCommands,
   createSessionMessageHistory,
   createWorkspaceService,
@@ -22,6 +23,7 @@ import {
   AppDatabase,
   SqliteChannelRepository,
   SqlitePermissionRuleRepository,
+  SqliteProfileRepository,
   SqliteSessionRepository,
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
@@ -75,6 +77,7 @@ export async function createApplication(
   // S07：用户「总是允许」规则是资产，落 SQLite 跨重启保留。
   const permissionRules = new SqlitePermissionRuleRepository(appDatabase)
   const channelRepository = new SqliteChannelRepository(appDatabase)
+  const profileRepository = new SqliteProfileRepository(appDatabase)
   // C01：渠道密钥只经 SecretStore 保存；SQLite 只存 secret ref。
   // 加密原语用 Electron safeStorage（Windows DPAPI / macOS Keychain），
   // 磁盘上只有加密 blob，测试不触碰真实系统凭据。
@@ -82,10 +85,16 @@ export async function createApplication(
     cipher: safeStorage,
     filePath: join(dirname(options.databasePath), 'secrets.json'),
   })
+  const profiles = createProfileService({
+    repository: profileRepository,
+    createId,
+    now: Date.now,
+  })
   const channels = createChannelService({
     repository: channelRepository,
     secrets: secretStore,
     sessions: sessionRepository,
+    profiles,
     createId,
   })
   migrateLegacyChannels(channels, channelRepository)
@@ -279,6 +288,7 @@ export async function createApplication(
       secretStore,
       channels,
       providerCatalog: createPiProviderCatalog(),
+      profiles,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)

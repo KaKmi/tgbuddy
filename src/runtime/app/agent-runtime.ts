@@ -5,6 +5,7 @@ import type {
   ChannelTestResult,
   ChannelSaveInput,
 } from '../../shared/contracts/channel.ts'
+import type { Profile, ProfileSaveInput } from '../../shared/contracts/profile.ts'
 import type { HostEvent, StreamFrame } from '../../shared/contracts/events.ts'
 import type {
   AskUserRequest,
@@ -42,6 +43,7 @@ export interface SessionCommands {
     title?: string
     channelId?: string
     modelId?: string
+    profileId?: string
   }): Promise<SessionMeta>
   delete(sessionId: string): Promise<void>
   messages(sessionId: string): Promise<SessionMessage[]>
@@ -106,6 +108,9 @@ export interface SettingsCommands {
   saveChannel(channel: ChannelSaveInput): void
   deleteChannel(channelId: string): void
   testChannel(channelId: string): Promise<ChannelTestResult>
+  listProfiles(): Profile[]
+  saveProfile(profile: ProfileSaveInput): void
+  deleteProfile(profileId: string): void
 }
 
 export interface AgentRuntime {

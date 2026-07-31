@@ -25,7 +25,12 @@ import {
   sessionsAtom,
   workspacesAtom,
   currentWorkspaceIdAtom,
+  channelsAtom,
+  profilesAtom,
+  resolveModelChipLabel,
 } from './atoms/agent.ts'
+import type { Channel } from '../shared/contracts/channel.ts'
+import type { Profile } from '../shared/contracts/profile.ts'
 import { roleOf, type SessionMessage } from '../shared/types/message.ts'
 import type { SessionMeta } from '../shared/ipc.ts'
 import type { WorkspaceMountResolution } from '../shared/ipc.ts'
@@ -53,6 +58,8 @@ export function App() {
   const [currentId, setCurrentId] = useAtom(currentSessionIdAtom)
   const [workspaces, setWorkspaces] = useAtom(workspacesAtom)
   const [currentWorkspaceId, setCurrentWorkspaceId] = useAtom(currentWorkspaceIdAtom)
+  const [channels, setChannels] = useAtom(channelsAtom)
+  const [profiles, setProfiles] = useAtom(profilesAtom)
   const setMessagesMap = useSetAtom(messagesBySessionAtom)
   const [queuedPrompts, setQueuedPrompts] = useAtom(queuedPromptsAtom)
   const messages = useAtomValue(currentMessagesAtom)
@@ -95,6 +102,17 @@ export function App() {
   useEffect(() => {
     void window.tgbuddy.session.list().then(setSessions)
   }, [setSessions])
+
+  // C02/C04：渠道与 Profile 设置镜像，输入区模型 chip 和设置页共用。
+  useEffect(() => {
+    void Promise.all([
+      window.tgbuddy.channel.list(),
+      window.tgbuddy.profile.list(),
+    ]).then(([channelList, profileList]) => {
+      setChannels(channelList)
+      setProfiles(profileList)
+    })
+  }, [setChannels, setProfiles])
 
   // 规则镜像：主进程在授权卡 grant / 删除时推送变化，这里只负责初始加载和删除后的刷新。
   useEffect(() => {
@@ -518,6 +536,12 @@ export function App() {
           {currentId && (
             <div className="mx-auto mb-2 flex max-w-3xl items-center gap-1.5">
               <ModeChip sessionId={currentId} mode={mode} />
+              <ModelChip
+                sessionId={currentId}
+                meta={currentSession}
+                channels={channels}
+                profiles={profiles}
+              />
               {currentSession?.contextUsage && (
                 <ContextUsagePanel
                   sessionId={currentId}
@@ -631,6 +655,121 @@ function ModeChip({ sessionId, mode }: { sessionId: string; mode: PermissionMode
                 <span className="text-[11px] text-muted-foreground">{m.desc}</span>
               </button>
             ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 输入区「模型」chip（原型入口 chips 之一）：展示当前 Profile/模型，
+ * 点击选择 Profile 或渠道模型，选择即写入 Session 元数据，
+ * 下一 Run 使用该不可变快照。
+ */
+function ModelChip({
+  sessionId,
+  meta,
+  channels,
+  profiles,
+}: {
+  sessionId: string
+  meta: Pick<SessionMeta, 'profileId' | 'channelId' | 'modelId'> | undefined
+  channels: Channel[]
+  profiles: Profile[]
+}) {
+  const [open, setOpen] = useState(false)
+  const label = resolveModelChipLabel(meta, channels, profiles)
+
+  function select(selection: {
+    profileId?: string
+    channelId: string
+    modelId: string
+  }) {
+    void window.tgbuddy.session.updateMeta(sessionId, selection)
+    setOpen(false)
+  }
+
+  return (
+    <div className="relative">
+      <button
+        data-testid="model-chip"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 rounded-lg bg-card px-2.5 py-1 text-xs text-foreground/80 transition-colors hover:bg-accent"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-sky-400/70" />
+        <span className="max-w-36 truncate">{label}</span>
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute bottom-full z-20 mb-1.5 max-h-72 w-80 overflow-y-auto rounded-xl bg-popover shadow-lg ring-1 ring-border">
+            {profiles.length > 0 && (
+              <>
+                <div className="px-3 pb-1 pt-2 text-[10.5px] tracking-wide text-muted-foreground">
+                  Profile / 专家
+                </div>
+                {profiles.map((profile) => (
+                  <button
+                    key={profile.id}
+                    data-testid="model-profile-option"
+                    onClick={() =>
+                      select({
+                        profileId: profile.id,
+                        channelId: profile.channelId,
+                        modelId: profile.modelId,
+                      })
+                    }
+                    className="flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors hover:bg-accent"
+                  >
+                    <span className="text-xs text-foreground">{profile.name}</span>
+                    <span className="ml-auto font-mono text-[10.5px] text-muted-foreground">
+                      {profile.modelId}
+                    </span>
+                    {meta?.profileId === profile.id && (
+                      <span className="text-muted-foreground">✓</span>
+                    )}
+                  </button>
+                ))}
+              </>
+            )}
+            <div className="px-3 pb-1 pt-2 text-[10.5px] tracking-wide text-muted-foreground">
+              模型
+            </div>
+            {channels.flatMap((channel) =>
+              channel.models.map((model) => (
+                <button
+                  key={`${channel.id}:${model.id}`}
+                  data-testid="model-option"
+                  onClick={() =>
+                    select({
+                      profileId: undefined,
+                      channelId: channel.id,
+                      modelId: model.id,
+                    })
+                  }
+                  className="flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors hover:bg-accent"
+                >
+                  <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+                    {model.name}
+                  </span>
+                  <span className="flex-none font-mono text-[10.5px] text-muted-foreground">
+                    {channel.name}
+                  </span>
+                  {!meta?.profileId
+                    && meta?.channelId === channel.id
+                    && meta?.modelId === model.id && (
+                      <span className="text-muted-foreground">✓</span>
+                    )}
+                </button>
+              )),
+            )}
+            {channels.length === 0 && (
+              <p className="px-3 py-3 text-[11px] text-muted-foreground">
+                还没有渠道，请先在设置中添加
+              </p>
+            )}
           </div>
         </>
       )}
