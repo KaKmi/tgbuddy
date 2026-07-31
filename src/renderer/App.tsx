@@ -239,7 +239,10 @@ export function App() {
         />
       )}
       {settingsOpen && (
-        <ChannelSettingsPanel onClose={() => setSettingsOpen(false)} />
+        <ChannelSettingsPanel
+          workspaceId={currentWorkspaceId}
+          onClose={() => setSettingsOpen(false)}
+        />
       )}
 
       {/* 底部常驻授权队列提示：解决 inline 卡片被划过去的问题 */}

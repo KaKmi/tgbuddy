@@ -10,6 +10,7 @@ import type {
   ToolPermission,
   ToolSettingView,
 } from '../../shared/contracts/tool.ts'
+import type { SkillGroupView } from '../../shared/contracts/skill.ts'
 import type { HostEvent, StreamFrame } from '../../shared/contracts/events.ts'
 import type {
   AskUserRequest,
@@ -121,6 +122,9 @@ export interface SettingsCommands {
   resetToolPermission(toolId: string): void
   resetAllToolPermissions(): void
   bulkSetAskTools(toolIds: string[]): void
+  /** C07：技能目录（按来源分组），workspaceId 切换即刷新 */
+  listSkills(workspaceId?: string): SkillGroupView[]
+  setSkillEnabled(skillId: string, enabled: boolean): void
 }
 
 export interface AgentRuntime {

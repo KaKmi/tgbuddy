@@ -21,6 +21,11 @@ export {
 export type { SecretRef } from '../shared/contracts/secret.ts'
 export type { Profile, ProfileSaveInput } from '../shared/contracts/profile.ts'
 export type { ToolDescriptor, ToolPermission } from '../shared/contracts/tool.ts'
+export type {
+  SkillGroupView,
+  SkillManifest,
+  SkillSource,
+} from '../shared/contracts/skill.ts'
 export type { ChannelRepository } from './channels/channel-repository.ts'
 export {
   createChannelService,
@@ -62,6 +67,7 @@ export {
   type CreateToolSettingsServiceOptions,
   type ToolSettingsService,
 } from './tools/tool-settings-service.ts'
+export type { SkillCatalog } from './skills/ports/skill-catalog.ts'
 export type {
   AgentRuntimeEvent,
   AgentRuntimeEventListener,

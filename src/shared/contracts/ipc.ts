@@ -20,6 +20,7 @@ import type {
 } from './channel.ts'
 import type { Profile, ProfileSaveInput } from './profile.ts'
 import type { ToolPermission, ToolSettingView } from './tool.ts'
+import type { SkillGroupView } from './skill.ts'
 import type { StartRunInput } from './run.ts'
 import type { SessionMeta } from './session.ts'
 import type {
@@ -103,6 +104,10 @@ export const IPC = {
   TOOL_PERMISSION_RESET: 'tool:permission-reset',
   TOOL_PERMISSIONS_RESET: 'tool:permissions-reset',
   TOOL_BULK_ASK: 'tool:bulk-ask',
+
+  // 技能
+  SKILL_LIST: 'skill:list',
+  SKILL_SET_ENABLED: 'skill:set-enabled',
 } as const satisfies Record<string, keyof IpcCommandMap | keyof IpcEventMap>
 
 // ── 请求/响应类型 ─────────────────────────────────────────────────
@@ -186,6 +191,8 @@ export interface IpcCommandMap {
   'tool:permission-reset': IpcCommand<{ toolId: string }, void>
   'tool:permissions-reset': IpcCommand<undefined, void>
   'tool:bulk-ask': IpcCommand<{ toolIds: string[] }, void>
+  'skill:list': IpcCommand<{ workspaceId?: string }, SkillGroupView[]>
+  'skill:set-enabled': IpcCommand<{ skillId: string; enabled: boolean }, void>
 }
 
 export type IpcCommandName = keyof IpcCommandMap
@@ -293,6 +300,15 @@ export interface TgBuddyAPI {
     bulkAsk(
       toolIds: IpcRequest<'tool:bulk-ask'>['toolIds'],
     ): Promise<IpcResponse<'tool:bulk-ask'>>
+  }
+  skill: {
+    list(
+      workspaceId?: IpcRequest<'skill:list'>['workspaceId'],
+    ): Promise<IpcResponse<'skill:list'>>
+    setEnabled(
+      skillId: IpcRequest<'skill:set-enabled'>['skillId'],
+      enabled: IpcRequest<'skill:set-enabled'>['enabled'],
+    ): Promise<IpcResponse<'skill:set-enabled'>>
   }
 }
 

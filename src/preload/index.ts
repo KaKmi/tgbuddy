@@ -95,6 +95,11 @@ const api = {
     resetAll: () => ipcRenderer.invoke(IPC.TOOL_PERMISSIONS_RESET),
     bulkAsk: (toolIds) => ipcRenderer.invoke(IPC.TOOL_BULK_ASK, { toolIds }),
   },
+  skill: {
+    list: (workspaceId) => ipcRenderer.invoke(IPC.SKILL_LIST, { workspaceId }),
+    setEnabled: (skillId, enabled) =>
+      ipcRenderer.invoke(IPC.SKILL_SET_ENABLED, { skillId, enabled }),
+  },
 } satisfies TgBuddyAPI
 
 contextBridge.exposeInMainWorld('tgbuddy', api)

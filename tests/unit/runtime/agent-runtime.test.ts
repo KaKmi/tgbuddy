@@ -93,6 +93,8 @@ function createDependencies(calls: string[]): AgentRuntimeDependencies {
       resetToolPermission: () => calls.push('settings.tool-reset'),
       resetAllToolPermissions: () => calls.push('settings.tools-reset'),
       bulkSetAskTools: () => calls.push('settings.tools-bulk-ask'),
+      listSkills: () => [],
+      setSkillEnabled: () => calls.push('settings.skill-set'),
     },
   }
 }

@@ -280,5 +280,22 @@ export function registerIpc(
       agentRuntime.settings.bulkSetAskTools(input.toolIds),
   )
 
+  ipcMain.handle(
+    IPC.SKILL_LIST,
+    (
+      _event,
+      input: IpcRequest<'skill:list'>,
+    ): IpcResponse<'skill:list'> =>
+      agentRuntime.settings.listSkills(input.workspaceId),
+  )
+  ipcMain.handle(
+    IPC.SKILL_SET_ENABLED,
+    (
+      _event,
+      input: IpcRequest<'skill:set-enabled'>,
+    ): IpcResponse<'skill:set-enabled'> =>
+      agentRuntime.settings.setSkillEnabled(input.skillId, input.enabled),
+  )
+
   return unsubscribe
 }

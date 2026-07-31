@@ -11,8 +11,10 @@ import type {
   ToolPermission,
   ToolSettingView,
 } from '../../../shared/contracts/tool.ts'
+import type { SkillGroupView } from '../../../shared/contracts/skill.ts'
 
 export interface ChannelSettingsPanelProps {
+  workspaceId?: string | null
   onClose(): void
 }
 
@@ -57,6 +59,7 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [tools, setTools] = useState<ToolSettingView[]>([])
+  const [skillGroups, setSkillGroups] = useState<SkillGroupView[]>([])
   const [form, setForm] = useState<ChannelFormState>(EMPTY_FORM)
   const [profileForm, setProfileForm] = useState<ProfileFormState>(EMPTY_PROFILE_FORM)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -68,19 +71,21 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   >({})
 
   const refresh = async (): Promise<void> => {
-    const [channelList, profileList, toolList] = await Promise.all([
+    const [channelList, profileList, toolList, skillList] = await Promise.all([
       window.tgbuddy.channel.list(),
       window.tgbuddy.profile.list(),
       window.tgbuddy.tool.list(),
+      window.tgbuddy.skill.list(props.workspaceId ?? undefined),
     ])
     setChannels(channelList)
     setProfiles(profileList)
     setTools(toolList)
+    setSkillGroups(skillList)
   }
 
   useEffect(() => {
     void refresh()
-  }, [])
+  }, [props.workspaceId])
 
   function startEdit(channel?: Channel) {
     setEditingId(channel?.id ?? null)
@@ -687,6 +692,85 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
                 暂无工具
               </div>
             )}
+          </div>
+
+          <div className="mb-2 mt-5 flex items-center gap-2 px-0.5">
+            <span className="text-[11px] tracking-wide text-[#6d6d75]">技能</span>
+            <div className="h-px flex-1 bg-white/5" />
+            <span className="text-[10.5px] text-[#63636b]">
+              按来源分组，工作区技能随工作区切换
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {skillGroups.map((group) => (
+              <div key={group.source} className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2 px-0.5">
+                  <span className="text-[11px] text-[#6d6d75]">{group.title}</span>
+                  <div className="h-px flex-1 bg-white/5" />
+                  <span className="text-[10.5px] text-[#63636b]">
+                    {group.items.filter((skill) => skill.enabled).length} 已启用
+                  </span>
+                </div>
+                {group.items.map((skill) => (
+                  <div
+                    key={skill.id}
+                    data-testid="skill-row"
+                    className={`flex items-center gap-3 rounded-[10px] bg-[#17171a] px-3 py-2.5 ${
+                      skill.enabled ? '' : 'opacity-50'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-[12.5px] text-[#e4e4e9]">
+                          {skill.title}
+                        </span>
+                        {skill.tags?.map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded px-1.5 py-0.5 text-[10px]"
+                            style={{
+                              background: 'rgba(224,163,62,.14)',
+                              color: '#e0c39e',
+                            }}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="truncate text-[11px] text-[#75757e]">
+                        {skill.description}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={skill.enabled}
+                      data-testid={`skill-toggle-${skill.name}`}
+                      onClick={() =>
+                        void window.tgbuddy.skill
+                          .setEnabled(skill.id, !skill.enabled)
+                          .then(() => refresh())
+                      }
+                      className="flex h-5 w-9 flex-none items-center rounded-full px-0.5 transition-colors"
+                      style={{
+                        background: skill.enabled
+                          ? 'rgba(176,162,224,.8)'
+                          : 'rgba(255,255,255,.12)',
+                        justifyContent: skill.enabled ? 'flex-end' : 'flex-start',
+                      }}
+                    >
+                      <span className="h-4 w-4 rounded-full bg-white/90 shadow" />
+                    </button>
+                  </div>
+                ))}
+                {group.items.length === 0 && (
+                  <div className="rounded-[10px] bg-[#17171a] px-3 py-3 text-center text-[11.5px] text-[#63636b]">
+                    暂无{group.title}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>

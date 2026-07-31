@@ -26,6 +26,7 @@ import {
   type SessionCommands,
   type SessionMessageHistory,
   type SecretStore,
+  type SkillCatalog,
   type ToolSettingsService,
   type WorkspaceCommands,
 } from '../../runtime/index.ts'
@@ -60,6 +61,8 @@ export interface CreateLegacyRuntimeOptions {
   profiles: ProfileService
   /** C06：工具三档权限设置（UI 值与 Tool 实例分离） */
   toolSettings: ToolSettingsService
+  /** C07：技能目录发现（内置/用户级/工作区） */
+  skills: SkillCatalog
   dispose?(): Promise<void>
 }
 
@@ -220,6 +223,10 @@ export function createLegacyRuntime(
       },
       bulkSetAskTools: (toolIds) => {
         options.toolSettings.bulkSetAsk(toolIds)
+      },
+      listSkills: (workspaceId) => options.skills.groups(workspaceId),
+      setSkillEnabled: (skillId, enabled) => {
+        options.skills.setEnabled(skillId, enabled)
       },
     },
     async dispose() {

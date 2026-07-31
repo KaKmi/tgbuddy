@@ -1,0 +1,8 @@
+{
+  "name": "reg-check",
+  "title": "监管口径核对",
+  "description": "按监管问答口径核对披露文件、计算口径与阈值",
+  "version": "1.0.0",
+  "trigger": "监管|口径核对|reg-check",
+  "tags": ["市场"]
+}

@@ -32,6 +32,7 @@ import {
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
 import { EncryptedFileSecretStore } from '../../infrastructure/secrets/index.ts'
+import { createFsSkillCatalog } from '../../infrastructure/skills/index.ts'
 import { NodeWorkspaceMountResolver } from '../../infrastructure/workspace/index.ts'
 import {
   buildAskUserTool,
@@ -102,6 +103,15 @@ export async function createApplication(
     createId,
   })
   migrateLegacyChannels(channels, channelRepository)
+  // C07：技能目录根。内置随应用资源，用户级在数据目录，工作区级随 mount。
+  const skills = createFsSkillCatalog({
+    builtinRoots: [join(process.cwd(), 'assets', 'skills', 'builtin')],
+    userRoots: [join(options.legacyDataDir, 'skills')],
+    workspaceRoots: (workspaceId) => {
+      const mount = workspaceService.mountStatus(workspaceId)
+      return mount.ok ? [join(mount.mount.path, '.tgbuddy', 'skills')] : []
+    },
+  })
   // C05：内置工具统一注册，Run 启动按 snapshot 冻结启用集合。
   const toolRegistry = createBuiltinToolRegistry()
   // C06：工具三档权限覆盖持久化，PolicyEngine 在规则之下读取。
@@ -313,6 +323,7 @@ export async function createApplication(
       providerCatalog: createPiProviderCatalog(),
       profiles,
       toolSettings,
+      skills,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)
