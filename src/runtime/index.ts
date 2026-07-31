@@ -53,6 +53,11 @@ export {
   type ToolRegistry,
   type CreateToolRegistryOptions,
 } from './tools/tool-registry.ts'
+export type {
+  BlobRef,
+  BlobPutMeta,
+  BlobStore,
+} from './blob/blob-store.ts'
 export {
   BUILTIN_TOOL_DESCRIPTORS,
   createBuiltinToolRegistry,

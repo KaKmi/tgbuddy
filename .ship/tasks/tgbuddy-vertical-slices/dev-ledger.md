@@ -314,3 +314,15 @@ M3 后续用户手动 QA（ask_user 卡片）— complete
   Concerns: 全量单测 297/297、E2E 20/20、architecture/typecheck/build 全过；per-tool「禁止」能力
   随三档一并移除，需要精确拒绝时用 deny 规则（工具×路径/前缀/方法）；迁移 008 移除后旧库的表保留，
   不主动删用户数据
+
+A01 "内容寻址 BlobStore" — complete
+  Commits: （本 Slice）
+  Files: src/runtime/blob/blob-store.ts、src/infrastructure/blob/node-fs-blob-store.ts、
+    src/infrastructure/blob/index.ts、src/runtime/index.ts、tests/unit/infrastructure/blob-store.test.ts、
+    .ship/tasks/tgbuddy-vertical-slices/plan/m4-m5-arch-design.md
+  Produces: `BlobStore` 端口（put/get/has/delete）、`BlobRef{hash,size,mime}`、
+    `NodeFsBlobStore`（sha256 内容寻址、原子写 temp+rename、读回全量校验）
+  RED/GREEN: 6 项测试覆盖 put/dedupe/hash mismatch/atomic/missing/delete 幂等/mime
+  Concerns: 端口层不承担 hash 计算（内容寻址必须 sha256 防碰撞，属于基础设施职责）；
+    get 全量重算 sha256，大 Blob 读回成本高，A04 长输出按需读取时再评估增量校验；
+    M4 架构设计（m4-m5-arch-design.md）已记录「能用 pi 就用 pi」原则与 A04/A05 精化
