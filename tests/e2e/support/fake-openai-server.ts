@@ -61,6 +61,11 @@ async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
+  if (request.method === 'GET' && request.url === '/v1/models') {
+    response.writeHead(200, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify({ data: [{ id: MODEL_ID, object: 'model' }] }))
+    return
+  }
   if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
     response.writeHead(404).end()
     return
@@ -196,6 +201,19 @@ async function handleRequest(
             ],
           },
           'call_e2e_ask',
+        )
+      }
+      return
+    }
+    if (prompt.includes('M3 MCP')) {
+      if (lastMessage?.role === 'tool') {
+        await streamText(response, 'M3 MCP 完成')
+      } else {
+        streamToolCall(
+          response,
+          'echo.echo',
+          { text: 'hello-mcp' },
+          'call_e2e_mcp',
         )
       }
       return

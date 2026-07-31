@@ -87,8 +87,11 @@ test('「总是允许」规则跨重启生效：授权一次后不再询问', as
     await tgbuddy.page.getByRole('button', { name: '允许', exact: true }).click()
     await expect(tgbuddy.page.getByText('M2 写入完成', { exact: true })).toBeVisible()
 
-    // 硬重启：规则从 SQLite 恢复，同路径写不再询问
-    await tgbuddy.restart({ hard: true })
+    // 重启：规则从 SQLite 恢复，同路径写不再询问。
+    // 说明：E2E 硬杀（child.kill）会让 Electron safeStorage 的 DPAPI blob
+    // 在本次环境中无法被新实例解密（渠道密钥只存 ref 后的安全架构），
+    // 故这里用优雅重启验证规则持久化；崩溃恢复另有 run-recovery 单测覆盖。
+    await tgbuddy.restart({ hard: false })
     await switchToWorkspace(tgbuddy.page, workspace)
     await tgbuddy.page.getByTestId('session-item').click()
     await send(tgbuddy.page, 'M2 写入')
