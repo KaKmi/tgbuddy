@@ -632,12 +632,12 @@ await step('M3：Profile 创建并可从输入区选择', async () => {
 })
 
 // ══ 4. M3 · 工具权限 ═══════════════════════════════════════
-await step('M3：工具权限只读展示；完全访问放行、默认权限询问', async () => {
+await step('M3：工具三档接口已移除；完全访问放行、默认权限询问', async () => {
   await page.evaluate(async () => {
     const rules = await window.tgbuddy.permission.rules()
     for (const rule of rules) await window.tgbuddy.permission.removeRule(rule.id)
   })
-  // 工具页只读：列表带内置分类默认权限，三档设置接口已移除
+  // 工具区已从设置页移除：列表只读（供 MCP 服务卡展示），三档设置接口已删除
   const listed = await page.evaluate(() => window.tgbuddy.tool.list())
   if (!listed.some((tool) => tool.name === 'write')) throw new Error('工具列表缺少 write')
   if (typeof window.tgbuddy.tool.setPermission !== 'undefined') throw new Error('三档设置接口未移除')

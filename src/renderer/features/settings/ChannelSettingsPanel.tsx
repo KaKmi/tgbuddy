@@ -114,7 +114,8 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
       ])
     setChannels(channelList)
     setProfiles(profileList)
-    setTools(toolList)
+    // 工具区已从设置页移除：内置工具不再展示，只保留 MCP 工具供服务卡展开
+    setTools(toolList.filter((tool) => tool.category === 'mcp'))
     setSkillGroups(skillList)
     setMcpServers(mcpList)
     setMcpStatuses(
@@ -736,44 +737,6 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
               </div>
             </div>
           )}
-
-          <div className="mb-2 mt-5 flex items-center gap-2 px-0.5">
-            <span className="text-[11px] tracking-wide text-[#6d6d75]">工具</span>
-            <div className="h-px flex-1 bg-white/5" />
-            <span className="text-[10.5px] text-[#63636b]">
-              权限由输入框上方的权限模式与「总是允许」规则控制，此处仅展示内置分类默认
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {tools.map((tool) => (
-              <div
-                key={tool.id}
-                data-testid="tool-row"
-                className={`flex flex-col gap-2 rounded-[10px] bg-[#17171a] px-3 py-2.5 ${
-                  tool.enabled ? '' : 'opacity-50'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="flex-none font-mono text-[12.5px] text-[#e4e4e9]">
-                    {tool.label}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-[#75757e]">
-                    {tool.note ?? tool.description}
-                  </span>
-                  <span className="flex-none rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-[#8a8a92]">
-                    {tool.name}
-                  </span>
-                </div>
-                <PermissionBadge permission={tool.permission} />
-              </div>
-            ))}
-            {tools.length === 0 && (
-              <div className="rounded-[10px] bg-[#17171a] px-3 py-4 text-center text-[11.5px] text-[#63636b]">
-                暂无工具
-              </div>
-            )}
-          </div>
 
           <div className="mb-2 mt-5 flex items-center gap-2 px-0.5">
             <span className="text-[11px] tracking-wide text-[#6d6d75]">技能</span>

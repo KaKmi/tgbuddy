@@ -76,15 +76,12 @@ test('C04：输入区模型 chip 选择写入会话元数据', async ({ tgbuddy 
   expect(sessions[0]?.modelId).toBeTruthy()
 })
 
-test('工具权限只读展示；完全访问放行写操作、默认权限询问', async ({ tgbuddy }) => {
+test('工具区已从设置页移除；完全访问放行写操作、默认权限询问', async ({ tgbuddy }) => {
   const page = tgbuddy.page
   await openSettings(page)
 
-  // 工具页只读展示：内置分类徽标（写入 = 询问），无三档编辑控件
-  const writeRow = page.getByTestId('tool-row').filter({ hasText: '写入文件' })
-  await expect(writeRow).toBeVisible()
-  await expect(writeRow.getByTestId('tool-perm-badge-ask')).toBeVisible()
-  await expect(page.getByTestId('tool-perm-write-deny')).toHaveCount(0)
+  // 内置工具区已从设置页移除（MCP 服务卡里的工具列表保留）
+  await expect(page.getByTestId('tool-row')).toHaveCount(0)
   await closeSettings(page)
 
   await createSession(page)
