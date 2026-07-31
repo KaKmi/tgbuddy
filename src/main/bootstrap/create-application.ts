@@ -265,8 +265,11 @@ export async function createApplication(
         envFactory: new PiRunExecutionEnvFactory(),
         tools: (invocation, env) => {
           const sessionId = invocation.sessionId
+          // C12：工具集只来自 Run 启动时冻结的 snapshot，
+          // 运行中设置变更（enable/disable/MCP 断开）不影响本次 Run。
+          const frozen = invocation.tools ?? toolRegistry.snapshot()
           const enabled = new Set(
-            toolRegistry.snapshot().map((descriptor) => descriptor.name),
+            frozen.map((descriptor) => descriptor.name),
           )
           const tools: AgentTool[] = []
           // 基础六工具：只在 snapshot 启用时保留，顺序稳定。
@@ -324,7 +327,7 @@ export async function createApplication(
             )
           }
           // C11：已连接 MCP 的 server.method 工具进入本次 Run 的工具集。
-          for (const descriptor of toolRegistry.snapshot()) {
+          for (const descriptor of frozen) {
             if (descriptor.category !== 'mcp') continue
             const owner = descriptor.owner
             if (!owner) continue

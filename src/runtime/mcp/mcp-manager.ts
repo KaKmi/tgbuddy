@@ -34,6 +34,8 @@ export interface McpManager {
   disconnect(serverId: string): Promise<void>
   status(serverId: string): McpServerStatus
   statuses(): McpServerStatus[]
+  /** 应用退出时断开全部连接并清理注册的工具 */
+  dispose(): Promise<void>
   /** C11：调用已连接服务的工具方法；未连接/断线一律抛错 */
   call(
     serverId: string,
@@ -62,6 +64,7 @@ export function createMcpManager(
 ): McpManager {
   const states = new Map<string, ConnectionState>()
   const serverTools = new Map<string, string[]>()
+  const connecting = new Map<string, Promise<McpServerStatus>>()
   const timeoutMs = options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS
 
   const toStatus = (serverId: string, state: ConnectionState): McpServerStatus => ({
@@ -92,6 +95,71 @@ export function createMcpManager(
     return state
       ? toStatus(serverId, state)
       : { serverId, state: 'off' }
+  }
+
+  const connectOnce = async (
+    serverId: string,
+    signal: AbortSignal | undefined,
+  ): Promise<McpServerStatus> => {
+    const config = options.repository.get(serverId)
+    if (!config) {
+      return { serverId, state: 'error', error: `MCP 服务不存在：${serverId}` }
+    }
+    const existing = states.get(serverId)
+    if (existing?.state === 'connected') return toStatus(serverId, existing)
+    if (!config.enabled) {
+      return {
+        serverId,
+        state: 'error',
+        error: '该 MCP 服务已禁用，请先在设置中启用再连接',
+      }
+    }
+    if (existing?.transport) {
+      await existing.transport.disconnect().catch(() => {})
+      states.delete(serverId)
+    }
+
+    const state: ConnectionState = { state: 'connecting' }
+    states.set(serverId, state)
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      controller.abort(new DOMException('连接超时', 'TimeoutError'))
+    }, timeoutMs)
+    const onExternalAbort = (): void => controller.abort(signal?.reason)
+    if (signal?.aborted) controller.abort(signal.reason)
+    else signal?.addEventListener('abort', onExternalAbort)
+
+    let transport: McpTransport
+    try {
+      const resolvedConfig = {
+        ...config,
+        env: resolveSecretEnv(config.env, options.secrets),
+      }
+      transport = options.factory.create(resolvedConfig)
+      state.transport = transport
+      await transport.connect(controller.signal)
+      const tools = await transport.listTools()
+      const descriptors = buildMcpToolDescriptors(config, tools)
+      registerMcpTools(
+        options.toolRegistry,
+        config.id,
+        descriptors,
+        serverTools,
+      )
+      state.state = 'connected'
+      state.lastConnectedAt = options.now()
+      return toStatus(serverId, state)
+    } catch (error) {
+      state.state = 'error'
+      state.error = describeConnectError(error)
+      await state.transport?.disconnect().catch(() => {})
+      // 连接失败 = 服务不可用：旧工具也从注册表移除，只影响下一 Run。
+      unregisterServerTools(serverId)
+      return toStatus(serverId, state)
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onExternalAbort)
+    }
   }
 
   return {
@@ -125,64 +193,18 @@ export function createMcpManager(
       unregisterServerTools(serverId)
       options.repository.delete(serverId)
     },
-    async connect(serverId, signal) {
-      const config = options.repository.get(serverId)
-      if (!config) {
-        return { serverId, state: 'error', error: `MCP 服务不存在：${serverId}` }
-      }
+    connect(serverId, signal) {
       const existing = states.get(serverId)
-      if (existing?.state === 'connected') return toStatus(serverId, existing)
-      if (!config.enabled) {
-        return {
-          serverId,
-          state: 'error',
-          error: '该 MCP 服务已禁用，请先在设置中启用再连接',
-        }
+      if (existing?.state === 'connected') {
+        return Promise.resolve(toStatus(serverId, existing))
       }
-      if (existing?.transport) {
-        await existing.transport.disconnect().catch(() => {})
-        states.delete(serverId)
-      }
-
-      const state: ConnectionState = { state: 'connecting' }
-      states.set(serverId, state)
-      const controller = new AbortController()
-      const timer = setTimeout(() => {
-        controller.abort(new DOMException('连接超时', 'TimeoutError'))
-      }, timeoutMs)
-      const onExternalAbort = (): void => controller.abort(signal?.reason)
-      if (signal?.aborted) controller.abort(signal.reason)
-      else signal?.addEventListener('abort', onExternalAbort)
-
-      let transport: McpTransport
-      try {
-        const resolvedConfig = {
-          ...config,
-          env: resolveSecretEnv(config.env, options.secrets),
-        }
-        transport = options.factory.create(resolvedConfig)
-        state.transport = transport
-        await transport.connect(controller.signal)
-        const tools = await transport.listTools()
-        const descriptors = buildMcpToolDescriptors(config, tools)
-        registerMcpTools(
-          options.toolRegistry,
-          config.id,
-          descriptors,
-          serverTools,
-        )
-        state.state = 'connected'
-        state.lastConnectedAt = options.now()
-        return toStatus(serverId, state)
-      } catch (error) {
-        state.state = 'error'
-        state.error = describeConnectError(error)
-        await state.transport?.disconnect().catch(() => {})
-        return toStatus(serverId, state)
-      } finally {
-        clearTimeout(timer)
-        signal?.removeEventListener('abort', onExternalAbort)
-      }
+      // 同一服务的并发 connect 共享同一个在途 Promise，避免双连接。
+      const inFlight = connecting.get(serverId)
+      if (inFlight) return inFlight
+      const operation = connectOnce(serverId, signal)
+      connecting.set(serverId, operation)
+      void operation.finally(() => connecting.delete(serverId))
+      return operation
     },
     async disconnect(serverId) {
       const state = states.get(serverId)
@@ -193,6 +215,21 @@ export function createMcpManager(
       }
       states.delete(serverId)
       unregisterServerTools(serverId)
+    },
+    async dispose() {
+      const transports = [...states.values()]
+        .map((state) => state.transport)
+        .filter((transport): transport is McpTransport => Boolean(transport))
+      const mcpToolIds = options.toolRegistry
+        .list()
+        .filter((tool) => tool.category === 'mcp')
+        .map((tool) => tool.id)
+      if (mcpToolIds.length > 0) options.toolRegistry.unregister(mcpToolIds)
+      states.clear()
+      serverTools.clear()
+      await Promise.allSettled(
+        transports.map((transport) => transport.disconnect()),
+      )
     },
     status: statusOf,
     statuses() {
@@ -240,8 +277,14 @@ function slugifyServerKey(name: string): string {
 
 const READ_PREFIXES = ['get', 'list', 'search', 'read', 'fetch', 'query']
 
-/** C11：plan 模式只放行读类 MCP 方法（与默认权限启发式同源）。 */
-export function isReadLikeMcpMethod(method: string): boolean {
+/**
+ * C11：plan 模式只放行读类 MCP 方法（与默认权限启发式同源）。
+ * 入参是完整工具名 `server.method`，判定只看方法段（首个点之后），
+ * 否则 `pg.query` 会被当成 `pg` 前缀而误判为写类。
+ */
+export function isReadLikeMcpMethod(toolName: string): boolean {
+  const dot = toolName.indexOf('.')
+  const method = dot === -1 ? toolName : toolName.slice(dot + 1)
   const first = method.split(/[._-]/)[0]?.toLowerCase()
   return Boolean(first && READ_PREFIXES.includes(first))
 }

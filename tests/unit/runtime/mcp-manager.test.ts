@@ -351,4 +351,49 @@ describe('McpManager', () => {
       manager.call('mcp-1', 'query', {}, AbortSignal.timeout(20)),
     ).rejects.toThrow(/超时|取消/)
   })
+
+  test('同一服务并发 connect 共享在途结果，不产生双连接', async () => {
+    const { manager, transports } = createFixture()
+    manager.save(serverInput({ key: 'pg' }))
+    const [first, second] = await Promise.all([
+      manager.connect('mcp-1'),
+      manager.connect('mcp-1'),
+    ])
+    expect(first.state).toBe('connected')
+    expect(second.state).toBe('connected')
+    expect(transports).toHaveLength(1)
+  })
+
+  test('连接失败后旧工具从注册表移除（服务不可用不留在下一 Run 快照）', async () => {
+    const { manager, registry } = createFixture()
+    manager.save(serverInput({ key: 'pg' }))
+    await manager.connect('mcp-1')
+    expect(registry.list().some((tool) => tool.id === 'pg.query')).toBe(true)
+
+    manager.save(serverInput({ id: 'mcp-1', key: 'pg', env: { BEHAVIOR: 'fail' } }))
+    const status = await manager.connect('mcp-1')
+    expect(status.state).toBe('error')
+    expect(registry.list().some((tool) => tool.id === 'pg.query')).toBe(false)
+  })
+
+  test('dispose 断开全部连接并清空 MCP 工具注册', async () => {
+    const { manager, registry, transports } = createFixture()
+    manager.save(serverInput({ key: 'pg' }))
+    await manager.connect('mcp-1')
+    expect(transports[0]?.connected).toBe(true)
+
+    await manager.dispose()
+    expect(transports[0]?.disconnected).toBe(true)
+    expect(registry.list().some((tool) => tool.category === 'mcp')).toBe(false)
+  })
+
+  test('plan 模式读类 MCP 方法判定只看方法段（server 前缀不影响）', async () => {
+    const { isReadLikeMcpMethod } = await import(
+      '../../../src/runtime/mcp/mcp-manager.ts'
+    )
+    expect(isReadLikeMcpMethod('pg.query')).toBe(true)
+    expect(isReadLikeMcpMethod('figma.get_file')).toBe(true)
+    expect(isReadLikeMcpMethod('pg.exec')).toBe(false)
+    expect(isReadLikeMcpMethod('slack.post')).toBe(false)
+  })
 })

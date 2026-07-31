@@ -51,8 +51,9 @@ export function createFsSkillLoader(): SkillLoader {
 }
 
 function isPathInside(root: string, target: string): boolean {
-  const normalizedRoot = normalize(root).replace(/[\\/]+$/, '')
-  const normalizedTarget = normalize(target)
+  // Windows 路径大小写不敏感：统一小写比较，避免误拒合法子路径。
+  const normalizedRoot = normalize(root).replace(/[\\/]+$/, '').toLowerCase()
+  const normalizedTarget = normalize(target).toLowerCase()
   return (
     normalizedTarget === normalizedRoot
     || normalizedTarget.startsWith(`${normalizedRoot}${sep}`)

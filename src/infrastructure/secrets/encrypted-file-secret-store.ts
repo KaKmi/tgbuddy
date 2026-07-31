@@ -54,7 +54,13 @@ export class EncryptedFileSecretStore implements SecretStore {
     }
     const cache = this.#load()
     cache.set(ref, value)
-    this.#persist(cache)
+    try {
+      this.#persist(cache)
+    } catch (error) {
+      // 写盘失败时回滚内存缓存，避免重启后读到与磁盘不一致的旧值。
+      this.#cache = undefined
+      throw error
+    }
   }
 
   get(ref: SecretRef): string | undefined {
@@ -69,7 +75,12 @@ export class EncryptedFileSecretStore implements SecretStore {
     if (!this.#cipher.isEncryptionAvailable()) return
     const cache = this.#load()
     if (!cache.delete(ref)) return
-    this.#persist(cache)
+    try {
+      this.#persist(cache)
+    } catch (error) {
+      this.#cache = undefined
+      throw error
+    }
   }
 
   /**
@@ -134,5 +145,6 @@ function isSecretFileShape(value: unknown): value is SecretFileShape {
     candidate.version === FILE_VERSION
     && typeof candidate.secrets === 'object'
     && candidate.secrets !== null
+    && !Array.isArray(candidate.secrets)
   )
 }

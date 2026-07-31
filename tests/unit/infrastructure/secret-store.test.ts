@@ -155,4 +155,17 @@ describe('EncryptedFileSecretStore（OS adapter）', () => {
       expect(() => store.get(ref)).toThrow(/密钥文件/)
     })
   })
+
+  test('secrets 为 null/数组时视为格式不合法并抛可诊断错误', () => {
+    for (const bad of ['{"version":1,"secrets":null}', '{"version":1,"secrets":[]}']) {
+      withTempFile((filePath) => {
+        writeFileSync(filePath, bad, 'utf8')
+        const store = new EncryptedFileSecretStore({
+          cipher: new FakeCipher(),
+          filePath,
+        })
+        expect(() => store.get(createSecretRef(() => 'r'))).toThrow(/格式不合法/)
+      })
+    }
+  })
 })

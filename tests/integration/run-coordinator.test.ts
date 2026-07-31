@@ -280,6 +280,7 @@ describe('RunCoordinator + fake AgentEngine', () => {
     expect(record?.snapshot?.mcp).toEqual([
       { serverId: 'mcp-1', name: 'postgres', tools: ['pg.query'] },
     ])
+    expect(coordinator.list('session-1').map((item) => item.id)).toEqual(['run-1'])
   })
 
   test('C12：失败 Run 也提交已知账本（usage 归零，error 记录原因）', async () => {

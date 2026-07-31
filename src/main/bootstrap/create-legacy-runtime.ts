@@ -254,6 +254,7 @@ export function createLegacyRuntime(
     async dispose() {
       context.dispose()
       await runs.dispose()
+      await options.mcp.dispose()
       await options.dispose?.()
     },
   })

@@ -50,6 +50,8 @@ export interface RunCoordinator {
   start(input: StartRunInput, emit: (frame: StreamFrame) => void): Promise<void>
   stop(sessionId: string): void
   isRunning(sessionId: string): boolean
+  /** C12：会话的 Run 账本（能力快照 + token/cost） */
+  list(sessionId: string): ReturnType<RunRepository['listBySession']>
   dispose(): Promise<void>
 }
 
@@ -114,6 +116,10 @@ class DefaultRunCoordinator implements RunCoordinator {
 
   isRunning(sessionId: string): boolean {
     return this.#registry.isRunning(sessionId)
+  }
+
+  list(sessionId: string): ReturnType<RunRepository['listBySession']> {
+    return this.#runs?.listBySession(sessionId) ?? []
   }
 
   dispose(): Promise<void> {

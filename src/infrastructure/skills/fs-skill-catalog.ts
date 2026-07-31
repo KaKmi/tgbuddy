@@ -80,7 +80,14 @@ function collectGroup(
   const seen = new Set<string>()
   for (const root of roots) {
     if (!existsSync(root)) continue
-    for (const entry of readdirSync(root)) {
+    let entries: string[]
+    try {
+      entries = readdirSync(root)
+    } catch (error) {
+      console.error(`[skills] 技能目录读取失败，跳过：${root}`, error)
+      continue
+    }
+    for (const entry of entries) {
       const dir = join(root, entry)
       let isDirectory = false
       try {
