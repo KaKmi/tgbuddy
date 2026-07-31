@@ -158,3 +158,11 @@ M2 集中评审（S01–S11）— complete
   Findings: P2×2（bash 长输出临时文件被沙箱拒绝；plan 模式 `find -delete`/`find -exec` 绕过审批）、P3×1（createTempDir/createTempFile 越工作区创建并返回路径）— 全部修复
   Produces: 沙箱 Proxy 对齐 pi `FileSystem` 接口（temp 协议重定向工作区 `.tgbuddy-tmp/<env-id>`，dispose 清理）；`isReadOnlyCommand` 拒绝 `find` 破坏性子命令
   Concerns: fresh review 复验 clean（主机复验，独立性弱于独立 reviewer）；遗留待办：`method` 匹配语义待 M3 MCP 命名确认、工作区选择状态持久化为产品决策、`.tgbuddy-tmp` 崩溃残留目录可在 M4 前补清理决策
+
+C01: "SecretStore" — complete
+  Commits: cde4e35
+  Files: src/shared/contracts/secret.ts, src/runtime/secrets/secret-store.ts, src/infrastructure/secrets/encrypted-file-secret-store.ts, src/infrastructure/secrets/index.ts, src/runtime/index.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, tests/unit/infrastructure/secret-store.test.ts
+  Produces: `SecretRef`（shared contract）；`SecretStore` 端口（set/get/delete）+ `createSecretRef()` + `MemorySecretStore`（fake）；`SecretCipher` 端口 + `EncryptedFileSecretStore`（safeStorage 加密 blob 落盘、原子写入、损坏可诊断、加密不可用拒绝保存）；Composition Root 生产实例注入 `createLegacyRuntime({ secretStore })`（C02 消费）
+  验证: `bun test tests/unit/infrastructure/secret-store.test.ts`（7/7）、全量 `bun test` 202/202、check:architecture、typecheck、build 全过
+  删除项: 无（`.env` 保留开发兼容，不成为设置存储的承诺由 C02 关闭渠道 JSON 明文路径兑现）
+  Concerns: createLegacyRuntime 的 `secretStore` 选项本 Slice 只建立注入点、尚无消费方（计划 C01 GREEN 明确要求 Composition Root 注入；C02 立即消费）；加密文件与 tgbuddy.db 同目录，blob 绑定本机用户（DPAPI/Keychain），换机迁移不在本 Slice。
