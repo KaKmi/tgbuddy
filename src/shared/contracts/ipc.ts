@@ -30,7 +30,7 @@ import type { StartRunInput } from './run.ts'
 import type { RunRecord } from './run-snapshot.ts'
 import type { AttachmentRef } from './attachment.ts'
 import type { BlobRef } from './blob.ts'
-import type { ArtifactRef } from './artifact.ts'
+import type { ArtifactPreviewResult, ArtifactRef } from './artifact.ts'
 import type { SessionMeta } from './session.ts'
 import type {
   Workspace,
@@ -76,6 +76,8 @@ export const IPC = {
   ATTACHMENT_DISCARD: 'attachment:discard',
   TOOL_OUTPUT_READ: 'tool-output:read',
   ARTIFACT_LIST: 'artifact:list',
+  ARTIFACT_PREVIEW: 'artifact:preview',
+  ARTIFACT_OPEN: 'artifact:open',
   /** 主 → 渲染，单向推送 */
   AGENT_STREAM: 'agent:stream',
 
@@ -191,6 +193,14 @@ export interface IpcCommandMap {
   'attachment:discard': IpcCommand<AttachmentRef, void>
   'tool-output:read': IpcCommand<{ ref: BlobRef }, string>
   'artifact:list': IpcCommand<{ sessionId: string }, ArtifactRef[]>
+  'artifact:preview': IpcCommand<
+    { sessionId: string; artifactId: string },
+    ArtifactPreviewResult
+  >
+  'artifact:open': IpcCommand<
+    { sessionId: string; artifactId: string },
+    { ok: boolean; error?: string }
+  >
   'permission:respond': IpcCommand<PermissionResponse, void>
   'permission:pending': IpcCommand<undefined, PermissionRequest[]>
   'permission:rules': IpcCommand<undefined, PermissionRule[]>
@@ -282,6 +292,8 @@ export interface TgBuddyAPI {
   }
   artifact: {
     list(sessionId: IpcRequest<'artifact:list'>['sessionId']): Promise<IpcResponse<'artifact:list'>>
+    preview(input: IpcRequest<'artifact:preview'>): Promise<IpcResponse<'artifact:preview'>>
+    open(input: IpcRequest<'artifact:open'>): Promise<IpcResponse<'artifact:open'>>
   }
   permission: {
     respond(res: IpcRequest<'permission:respond'>): Promise<IpcResponse<'permission:respond'>>

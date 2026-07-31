@@ -64,6 +64,8 @@ const api = {
   },
   artifact: {
     list: (sessionId) => ipcRenderer.invoke(IPC.ARTIFACT_LIST, { sessionId }),
+    preview: (input) => ipcRenderer.invoke(IPC.ARTIFACT_PREVIEW, input),
+    open: (input) => ipcRenderer.invoke(IPC.ARTIFACT_OPEN, input),
   },
   permission: {
     respond: (res) => ipcRenderer.invoke(IPC.PERMISSION_RESPOND, res),

@@ -397,3 +397,17 @@ A06 "结果列表、分组与筛选" — complete
   RED/GREEN: 4 项状态测试（倒序+分组边界/无边界/空列表/类型筛选）
   Concerns: 「本次任务」边界 = 最近一次 Run 的 createdAt；选中态留 A07 预览消费；
     结果区沿用 hidden xl:flex 布局（窄屏不占位）
+
+A07 "Artifact 只读预览与外部打开" — complete
+  Commits: （本 Slice）
+  Files: src/main/artifact-io.ts、src/main/artifact-path.ts、src/shared/contracts/artifact.ts
+    （ArtifactPreviewResult）、src/shared/contracts/ipc.ts、src/main/ipc.ts、
+    src/main/bootstrap/create-application.ts、src/preload/index.ts、
+    src/renderer/features/results/ResultsPanel.tsx（预览区+打开按钮）、
+    tests/unit/runtime/artifact-path.test.ts
+  Produces: `resolveArtifactInsideMount`（纯字符串路径逃逸，无 node 依赖）、
+    `createArtifactIo`（mount 归一化 + realpath 双防线、文本预览 256KB 截断、二进制识别、
+    shell.openPath 外部打开）、IPC artifact:preview/open、ResultsPanel 只读预览区
+  RED/GREEN: 4 项路径逃逸测试（相对拼接/mount 内绝对/..逃逸/跨盘绝对）
+  Concerns: 纯字符串路径函数放 Main 层（runtime 不得依赖 node:path）；
+    二进制用 NUL 字节启发式 + mime image 走外部打开；预览只读，改动回对话（A08）

@@ -26,3 +26,10 @@ export interface ArtifactRef {
   sourceSkill?: string
   createdAt: number
 }
+
+/** A07：只读预览结果（文本/二进制/缺失/错误）。 */
+export interface ArtifactPreviewResult {
+  kind: 'text' | 'binary' | 'missing' | 'error'
+  text?: string
+  error?: string
+}

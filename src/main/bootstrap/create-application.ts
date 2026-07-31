@@ -56,7 +56,8 @@ import {
   createPiSessionStore,
   PiRunExecutionEnvFactory,
 } from '../../kernel/pi/index.ts'
-import { registerIpc, type AttachmentIo } from '../ipc.ts'
+import { registerIpc, type ArtifactIo, type AttachmentIo } from '../ipc.ts'
+import { createArtifactIo } from '../artifact-io.ts'
 import { randomUUID } from 'node:crypto'
 import {
   markLegacyChannelsMigrated,
@@ -440,7 +441,18 @@ export async function createApplication(
         return new TextDecoder().decode(bytes)
       },
     }
-    unsubscribe = registerIpc(agentRuntime, options.getWindow, attachmentIo)
+    // A07：Artifact 只读预览 + 外部打开（路径逃逸双防线在 artifact-io 内）
+    const artifactIo: ArtifactIo = createArtifactIo({
+      artifacts: artifactRepository,
+      workspaces: workspaceService,
+      openPath: (path) => shell.openPath(path),
+    })
+    unsubscribe = registerIpc(
+      agentRuntime,
+      options.getWindow,
+      attachmentIo,
+      artifactIo,
+    )
   } catch (error) {
     void messageStore?.dispose().catch((disposeError: unknown) => {
       console.error('[application] PiSessionStore 初始化回滚失败', disposeError)

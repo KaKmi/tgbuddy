@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import type { ArtifactRef } from '../../../shared/contracts/artifact.ts'
+import type {
+  ArtifactPreviewResult,
+  ArtifactRef,
+} from '../../../shared/contracts/artifact.ts'
 import {
   filterArtifacts,
   groupArtifacts,
@@ -27,10 +30,12 @@ export function ResultsPanel({ sessionId }: { sessionId?: string }) {
   const [filter, setFilter] = useState<ArtifactFilter>('all')
   const [selectedId, setSelectedId] = useState<string>()
   const [runStartedAt, setRunStartedAt] = useState<number>()
+  const [preview, setPreview] = useState<ArtifactPreviewResult>()
 
   useEffect(() => {
     setArtifacts([])
     setSelectedId(undefined)
+    setPreview(undefined)
     setFilter('all')
     setRunStartedAt(undefined)
     if (!sessionId) return
@@ -46,6 +51,20 @@ export function ResultsPanel({ sessionId }: { sessionId?: string }) {
       setRunStartedAt(latest > 0 ? latest : undefined)
     })
   }, [sessionId])
+
+  useEffect(() => {
+    setPreview(undefined)
+    if (!sessionId || !selectedId) return
+    void window.tgbuddy.artifact
+      .preview({ sessionId, artifactId: selectedId })
+      .then(setPreview)
+      .catch((error: unknown) => {
+        setPreview({
+          kind: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
+  }, [sessionId, selectedId])
 
   const groups = groupArtifacts(filterArtifacts(artifacts, filter), runStartedAt)
 
@@ -116,6 +135,35 @@ export function ResultsPanel({ sessionId }: { sessionId?: string }) {
           </div>
         )}
       </div>
+      {preview && (
+        <div className="border-t bg-background px-3 py-2">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[11px] text-muted-foreground">预览（只读）</span>
+            <button
+              type="button"
+              data-testid="artifact-open"
+              onClick={() => {
+                if (!sessionId || !selectedId) return
+                void window.tgbuddy.artifact.open({ sessionId, artifactId: selectedId })
+              }}
+              className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-[#8ba7c4] hover:bg-white/10"
+            >
+              用默认应用打开
+            </button>
+          </div>
+          {preview.kind === 'text' ? (
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted-foreground">
+              {preview.text}
+            </pre>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">
+              {preview.kind === 'binary'
+                ? '二进制文件，无法内联预览'
+                : preview.error ?? '预览不可用'}
+            </p>
+          )}
+        </div>
+      )}
     </aside>
   )
 }

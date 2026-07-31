@@ -8,6 +8,7 @@
 import { dialog, ipcMain, type BrowserWindow } from 'electron'
 import type { AgentRuntime } from '../runtime/index.ts'
 import type { AttachmentRef } from '../shared/contracts/attachment.ts'
+import type { ArtifactPreviewResult } from '../shared/contracts/artifact.ts'
 import {
   IPC,
   type IpcRequest,
@@ -27,10 +28,18 @@ export interface AttachmentIo {
   readToolOutput(ref: AttachmentRef['blob']): Promise<string>
 }
 
+export interface ArtifactIo {
+  preview(input: { sessionId: string; artifactId: string }): Promise<ArtifactPreviewResult>
+  open(
+    input: { sessionId: string; artifactId: string },
+  ): Promise<{ ok: boolean; error?: string }>
+}
+
 export function registerIpc(
   agentRuntime: AgentRuntime,
   getWindow: () => BrowserWindow | null,
   attachmentIo: AttachmentIo,
+  artifactIo: ArtifactIo,
 ): () => void {
   const unsubscribe = agentRuntime.subscribe((frame) => {
     const win = getWindow()
@@ -182,6 +191,24 @@ export function registerIpc(
       input: IpcRequest<'artifact:list'>,
     ): IpcResponse<'artifact:list'> => {
       return agentRuntime.artifacts.list(input.sessionId)
+    },
+  )
+  ipcMain.handle(
+    IPC.ARTIFACT_PREVIEW,
+    async (
+      _event,
+      input: IpcRequest<'artifact:preview'>,
+    ): Promise<IpcResponse<'artifact:preview'>> => {
+      return artifactIo.preview(input)
+    },
+  )
+  ipcMain.handle(
+    IPC.ARTIFACT_OPEN,
+    async (
+      _event,
+      input: IpcRequest<'artifact:open'>,
+    ): Promise<IpcResponse<'artifact:open'>> => {
+      return artifactIo.open(input)
     },
   )
 
