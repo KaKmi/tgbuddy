@@ -238,3 +238,11 @@ C10: "MCP tool 发现与能力快照" — complete
   验证: `bun test tests/unit/runtime/mcp-manager.test.ts`（11/11）、全量 `bun test` 278/278、check:architecture、typecheck、build 全过
   删除项: 无（此 Slice 不执行 MCP tool，调用在 C11）
   Concerns: MCP 工具权限默认按方法名前缀启发式（get/list/search/read/fetch/query→allow），用户可在设置覆盖；key 变更后旧工具 id 失效，属预期（重连后刷新）；当前 Run 快照在连接建立前冻结，连接期间注册不影响已运行 Run。
+
+C11: "MCP tool 权限与调用" — complete
+  Commits: 1f092ab
+  Files: src/shared/contracts/tool.ts, src/runtime/mcp/ports/mcp-transport.ts, src/runtime/mcp/mcp-manager.ts, src/runtime/permissions/policy-engine.ts, src/runtime/index.ts, src/kernel/pi/pi-mcp-tool.ts, src/kernel/pi/index.ts, src/infrastructure/mcp/sdk-mcp-transport.ts, src/main/bootstrap/create-application.ts, tests/unit/runtime/mcp-manager.test.ts, tests/unit/kernel/pi-mcp-tool.test.ts
+  Produces: `ToolDescriptor.owner/inputSchema`；`McpCallResult` + `McpTransport.call()`（SDK callTool + CallToolResultSchema，isError 结构化错误转 throw）；`McpManager.call()`（未连接/断线抛「请先连接」、超时/取消映射、成功返回文本）；`isReadLikeMcpMethod()`（与默认权限启发式同源）；PolicyEngine plan 模式放行读类 server.method（替换旧 mcp__ 前缀约定）；`buildMcpTool()`（pi `server.method` 工具，宽松 Record 参数、透传 signal）；engine tools factory 从 snapshot 注入 MCP 工具（只使用当前 Run 冻结快照，断线调用失败显示真实工具卡错误）
+  验证: `bun test tests/unit/runtime/mcp-manager.test.ts`（15/15）+ pi-mcp-tool（3/3）、全量 `bun test` 285/285、check:architecture、typecheck、build 全过；SDK callTool 冒烟（echo 调用 isError=false 内容正确）
+  删除项: 无（长输出暂留普通预览，A04 再 Blob 化）
+  Concerns: MCP 工具参数用宽松 Record，精确 JSON Schema 校验由服务端执行（inputSchema 已存入 descriptor，后续可精确化）；plan 模式读类 MCP 判定基于方法名前缀（用户把写方法改成 allow 也不会在 plan 模式放行，写方法仍被拒）。
