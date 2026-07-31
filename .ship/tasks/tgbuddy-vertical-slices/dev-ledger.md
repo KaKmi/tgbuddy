@@ -288,3 +288,10 @@ M2+M3 联合 QA（用户要求，可重复执行）— complete
   - P1：`SessionMeta.profileId` 从未落库——C04 只加契约与内存仓库，`app_sessions` 表与 SqliteSessionRepository 无对应列/映射，Profile 选择在真实运行中静默失效；修复为迁移 012 + repository 全映射（NOT NULL 列写空串）+ 静态 SQL 一致性测试（列/占位符/值三者锁死，防再次错位）
   - P2：设置页创建 Profile 后输入区模型 chip 不刷新（profilesAtom 仅挂载时加载）；修复为 ModelChip 打开菜单时刷新渠道/Profile
   Concerns: 全量回归 301/301、E2E 20/20、architecture/typecheck/build 全过；脚本用 Enter 提交与 IPC 驱动输入侧（规避 popover 遮罩竞态），用户可见结果断言保留
+
+M3 后续用户手动 QA（ask_user 卡片）— complete
+  Commits: 4cbc9d7（fix）、（docs）
+  Results: 用户手动测试发现 ask_user「选了选项却无法提交」，必须去「其他答案」输入框打字才能提交
+  QA 发现的真实缺陷（已修复 + 回归）：
+  - P1：AskUserCard 选中选项时会把 `custom[id]` 清成空串，提交判定 `custom[id] ?? answers[id]` 不会把空串回退到选项答案，导致按钮一直禁用；修复为提取纯函数 `resolveAskUserAnswer`/`isAskUserComplete`（空串视为「未自定义」再回退选项），提交值同步走同一函数
+  Concerns: 全量单测 307/307（新增 3 项）、E2E 20/20（ask_user 用例改为第一题点选选项回归）、architecture/typecheck/build 全过
