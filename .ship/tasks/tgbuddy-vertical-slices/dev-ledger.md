@@ -326,3 +326,19 @@ A01 "内容寻址 BlobStore" — complete
   Concerns: 端口层不承担 hash 计算（内容寻址必须 sha256 防碰撞，属于基础设施职责）；
     get 全量重算 sha256，大 Blob 读回成本高，A04 长输出按需读取时再评估增量校验；
     M4 架构设计（m4-m5-arch-design.md）已记录「能用 pi 就用 pi」原则与 A04/A05 精化
+
+A02 "附件选择、预览与持久化" — complete
+  Commits: （本 Slice）
+  Files: src/shared/contracts/attachment.ts、blob.ts、src/runtime/attachments/attachment-repository.ts、
+    src/infrastructure/sqlite/migrations/013_app_attachments.sql、sqlite-attachment-repository.ts、
+    src/runtime/sessions/session-message-history.ts、src/kernel/pi/pi-agent-engine.ts、
+    src/main/ipc.ts、src/main/bootstrap/create-application.ts、create-legacy-runtime.ts、
+    src/preload/index.ts、src/renderer/App.tsx、src/renderer/components/AttachmentChips.tsx、
+    tests/unit/runtime/attachment-repository.test.ts
+  Produces: `AttachmentRef`（name/size/mime/blob）、`AttachmentRepository`（save/byMessage/deleteSession）、
+    IPC `attachment:stage/discard`、`StartRunInput.attachments`、pi-engine `persistAttachments` 钩子、
+    KernelMessage.attachments 历史回放、输入区附件 chips（📎 选择 → stage → 发送/移除）
+  RED/GREEN: 附件仓库 3 项（幂等覆盖/会话隔离）+ BlobStore 6 项；architecture/typecheck/build 全过
+  Concerns: 附件 ref 走 app_attachments 按 (sessionId, entryId) 挂消息，不改 pi 消息本体（信封零翻译）；
+    stage 失败只记诊断（A09 兜底孤儿）；取消未发送草稿即 discard 删 blob；
+    此 Slice 不做模型 multimodal 转换（A03 用 pi 原生 prompt(text,{images})）

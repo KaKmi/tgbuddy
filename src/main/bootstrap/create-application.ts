@@ -30,8 +30,10 @@ import {
   SqliteProfileRepository,
   SqliteRunRepository,
   SqliteSessionRepository,
+  SqliteAttachmentRepository,
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
+import { createNodeFsBlobStore } from '../../infrastructure/blob/index.ts'
 import { EncryptedFileSecretStore } from '../../infrastructure/secrets/index.ts'
 import { SdkMcpTransportFactory } from '../../infrastructure/mcp/index.ts'
 import {
@@ -52,7 +54,8 @@ import {
   createPiSessionStore,
   PiRunExecutionEnvFactory,
 } from '../../kernel/pi/index.ts'
-import { registerIpc } from '../ipc.ts'
+import { registerIpc, type AttachmentIo } from '../ipc.ts'
+import { randomUUID } from 'node:crypto'
 import {
   markLegacyChannelsMigrated,
   readLegacyChannels,
@@ -105,6 +108,11 @@ export async function createApplication(
   })
   // C12：每个 Run 持久化能力快照与 token/cost 账本。
   const runs = new SqliteRunRepository(appDatabase)
+  // A01/A02：内容寻址 BlobStore（附件/长输出/产物），物理文件在 userData/blobs。
+  const blobStore = createNodeFsBlobStore({
+    root: join(options.legacyDataDir, 'blobs'),
+  })
+  const attachmentRepository = new SqliteAttachmentRepository(appDatabase)
   const channels = createChannelService({
     repository: channelRepository,
     secrets: secretStore,
@@ -252,6 +260,8 @@ export async function createApplication(
       store: createdMessageStore,
       createId,
       now: Date.now,
+      // A02：历史回放时按 entry_id 还原用户消息的附件 ref
+      attachments: attachmentRepository,
     })
     recovery = await recoverInterruptedRuns({
       sessions: sessionRepository,
@@ -264,6 +274,10 @@ export async function createApplication(
       agentEngine: createPiAgentEngine({
         sessions: createdMessageStore,
         envFactory: new PiRunExecutionEnvFactory(),
+        // A02：用户消息落库后把附件 ref 挂到 app_attachments（按 entry_id）
+        persistAttachments: (sessionId, entryId, refs) => {
+          attachmentRepository.save(sessionId, entryId, refs)
+        },
         tools: (invocation, env) => {
           const sessionId = invocation.sessionId
           // C12：工具集只来自 Run 启动时冻结的 snapshot，
@@ -384,7 +398,23 @@ export async function createApplication(
       toolRegistry,
       dispose: () => createdMessageStore.dispose(),
     })
-    unsubscribe = registerIpc(agentRuntime, options.getWindow)
+    // A02：附件 IO 由 Composition Root 注入，IPC 层不 import Runtime 内部 store
+    const attachmentIo: AttachmentIo = {
+      async stage(input) {
+        const blob = await blobStore.put(input.bytes, {
+          ...(input.mime ? { mime: input.mime } : {}),
+        })
+        return {
+          id: randomUUID(),
+          name: input.name,
+          size: input.bytes.byteLength,
+          ...(input.mime ? { mime: input.mime } : {}),
+          blob,
+        }
+      },
+      discard: (ref) => blobStore.delete(ref.blob),
+    }
+    unsubscribe = registerIpc(agentRuntime, options.getWindow, attachmentIo)
   } catch (error) {
     void messageStore?.dispose().catch((disposeError: unknown) => {
       console.error('[application] PiSessionStore 初始化回滚失败', disposeError)

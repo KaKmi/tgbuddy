@@ -25,3 +25,4 @@ export {
   type LegacySessionCandidate,
 } from './legacy-importer.ts'
 export { SqliteSessionRepository } from './repositories/sqlite-session-repository.ts'
+export { SqliteAttachmentRepository } from './repositories/sqlite-attachment-repository.ts'

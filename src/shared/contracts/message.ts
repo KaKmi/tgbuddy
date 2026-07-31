@@ -33,6 +33,7 @@ import type {
   AgentMessage,
   SessionTreeEntry,
 } from '@earendil-works/pi-agent-core'
+import type { AttachmentRef } from './attachment.ts'
 
 /** 当前内核标识，写进会话文件头 */
 export const KERNEL_ID = 'pi@0.82' as const
@@ -71,6 +72,8 @@ export interface KernelMessage extends EnvelopeBase {
   message: PiMessage
   /** 本轮耗时，用于会话诊断。pi 不提供 */
   durationMs?: number
+  /** A02：用户消息携带的附件 ref（历史回放时从 app_attachments join 还原） */
+  attachments?: AttachmentRef[]
 }
 
 /**

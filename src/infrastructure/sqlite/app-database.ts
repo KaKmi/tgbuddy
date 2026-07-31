@@ -12,6 +12,7 @@ import appMcpServersSql from './migrations/009_app_mcp_servers.sql'
 import appMcpServersKeySql from './migrations/010_app_mcp_servers_key.sql'
 import appRunsSql from './migrations/011_app_runs.sql'
 import appSessionsProfileIdSql from './migrations/012_app_sessions_profile_id.sql'
+import appAttachmentsSql from './migrations/013_app_attachments.sql'
 
 interface SqliteModule {
   DatabaseSync: typeof import('node:sqlite').DatabaseSync
@@ -75,6 +76,10 @@ const APP_MIGRATIONS: readonly AppMigration[] = [
   {
     id: '012_app_sessions_profile_id.sql',
     sql: appSessionsProfileIdSql,
+  },
+  {
+    id: '013_app_attachments.sql',
+    sql: appAttachmentsSql,
   },
 ]
 

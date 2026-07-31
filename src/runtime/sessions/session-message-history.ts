@@ -6,6 +6,7 @@ import {
   type SessionMessage,
 } from '../../shared/contracts/message.ts'
 import type { MessageSession, MessageStore } from './message-store.ts'
+import type { AttachmentRepository } from '../attachments/attachment-repository.ts'
 
 export interface AppendCompactionInput {
   summary: string
@@ -41,6 +42,8 @@ export interface CreateSessionMessageHistoryOptions {
   store: MessageStore
   createId(): string
   now(): number
+  /** A02：按 (sessionId, entryId) 还原用户消息的附件 ref */
+  attachments?: AttachmentRepository
 }
 
 interface NoticeDetails {
@@ -57,12 +60,14 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
   readonly #store: MessageStore
   readonly #createId: () => string
   readonly #now: () => number
+  readonly #attachments?: AttachmentRepository
   readonly #sessionLocks = new Map<string, Promise<void>>()
 
   constructor(options: CreateSessionMessageHistoryOptions) {
     this.#store = options.store
     this.#createId = options.createId
     this.#now = options.now
+    this.#attachments = options.attachments
   }
 
   async create(sessionId: string, cwd: string): Promise<void> {
@@ -74,7 +79,12 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
   async messages(sessionId: string): Promise<SessionMessage[]> {
     return this.#withSessionLock(sessionId, async () => {
       const session = await this.#store.open(sessionId, KERNEL_ID)
-      return session ? replayActiveMessages(await session.activeEntries()) : []
+      return session
+        ? this.#attachAttachments(
+            sessionId,
+            replayActiveMessages(await session.activeEntries()),
+          )
+        : []
     })
   }
 
@@ -85,7 +95,26 @@ class DefaultSessionMessageHistory implements SessionMessageHistory {
     return this.#withSessionLock(sessionId, async () => {
       const session = await this.#store.open(sessionId, KERNEL_ID)
       if (!session) return []
-      return compactedMessagesFor(await session.entries(), compactionId)
+      return this.#attachAttachments(
+        sessionId,
+        compactedMessagesFor(await session.entries(), compactionId),
+      )
+    })
+  }
+
+  /** A02：给 kernel 用户消息按 entry id 还原附件 ref（回放 chips 用） */
+  #attachAttachments(
+    sessionId: string,
+    messages: SessionMessage[],
+  ): SessionMessage[] {
+    const repository = this.#attachments
+    if (!repository) return messages
+    return messages.map((message) => {
+      if (message.kind !== 'kernel' || message.message.role !== 'user') {
+        return message
+      }
+      const refs = repository.byMessage(sessionId, message.id)
+      return refs.length > 0 ? { ...message, attachments: refs } : message
     })
   }
 

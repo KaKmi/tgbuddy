@@ -7,7 +7,9 @@
  */
 
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { AttachmentDraft, AttachmentRef } from '../shared/contracts/attachment.ts'
+import { AttachmentChipList } from './components/AttachmentChips.tsx'
 import {
   currentMessagesAtom,
   currentSessionIdAtom,
@@ -86,6 +88,9 @@ export function App() {
   const [wsOpen, setWsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mountStatus, setMountStatus] = useState<WorkspaceMountResolution>()
+  // A02：输入区附件草稿（已 stage 到 BlobStore，发送前可移除）
+  const [attachmentDrafts, setAttachmentDrafts] = useState<AttachmentDraft[]>([])
+  const attachmentInputRef = useRef<HTMLInputElement>(null)
   const queuedPrompt = currentId ? queuedPrompts.get(currentId) : undefined
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId)
 
@@ -195,13 +200,50 @@ export function App() {
 
   async function send() {
     const text = input.trim()
-    if (!text || !currentId || stream.running || queuedPrompt) return
+    if ((!text && attachmentDrafts.length === 0) || !currentId || stream.running || queuedPrompt) return
+    const attachments = attachmentDrafts.map((draft) => draft.ref)
     setInput('')
+    setAttachmentDrafts([])
     if (stream.compaction) {
       setQueuedPrompts((current) => new Map(current).set(currentId, text))
       return
     }
-    await window.tgbuddy.agent.send({ sessionId: currentId, text })
+    await window.tgbuddy.agent.send({
+      sessionId: currentId,
+      text,
+      ...(attachments.length > 0 ? { attachments } : {}),
+    })
+  }
+
+  /** A02：选择文件 → 逐文件 stage 到 BlobStore → 输入区 chips */
+  async function onPickAttachments(files: FileList | null) {
+    if (!files) return
+    for (const file of Array.from(files)) {
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const ref = await window.tgbuddy.attachment.stage({
+          name: file.name,
+          ...(file.type ? { mime: file.type } : {}),
+          bytes,
+        })
+        setAttachmentDrafts((current) => [...current, { ref, committed: false }])
+      } catch (error) {
+        console.error('[附件] stage 失败：', error)
+      }
+    }
+    if (attachmentInputRef.current) attachmentInputRef.current.value = ''
+  }
+
+  /** A02：移除未发送草稿 → 物理删除 blob（已发送的由历史回放，不在此删） */
+  async function discardAttachment(ref: AttachmentRef) {
+    setAttachmentDrafts((current) =>
+      current.filter((draft) => draft.ref.id !== ref.id),
+    )
+    try {
+      await window.tgbuddy.attachment.discard(ref)
+    } catch (error) {
+      console.error('[附件] discard 失败（交给 A09 引用计数清理）：', error)
+    }
   }
 
   async function editAndResend(messageId: string, text: string) {
@@ -528,20 +570,48 @@ export function App() {
             </div>
           )}
           <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border bg-card p-1.5">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  void send()
-                }
-              }}
-              rows={2}
-              placeholder={currentId ? '说点什么…（Enter 发送，Shift+Enter 换行）' : '先新建会话'}
-              disabled={!currentId}
-              className="flex-1 resize-none border-0 bg-transparent px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 disabled:opacity-50"
-            />
+            <div className="flex flex-1 flex-col gap-1.5">
+              {attachmentDrafts.length > 0 && (
+                <AttachmentChipList
+                  attachments={attachmentDrafts.map((draft) => draft.ref)}
+                  onRemove={(ref) => void discardAttachment(ref)}
+                />
+              )}
+              <div className="flex items-end gap-1">
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  data-testid="attachment-input"
+                  onChange={(event) => void onPickAttachments(event.target.files)}
+                />
+                <button
+                  type="button"
+                  aria-label="添加附件"
+                  data-testid="attachment-pick"
+                  disabled={!currentId || stream.running || Boolean(stream.compaction)}
+                  onClick={() => attachmentInputRef.current?.click()}
+                  className="shrink-0 rounded-lg px-2 py-2 text-[13px] text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
+                >
+                  📎
+                </button>
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void send()
+                    }
+                  }}
+                  rows={2}
+                  placeholder={currentId ? '说点什么…（Enter 发送，Shift+Enter 换行）' : '先新建会话'}
+                  disabled={!currentId}
+                  className="flex-1 resize-none border-0 bg-transparent px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 disabled:opacity-50"
+                />
+              </div>
+            </div>
             {stream.running ? (
               <button
                 onClick={() => currentId && window.tgbuddy.agent.stop(currentId)}
@@ -552,7 +622,11 @@ export function App() {
             ) : (
               <button
                 onClick={() => void send()}
-                disabled={!currentId || !input.trim() || Boolean(queuedPrompt)}
+                disabled={
+                  !currentId
+                  || (!input.trim() && attachmentDrafts.length === 0)
+                  || Boolean(queuedPrompt)
+                }
                 className="shrink-0 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
               >
                 {stream.compaction ? '排队' : '发送'}
@@ -951,6 +1025,9 @@ function MessageView({
 
     return (
       <div className="group flex flex-col items-end gap-1">
+        {message.attachments && message.attachments.length > 0 && (
+          <AttachmentChipList attachments={message.attachments} />
+        )}
         <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-card px-4 py-2.5 text-sm leading-relaxed">
           {text}
         </div>

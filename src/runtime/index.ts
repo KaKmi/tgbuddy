@@ -59,6 +59,10 @@ export type {
   BlobStore,
 } from './blob/blob-store.ts'
 export {
+  MemoryAttachmentRepository,
+  type AttachmentRepository,
+} from './attachments/attachment-repository.ts'
+export {
   BUILTIN_TOOL_DESCRIPTORS,
   createBuiltinToolRegistry,
 } from './tools/builtin-tools.ts'

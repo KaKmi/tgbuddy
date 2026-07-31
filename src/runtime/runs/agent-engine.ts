@@ -3,6 +3,7 @@ import type { AgentEvent } from '../../shared/contracts/events.ts'
 import type { SkillManifest } from '../../shared/contracts/skill.ts'
 import type { RunProfileSnapshot } from '../../shared/contracts/run-snapshot.ts'
 import type { ToolDescriptor } from '../../shared/contracts/tool.ts'
+import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
 
 /**
  * 一次 Run 交给内核时的不可变快照。
@@ -16,6 +17,8 @@ export interface AgentInvocation {
   workspaceId: string
   /** 本次 Run 绑定的工作目录；工具只能使用这份不可变快照。 */
   cwd: string
+  /** A02：用户消息携带的附件（字节已在 BlobStore，消息只存 ref） */
+  attachments?: AttachmentRef[]
   channel: Channel
   modelId: string
   systemPrompt: string

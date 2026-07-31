@@ -319,6 +319,9 @@ async function createAgentInvocation(
   return {
     sessionId: input.sessionId,
     text: input.text,
+    ...(input.attachments && input.attachments.length > 0
+      ? { attachments: input.attachments }
+      : {}),
     workspaceId: meta.workspaceId,
     cwd: workspaceDir,
     channel,

@@ -28,6 +28,7 @@ import type {
 } from './mcp.ts'
 import type { StartRunInput } from './run.ts'
 import type { RunRecord } from './run-snapshot.ts'
+import type { AttachmentRef } from './attachment.ts'
 import type { SessionMeta } from './session.ts'
 import type {
   Workspace,
@@ -69,6 +70,8 @@ export const IPC = {
   // Agent 运行
   AGENT_SEND: 'agent:send',
   AGENT_STOP: 'agent:stop',
+  ATTACHMENT_STAGE: 'attachment:stage',
+  ATTACHMENT_DISCARD: 'attachment:discard',
   /** 主 → 渲染，单向推送 */
   AGENT_STREAM: 'agent:stream',
 
@@ -177,6 +180,11 @@ export interface IpcCommandMap {
   >
   'agent:send': IpcCommand<StartRunInput, void>
   'agent:stop': IpcCommand<string, void>
+  'attachment:stage': IpcCommand<
+    { name: string; mime?: string; bytes: Uint8Array },
+    AttachmentRef
+  >
+  'attachment:discard': IpcCommand<AttachmentRef, void>
   'permission:respond': IpcCommand<PermissionResponse, void>
   'permission:pending': IpcCommand<undefined, PermissionRequest[]>
   'permission:rules': IpcCommand<undefined, PermissionRule[]>
@@ -254,10 +262,14 @@ export interface TgBuddyAPI {
     ): Promise<IpcResponse<'session:update-meta'>>
   }
   agent: {
-    send(input: IpcRequest<'agent:send'>): Promise<IpcResponse<'agent:send'>>
+    send(input: IpcRequest<'agent:send'>): Promise<IpcResponse<'agent:send'>> 
     stop(sessionId: IpcRequest<'agent:stop'>): Promise<IpcResponse<'agent:stop'>>
     /** 订阅流式帧，返回取消订阅函数 */
     onStream(listener: (frame: IpcEventMap['agent:stream']) => void): () => void
+  }
+  attachment: {
+    stage(input: IpcRequest<'attachment:stage'>): Promise<IpcResponse<'attachment:stage'>>
+    discard(ref: IpcRequest<'attachment:discard'>): Promise<IpcResponse<'attachment:discard'>>
   }
   permission: {
     respond(res: IpcRequest<'permission:respond'>): Promise<IpcResponse<'permission:respond'>>

@@ -20,6 +20,7 @@ import type {
   AgentInvocation,
   ToolPolicy,
 } from '../../runtime/runs/agent-engine.ts'
+import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
 import type {
   RunExecutionEnv,
   RunExecutionEnvFactory,
@@ -45,12 +46,23 @@ export interface CreatePiAgentEngineOptions {
   envFactory: RunExecutionEnvFactory
   tools(invocation: AgentInvocation, env: ExecutionEnv): AgentTool[]
   toolPolicy: ToolPolicy
+  /**
+   * A02：用户消息持久化后把附件 ref 写入 app_attachments（按 entry_id）。
+   * 附件是应用元数据，不进 pi 消息本体；失败时只记诊断，不阻断 Run。
+   */
+  persistAttachments?(
+    sessionId: string,
+    entryId: string,
+    refs: AttachmentRef[],
+  ): void
 }
 
 export interface PersistedPiMessage {
   id: string
   createdAt: number
   message: PiMessage
+  /** A02：用户消息携带的附件 ref（渲染层消息信封用） */
+  attachments?: AttachmentRef[]
 }
 
 export interface CompactedContextCursor {
@@ -115,6 +127,7 @@ class PiAgentEngine implements AgentEngine {
   readonly #tools: CreatePiAgentEngineOptions['tools']
   readonly #envFactory: RunExecutionEnvFactory
   readonly #toolPolicy: ToolPolicy
+  readonly #persistAttachments: CreatePiAgentEngineOptions['persistAttachments']
   readonly #active = new Map<string, AgentHarness>()
   #disposed = false
 
@@ -123,6 +136,7 @@ class PiAgentEngine implements AgentEngine {
     this.#tools = options.tools
     this.#envFactory = options.envFactory
     this.#toolPolicy = options.toolPolicy
+    this.#persistAttachments = options.persistAttachments
   }
 
   async *run(
@@ -172,6 +186,10 @@ class PiAgentEngine implements AgentEngine {
       let promptError: unknown
       let sawErrorEvent = false
       let abortPromise: Promise<void> | undefined
+      const pendingAttachments =
+        invocation.attachments && invocation.attachments.length > 0
+          ? [...invocation.attachments]
+          : undefined
 
       const unsubscribeToolPolicy = harness.on('tool_call', async (event) => {
         const decision = await this.#toolPolicy.evaluate({
@@ -213,6 +231,23 @@ class PiAgentEngine implements AgentEngine {
         const persisted = event.type === 'message_end'
           ? await persistedMessage(session, event.message)
           : undefined
+        if (
+          persisted
+          && persisted.message.role === 'user'
+          && pendingAttachments
+        ) {
+          // 用户消息落库后挂附件：写 app_attachments 供历史回放；失败不阻断 Run
+          persisted.attachments = pendingAttachments
+          try {
+            this.#persistAttachments?.(
+              invocation.sessionId,
+              persisted.id,
+              pendingAttachments,
+            )
+          } catch (error) {
+            console.error('[PiAgentEngine] 附件元数据写入失败：', error)
+          }
+        }
         const runtimeEvent = piEventToAgentEvent(event, persisted)
         if (runtimeEvent?.type === 'error') sawErrorEvent = true
         if (event.type === 'message_end' && !sawErrorEvent) {

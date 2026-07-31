@@ -7,15 +7,28 @@
 
 import { dialog, ipcMain, type BrowserWindow } from 'electron'
 import type { AgentRuntime } from '../runtime/index.ts'
+import type { AttachmentRef } from '../shared/contracts/attachment.ts'
 import {
   IPC,
   type IpcRequest,
   type IpcResponse,
 } from '../shared/contracts/ipc.ts'
 
+/**
+ * 附件 IO 端口：由 Composition Root 注入 BlobStore 实现，
+ * IPC 层不 import Runtime 内部 store（架构红线）。
+ */
+export interface AttachmentIo {
+  stage(
+    input: { name: string; mime?: string; bytes: Uint8Array },
+  ): Promise<AttachmentRef>
+  discard(ref: AttachmentRef): Promise<void>
+}
+
 export function registerIpc(
   agentRuntime: AgentRuntime,
   getWindow: () => BrowserWindow | null,
+  attachmentIo: AttachmentIo,
 ): () => void {
   const unsubscribe = agentRuntime.subscribe((frame) => {
     const win = getWindow()
@@ -130,6 +143,26 @@ export function registerIpc(
     IPC.AGENT_STOP,
     (_event, sessionId: IpcRequest<'agent:stop'>): IpcResponse<'agent:stop'> =>
       agentRuntime.runs.stop(sessionId),
+  )
+
+  // A02：附件先落 BlobStore，消息只拿 ref；Renderer 永不接触文件系统路径。
+  ipcMain.handle(
+    IPC.ATTACHMENT_STAGE,
+    async (
+      _event,
+      input: IpcRequest<'attachment:stage'>,
+    ): Promise<IpcResponse<'attachment:stage'>> => {
+      return attachmentIo.stage(input)
+    },
+  )
+  ipcMain.handle(
+    IPC.ATTACHMENT_DISCARD,
+    async (
+      _event,
+      ref: IpcRequest<'attachment:discard'>,
+    ): Promise<IpcResponse<'attachment:discard'>> => {
+      await attachmentIo.discard(ref)
+    },
   )
 
   ipcMain.handle(
