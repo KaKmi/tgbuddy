@@ -27,6 +27,7 @@ import type {
   McpServerStatus,
 } from './mcp.ts'
 import type { StartRunInput } from './run.ts'
+import type { RunRecord } from './run-snapshot.ts'
 import type { SessionMeta } from './session.ts'
 import type {
   Workspace,
@@ -121,6 +122,9 @@ export const IPC = {
   MCP_CONNECT: 'mcp:connect',
   MCP_DISCONNECT: 'mcp:disconnect',
   MCP_STATUS: 'mcp:status',
+
+  // Run 账本
+  RUNS_LIST: 'runs:list',
 } as const satisfies Record<string, keyof IpcCommandMap | keyof IpcEventMap>
 
 // ── 请求/响应类型 ─────────────────────────────────────────────────
@@ -212,6 +216,7 @@ export interface IpcCommandMap {
   'mcp:connect': IpcCommand<string, McpServerStatus>
   'mcp:disconnect': IpcCommand<string, void>
   'mcp:status': IpcCommand<undefined, McpServerStatus[]>
+  'runs:list': IpcCommand<string, RunRecord[]>
 }
 
 export type IpcCommandName = keyof IpcCommandMap
@@ -338,6 +343,11 @@ export interface TgBuddyAPI {
       id: IpcRequest<'mcp:disconnect'>,
     ): Promise<IpcResponse<'mcp:disconnect'>>
     status(): Promise<IpcResponse<'mcp:status'>>
+  }
+  runs: {
+    list(
+      sessionId: IpcRequest<'runs:list'>,
+    ): Promise<IpcResponse<'runs:list'>>
   }
 }
 

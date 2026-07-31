@@ -161,8 +161,14 @@ export async function runAppDatabaseScenario(
           '003_app_sessions_interrupted.sql',
           '004_app_workspaces.sql',
           '005_app_permission_rules.sql',
+          '006_app_channels.sql',
+          '007_app_profiles.sql',
+          '008_app_tool_settings.sql',
+          '009_app_mcp_servers.sql',
+          '010_app_mcp_servers_key.sql',
+          '011_app_runs.sql',
         ]),
-      'app migration 必须按顺序包含 001–005',
+      'app migration 必须按顺序包含 001–011',
     )
     assertions++
 
@@ -172,9 +178,14 @@ export async function runAppDatabaseScenario(
     assertCondition(
       JSON.stringify(tables.map((row) => row.name)) ===
         JSON.stringify([
+          'app_channels',
+          'app_mcp_servers',
           'app_permission_rules',
+          'app_profiles',
+          'app_runs',
           'app_schema_migrations',
           'app_sessions',
+          'app_tool_settings',
           'app_workspaces',
         ]),
       `AppDatabase 不得创建未登记的表或 pi 私有表: ${tables.map((row) => row.name).join(',')}`,

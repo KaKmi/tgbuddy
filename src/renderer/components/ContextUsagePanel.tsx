@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ContextUsage, ContextUsageBreakdown } from '../../shared/types/context.ts'
+import type { RunUsageLedger } from '../../shared/contracts/run-snapshot.ts'
 
 interface ContextRow {
   key: keyof ContextUsageBreakdown
@@ -30,10 +31,13 @@ export function ContextUsagePanel({
   sessionId,
   usage,
   disabled,
+  ledger,
 }: {
   sessionId: string
   usage: ContextUsage
   disabled: boolean
+  /** C12：最近一次 Run 的分类 token/cost 账本 */
+  ledger?: RunUsageLedger
 }) {
   const [open, setOpen] = useState(false)
   const rows = buildContextRows(usage)
@@ -90,6 +94,27 @@ export function ContextUsagePanel({
                 />
               ))}
             </div>
+
+            {ledger && (
+              <div className="flex flex-col gap-1.5 border-t border-white/[.07] pt-3">
+                <div className="text-[11px] tracking-wide text-[#6d6d75]">
+                  最近一次运行账本
+                </div>
+                <div className="flex items-center justify-between text-[11.5px]">
+                  <span className="text-[#8a8a92]">输入 / 输出 / 缓存</span>
+                  <span className="font-mono text-[#e4e4e9]">
+                    {formatTokens(ledger.inputTokens)} / {formatTokens(ledger.outputTokens)}{' '}
+                    / {formatTokens(ledger.cacheReadTokens)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[11.5px]">
+                  <span className="text-[#8a8a92]">合计 tokens · 成本</span>
+                  <span className="font-mono text-[#e4e4e9]">
+                    {formatTokens(ledger.totalTokens)} · ${ledger.costUsd.toFixed(4)}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col gap-0.5">
               {rows.map((row) => (

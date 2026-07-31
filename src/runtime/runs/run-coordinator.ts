@@ -13,6 +13,13 @@ import {
   RunRegistry,
   type ActiveRun,
 } from './run-registry.ts'
+import type { RunRepository } from './run-repository.ts'
+import {
+  buildCapabilitySnapshot,
+  EMPTY_USAGE_LEDGER,
+  mergeUsageLedger,
+  type RunUsageLedger,
+} from './run-snapshot.ts'
 
 export interface CreateRunCoordinatorOptions {
   now(): number
@@ -23,6 +30,9 @@ export interface CreateRunCoordinatorOptions {
     ContextService,
     'observeTurn' | 'beforeModelCall' | 'runSettled'
   >
+  /** C12：Run 记录持久化（能力快照 + token 账本），缺省不落盘 */
+  runs?: RunRepository
+  createRunId?(): string
 }
 
 export interface RunSettlement {
@@ -51,6 +61,9 @@ class DefaultRunCoordinator implements RunCoordinator {
   ) => Promise<AgentInvocation>
   readonly #lifecycle: RunSessionLifecycle
   readonly #context: CreateRunCoordinatorOptions['context']
+  readonly #runs: CreateRunCoordinatorOptions['runs']
+  readonly #createRunId: (() => string) | undefined
+  readonly #now: () => number
   readonly #inFlight = new Set<Promise<void>>()
   #disposePromise: Promise<void> | undefined
 
@@ -60,6 +73,9 @@ class DefaultRunCoordinator implements RunCoordinator {
     this.#createInvocation = options.createInvocation
     this.#lifecycle = options.lifecycle
     this.#context = options.context
+    this.#runs = options.runs
+    this.#createRunId = options.createRunId
+    this.#now = options.now
   }
 
   start(
@@ -118,6 +134,8 @@ class DefaultRunCoordinator implements RunCoordinator {
     let failureMessage: string | undefined
     let agentErrorVisible = false
     let settlementFailure: string | undefined
+    let runRecordId: string | undefined
+    let ledger: RunUsageLedger = { ...EMPTY_USAGE_LEDGER }
 
     try {
       const runningSession = await this.#lifecycle.started(run.sessionId)
@@ -143,6 +161,19 @@ class DefaultRunCoordinator implements RunCoordinator {
               }),
           }
         : sourceInvocation
+      if (this.#runs && this.#createRunId) {
+        runRecordId = this.#createRunId()
+        this.#runs.create({
+          id: runRecordId,
+          sessionId: run.sessionId,
+          createdAt: this.#now(),
+          status: 'running',
+          snapshot: {
+            ...buildCapabilitySnapshot(invocation),
+            usage: { ...EMPTY_USAGE_LEDGER },
+          },
+        })
+      }
       if (run.signal.aborted) {
         terminalEvent = { type: 'run_end', stopReason: 'aborted' }
         return
@@ -158,6 +189,7 @@ class DefaultRunCoordinator implements RunCoordinator {
           continue
         }
         if (event.type === 'turn_end' && event.usage) {
+          ledger = mergeUsageLedger(ledger, event.usage)
           this.#context?.observeTurn({
             sessionId: run.sessionId,
             usage: event.usage,
@@ -189,14 +221,15 @@ class DefaultRunCoordinator implements RunCoordinator {
         failureMessage ??= errorMessage(error)
       }
     } finally {
+      const settledStatus = run.signal.aborted
+        ? 'interrupted'
+        : failureMessage
+          ? 'failed'
+          : 'done'
       try {
         const settledSession = await this.#lifecycle.settled({
           sessionId: run.sessionId,
-          status: run.signal.aborted
-            ? 'interrupted'
-            : failureMessage
-              ? 'failed'
-              : 'done',
+          status: settledStatus,
           ...(
             run.signal.aborted
               ? { detail: '用户已停止' }
@@ -239,6 +272,20 @@ class DefaultRunCoordinator implements RunCoordinator {
       this.#registry.settle(run)
       if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
       this.#context?.runSettled(run.sessionId)
+      if (runRecordId && this.#runs) {
+        const record = this.#runs.get(runRecordId)
+        if (record) {
+          this.#runs.update({
+            ...record,
+            settledAt: this.#now(),
+            status: settledStatus,
+            ...(failureMessage ? { error: failureMessage } : {}),
+            snapshot: record.snapshot
+              ? { ...record.snapshot, usage: ledger }
+              : record.snapshot,
+          })
+        }
+      }
     }
   }
 

@@ -39,6 +39,11 @@ export {
   type BuildMcpToolOptions,
 } from './pi-mcp-tool.ts'
 export {
+  buildBuiltinTools,
+  rejectSystemTools,
+  type BuiltinToolsOptions,
+} from './pi-builtin-tools.ts'
+export {
   compactPreparedContext,
   compactStoredContext,
   convertStoredMessagesToLlm,

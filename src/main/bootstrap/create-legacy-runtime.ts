@@ -21,6 +21,7 @@ import {
   type PermissionRuleRepository,
   type ProfileService,
   type ProviderCatalog,
+  type RunRepository,
   mountFailureMessage,
   resolveModelSelection,
   type SessionCommands,
@@ -28,12 +29,12 @@ import {
   type SecretStore,
   type SkillCatalog,
   type McpManager,
+  type ToolRegistry,
   type ToolSettingsService,
   type WorkspaceCommands,
 } from '../../runtime/index.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
-import { ensureDataDir } from '../channel-store.ts'
 
 export interface CreateLegacyRuntimeOptions {
   workspaces: WorkspaceCommands
@@ -66,13 +67,17 @@ export interface CreateLegacyRuntimeOptions {
   skills: SkillCatalog
   /** C09：MCP 服务配置与连接状态（传输实现由 Composition Root 注入） */
   mcp: McpManager
+  /** C12：Run 账本持久化（能力快照 + token/cost） */
+  runs?: RunRepository
+  createRunId?(): string
+  /** C12：工具注册表快照在 Run 启动时冻结 */
+  toolRegistry: ToolRegistry
   dispose?(): Promise<void>
 }
 
 export function createLegacyRuntime(
   options: CreateLegacyRuntimeOptions,
 ): AgentRuntime {
-  ensureDataDir()
   const context = createContextService({
     sessions: options.sessions,
     history: options.history,
@@ -91,8 +96,11 @@ export function createLegacyRuntime(
         options.channels,
         options.profiles,
         options.skills,
+        options.toolRegistry,
       ),
     context,
+    runs: options.runs,
+    createRunId: options.createRunId,
     lifecycle: {
       async started(sessionId) {
         return requireSessionUpdate(
@@ -258,6 +266,7 @@ async function createAgentInvocation(
   channels: ChannelService,
   profiles: ProfileService,
   skills: SkillCatalog,
+  toolRegistry: ToolRegistry,
 ): Promise<AgentInvocation> {
   const meta = sessions.list().find((session) => session.id === input.sessionId)
   if (!meta) throw new Error(`会话不存在：${input.sessionId}`)
@@ -292,6 +301,21 @@ async function createAgentInvocation(
   const enabledSkills = skills
     .list(meta.workspaceId)
     .filter((skill) => skill.enabled)
+  // C12：Run 启动时冻结工具快照（含 MCP 与内置），作为能力账本来源。
+  const frozenTools = toolRegistry.snapshot()
+  const profileSnapshot = selection?.profileId
+    ? (() => {
+        const profile = profiles.get(selection.profileId!)
+        return profile
+          ? {
+              id: profile.id,
+              name: profile.name,
+              channelId: profile.channelId,
+              modelId: profile.modelId,
+            }
+          : undefined
+      })()
+    : undefined
 
   return {
     sessionId: input.sessionId,
@@ -301,6 +325,8 @@ async function createAgentInvocation(
     channel,
     modelId,
     skills: enabledSkills,
+    tools: frozenTools,
+    ...(profileSnapshot ? { profile: profileSnapshot } : {}),
     systemPrompt:
       selection?.systemPrompt
       ?? buildSystemPrompt(workspaceDir, mode, enabledSkills),

@@ -2,7 +2,7 @@
 
 import { generateSummaryWithUsage } from '@earendil-works/pi-agent-core'
 import { buildModels } from '../src/kernel/pi/pi-models.ts'
-import { readLegacyChannels } from '../src/main/channel-store.ts'
+import { readLegacyChannels } from '../src/main/legacy-channels.ts'
 
 const channels = readLegacyChannels()
 const channel = channels[0]

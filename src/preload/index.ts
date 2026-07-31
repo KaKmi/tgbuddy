@@ -108,6 +108,9 @@ const api = {
     disconnect: (id) => ipcRenderer.invoke(IPC.MCP_DISCONNECT, id),
     status: () => ipcRenderer.invoke(IPC.MCP_STATUS),
   },
+  runs: {
+    list: (sessionId) => ipcRenderer.invoke(IPC.RUNS_LIST, sessionId),
+  },
 } satisfies TgBuddyAPI
 
 contextBridge.exposeInMainWorld('tgbuddy', api)

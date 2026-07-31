@@ -332,5 +332,13 @@ export function registerIpc(
     (): IpcResponse<'mcp:status'> => agentRuntime.settings.mcpStatuses(),
   )
 
+  ipcMain.handle(
+    IPC.RUNS_LIST,
+    (
+      _event,
+      sessionId: IpcRequest<'runs:list'>,
+    ): IpcResponse<'runs:list'> => agentRuntime.runs.list(sessionId),
+  )
+
   return unsubscribe
 }

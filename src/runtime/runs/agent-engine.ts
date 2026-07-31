@@ -1,6 +1,8 @@
 import type { Channel } from '../../shared/contracts/channel.ts'
 import type { AgentEvent } from '../../shared/contracts/events.ts'
 import type { SkillManifest } from '../../shared/contracts/skill.ts'
+import type { RunProfileSnapshot } from '../../shared/contracts/run-snapshot.ts'
+import type { ToolDescriptor } from '../../shared/contracts/tool.ts'
 
 /**
  * 一次 Run 交给内核时的不可变快照。
@@ -19,6 +21,10 @@ export interface AgentInvocation {
   systemPrompt: string
   /** C08：Run 启动时冻结的启用技能摘要，正文按需加载 */
   skills?: SkillManifest[]
+  /** C12：Run 启动时冻结的工具快照（含 MCP），能力账本来源 */
+  tools?: ToolDescriptor[]
+  /** C12：本次 Run 使用的 Profile 摘要（不存敏感配置） */
+  profile?: RunProfileSnapshot
   /**
    * 每次真正请求模型前执行的容量护栏。返回 true 表示历史已压缩，
    * kernel 需要重新读取持久化上下文。

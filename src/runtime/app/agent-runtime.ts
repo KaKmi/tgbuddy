@@ -16,6 +16,7 @@ import type {
   McpServerConfig,
   McpServerStatus,
 } from '../../shared/contracts/mcp.ts'
+import type { RunRecord } from '../runs/run-repository.ts'
 import type { HostEvent, StreamFrame } from '../../shared/contracts/events.ts'
 import type {
   AskUserRequest,
@@ -79,6 +80,8 @@ export interface RunCommands {
   start(input: StartRunInput): void
   stop(sessionId: string): void
   isRunning(sessionId: string): boolean
+  /** C12：会话的 Run 账本（能力快照 + token/cost） */
+  list(sessionId: string): RunRecord[]
 }
 
 export interface PermissionCommands {
@@ -161,6 +164,7 @@ export interface AgentRuntimeDependencies {
     start(input: StartRunInput, emit: (frame: StreamFrame) => void): Promise<void>
     stop(sessionId: string): void
     isRunning(sessionId: string): boolean
+    list?(sessionId: string): RunRecord[]
   }
   permissions: PermissionCommands & {
     expireSessionRules(sessionId: string): void
@@ -233,6 +237,7 @@ export function createAgentRuntime(
       // Coordinator 使用私有字段维护运行注册表，不能把实例方法裸转交后再换接收者调用。
       stop: (sessionId) => dependencies.runs.stop(sessionId),
       isRunning: (sessionId) => dependencies.runs.isRunning(sessionId),
+      list: (sessionId) => dependencies.runs.list?.(sessionId) ?? [],
     },
     permissions: {
       respond(response) {

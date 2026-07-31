@@ -41,14 +41,6 @@ type SourceLayer =
 
 const SOURCE_EXTENSIONS = ['.ts', '.tsx']
 
-/**
- * 这些旧 owner 会在后续 Story 删除。豁免集中列出，避免 checker
- * 悄悄演变成允许 Main 长期直接调用 pi 的第二套规则。
- */
-export const LEGACY_COMPATIBILITY = [
-  { prefix: 'src/main/tools/index.ts', deleteIn: 'Story 4' },
-] as const
-
 function normalizePath(path: string): string {
   return path.replaceAll('\\', '/')
 }
@@ -273,11 +265,6 @@ function classifySource(source: string): SourceLayer | undefined {
   return undefined
 }
 
-function isLegacyCompatibilitySource(source: string): boolean {
-  if (source.startsWith('src/kernel/pi/')) return false
-  return LEGACY_COMPATIBILITY.some((item) => source.startsWith(item.prefix))
-}
-
 function targetLayer(target: string): SourceLayer | 'kernel-legacy' | undefined {
   if (target.startsWith('src/kernel/') && !target.startsWith('src/kernel/pi/')) {
     return 'kernel-legacy'
@@ -423,7 +410,7 @@ export function checkArchitecture(
   for (const filePath of listSourceFiles(join(projectRoot, 'src'))) {
     const source = projectPath(projectRoot, filePath)
     const sourceLayer = classifySource(source)
-    if (!sourceLayer || isLegacyCompatibilitySource(source)) continue
+    if (!sourceLayer) continue
 
     for (const imported of parseImports(filePath)) {
       const resolvedTarget = resolveImportTarget(filePath, imported.specifier, aliases)

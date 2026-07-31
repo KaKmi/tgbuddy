@@ -1,4 +1,4 @@
-import { safeStorage, type BrowserWindow } from 'electron'
+import { safeStorage, shell, type BrowserWindow } from 'electron'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import {
   basename,
@@ -29,6 +29,7 @@ import {
   SqliteMcpConfigRepository,
   SqlitePermissionRuleRepository,
   SqliteProfileRepository,
+  SqliteRunRepository,
   SqliteSessionRepository,
   SqliteToolSettingsRepository,
   SqliteWorkspaceRepository,
@@ -42,6 +43,7 @@ import {
 import { NodeWorkspaceMountResolver } from '../../infrastructure/workspace/index.ts'
 import {
   buildAskUserTool,
+  buildBuiltinTools,
   buildMcpTool,
   buildPlanModeTools,
   buildSkillTool,
@@ -52,11 +54,10 @@ import {
   PiRunExecutionEnvFactory,
 } from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
-import { buildBuiltinTools } from '../tools/index.ts'
 import {
   markLegacyChannelsMigrated,
   readLegacyChannels,
-} from '../channel-store.ts'
+} from '../legacy-channels.ts'
 import { createId } from './create-id.ts'
 import { createLegacyRuntime } from './create-legacy-runtime.ts'
 import {
@@ -103,6 +104,8 @@ export async function createApplication(
     createId,
     now: Date.now,
   })
+  // C12：每个 Run 持久化能力快照与 token/cost 账本。
+  const runs = new SqliteRunRepository(appDatabase)
   const channels = createChannelService({
     repository: channelRepository,
     secrets: secretStore,
@@ -267,7 +270,10 @@ export async function createApplication(
           )
           const tools: AgentTool[] = []
           // 基础六工具：只在 snapshot 启用时保留，顺序稳定。
-          for (const tool of buildBuiltinTools(invocation.cwd, env)) {
+          for (const tool of buildBuiltinTools(invocation.cwd, {
+            env,
+            trashItem: (absPath) => shell.trashItem(absPath),
+          })) {
             if (enabled.has(tool.name)) tools.push(tool)
           }
           if (enabled.has('enter_plan_mode')) {
@@ -373,6 +379,9 @@ export async function createApplication(
       toolSettings,
       skills,
       mcp,
+      runs,
+      createRunId: createId,
+      toolRegistry,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)

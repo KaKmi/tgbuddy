@@ -158,6 +158,25 @@ export {
   type RunRegistryOptions,
 } from './runs/run-registry.ts'
 export {
+  buildCapabilitySnapshot,
+  EMPTY_USAGE_LEDGER,
+  mergeUsageLedger,
+} from './runs/run-snapshot.ts'
+export {
+  MemoryRunRepository,
+  type RunRecord,
+  type RunRecordStatus,
+  type RunRepository,
+} from './runs/run-repository.ts'
+export type {
+  CapabilitySnapshot,
+  RunMcpSnapshot,
+  RunProfileSnapshot,
+  RunSkillSnapshot,
+  RunToolSnapshot,
+  RunUsageLedger,
+} from '../shared/contracts/run-snapshot.ts'
+export {
   createRunCoordinator,
   type CreateRunCoordinatorOptions,
   type RunCoordinator,

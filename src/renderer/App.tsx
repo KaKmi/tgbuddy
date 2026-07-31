@@ -31,6 +31,7 @@ import {
 } from './atoms/agent.ts'
 import type { Channel } from '../shared/contracts/channel.ts'
 import type { Profile } from '../shared/contracts/profile.ts'
+import type { RunUsageLedger } from '../shared/contracts/run-snapshot.ts'
 import { roleOf, type SessionMessage } from '../shared/types/message.ts'
 import type { SessionMeta } from '../shared/ipc.ts'
 import type { WorkspaceMountResolution } from '../shared/ipc.ts'
@@ -62,6 +63,7 @@ export function App() {
   const [profiles, setProfiles] = useAtom(profilesAtom)
   const setMessagesMap = useSetAtom(messagesBySessionAtom)
   const [queuedPrompts, setQueuedPrompts] = useAtom(queuedPromptsAtom)
+  const [runLedger, setRunLedger] = useState<RunUsageLedger>()
   const messages = useAtomValue(currentMessagesAtom)
   const stream = useAtomValue(currentStreamAtom)
   const permissions = useAtomValue(currentPermissionsAtom)
@@ -102,6 +104,20 @@ export function App() {
   useEffect(() => {
     void window.tgbuddy.session.list().then(setSessions)
   }, [setSessions])
+
+  // C12：会话最近一次 Run 的 token/cost 账本（Run 结束后刷新）。
+  useEffect(() => {
+    if (!currentId) {
+      setRunLedger(undefined)
+      return
+    }
+    void window.tgbuddy.runs.list(currentId).then((records) => {
+      const settled = records.find(
+        (record) => record.status !== 'running' && record.snapshot?.usage,
+      )
+      setRunLedger(settled?.snapshot?.usage)
+    })
+  }, [currentId, stream.running, setRunLedger])
 
   // C02/C04：渠道与 Profile 设置镜像，输入区模型 chip 和设置页共用。
   useEffect(() => {
@@ -549,6 +565,7 @@ export function App() {
                 <ContextUsagePanel
                   sessionId={currentId}
                   usage={currentSession.contextUsage}
+                  ledger={runLedger}
                   disabled={stream.running || Boolean(stream.compaction)}
                 />
               )}

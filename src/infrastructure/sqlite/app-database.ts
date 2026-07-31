@@ -11,6 +11,7 @@ import appProfilesSql from './migrations/007_app_profiles.sql'
 import appToolSettingsSql from './migrations/008_app_tool_settings.sql'
 import appMcpServersSql from './migrations/009_app_mcp_servers.sql'
 import appMcpServersKeySql from './migrations/010_app_mcp_servers_key.sql'
+import appRunsSql from './migrations/011_app_runs.sql'
 
 interface SqliteModule {
   DatabaseSync: typeof import('node:sqlite').DatabaseSync
@@ -70,6 +71,10 @@ const APP_MIGRATIONS: readonly AppMigration[] = [
   {
     id: '010_app_mcp_servers_key.sql',
     sql: appMcpServersKeySql,
+  },
+  {
+    id: '011_app_runs.sql',
+    sql: appRunsSql,
   },
 ]
 

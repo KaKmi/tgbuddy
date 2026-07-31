@@ -1,25 +1,9 @@
 /**
- * 工具集 —— pi 内置的四个 + 我们自己的两个。
+ * 内置工具构造（由 main/tools/index.ts 迁入，C12 删除旧 owner）。
  *
- * ## 为什么用 pi 的而不是自己写
- *
- * pi 自带 `createReadTool` / `createWriteTool` / `createEditTool` / `createBashTool`，
- * 而且实现得比手写的完善：read 处理图片并自动缩放、edit 有专门的 diff 实现、
- * bash 支持后台执行、**而且有 `file-mutation-queue` 把文件修改串行化**。
- *
- * 最后一条是关键：pi 默认 `toolExecution: 'parallel'`，模型可以同时发起两个 edit
- * 打到同一个文件上。自己写的版本没有任何保护，那是个真实的并发 bug。
- *
- * ## 自己保留的两个
- *
- * - `delete` —— pi 没有删除工具。回收站保护是我们独有的，也是性价比最高的安全措施
- * - `glob`   —— agent-core 里没有（find/grep 在 coding-agent 包里，我们不引那个）
- *
- * ## 沙箱在哪
- *
- * **在 kernel/pi 的 ExecutionEnv 层**（S03/S04 迁入）：pi 的工具只能通过 env
- * 碰磁盘，包一层就覆盖全部工具。delete/glob 也走同一个 env 的 canonicalPath，
- * 路径规则不会因工具实现而出现第二套。
+ * read/write/edit/bash 来自 pi agent-core；delete/glob 是自建工具。
+ * 回收站能力不能直接依赖 Electron（架构红线），因此通过
+ * `trashItem` 端口注入，Composition Root 提供 shell.trashItem。
  */
 
 import { existsSync, readdirSync, statSync } from 'node:fs'
@@ -31,23 +15,22 @@ import {
   createReadTool,
   createWriteTool,
   type AgentHarnessTool,
+  type AgentTool,
   type ExecutionEnv,
 } from '@earendil-works/pi-agent-core'
-import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { SYSTEM_TOOL_PATTERNS } from '../../shared/types/permission.ts'
 
 /** 一次删除超过这个数量就拒绝，防止"一次请求删 500 个"这类事故 */
 const BULK_DELETE_THRESHOLD = 50
 
-interface ToolContext {
+export interface BuiltinToolsOptions {
   env: ExecutionEnv
+  /** 删除保护：默认移入系统回收站（Electron shell.trashItem） */
+  trashItem(absPath: string): Promise<void>
 }
 
 /**
  * 把 pi 的 `AgentHarnessTool` 绑定成不再需要外部 context 的 `AgentTool`。
- *
- * 当前工具 factory 仍是待 C12 删除的 Main compatibility owner，因此在这里
- * 绑定 ExecutionEnv；PiAgentEngine 可以把返回值当作 context-free 工具装入 Harness。
  */
 function bindContext<T extends object>(tool: AgentHarnessTool<T>, context: T): AgentTool {
   return {
@@ -57,28 +40,31 @@ function bindContext<T extends object>(tool: AgentHarnessTool<T>, context: T): A
   } as AgentTool
 }
 
-export function buildBuiltinTools(cwd: string, env: ExecutionEnv): AgentTool[] {
-  const context: ToolContext = { env }
+export function buildBuiltinTools(
+  cwd: string,
+  options: BuiltinToolsOptions,
+): AgentTool[] {
+  const context: BuiltinToolsOptions = options
 
   return [
-    bindContext(createReadTool<ToolContext>(), context),
-    bindContext(createWriteTool<ToolContext>(), context),
-    bindContext(createEditTool<ToolContext>(), context),
+    bindContext(createReadTool<BuiltinToolsOptions>(), context),
+    bindContext(createWriteTool<BuiltinToolsOptions>(), context),
+    bindContext(createEditTool<BuiltinToolsOptions>(), context),
     // bash 的 prepare 钩子在命令真正执行前触发，是做纵深防御的正确位置
     bindContext(
-      createBashTool<ToolContext>({
+      createBashTool<BuiltinToolsOptions>({
         prepare: (execution) => rejectSystemTools(execution.command),
       }),
       context,
     ),
-    globTool(cwd, env),
-    deleteTool(cwd, env),
+    globTool(cwd, options.env),
+    deleteTool(cwd, options),
   ]
 }
 
 // ── delete（自己实现：pi 没有，且要接回收站）────────────────────
 
-function deleteTool(cwd: string, env: ExecutionEnv): AgentTool {
+function deleteTool(cwd: string, options: BuiltinToolsOptions): AgentTool {
   return {
     name: 'delete',
     label: '删除文件',
@@ -91,7 +77,7 @@ function deleteTool(cwd: string, env: ExecutionEnv): AgentTool {
       // 路径先经 env 沙箱 canonicalPath：越界/symlink 逃逸在工具执行前被拒。
       const abs: string[] = []
       for (const path of paths) {
-        const resolved = await env.canonicalPath(path)
+        const resolved = await options.env.canonicalPath(path)
         if (!resolved.ok) throw new Error(resolved.error.message)
         abs.push(resolved.value)
       }
@@ -106,8 +92,8 @@ function deleteTool(cwd: string, env: ExecutionEnv): AgentTool {
 
       const results: string[] = []
       for (const p of abs) {
-        const how = await deleteWithProtection(p)
-        results.push(`${relative(cwd, p) || p} → ${how === 'trashed' ? '已移入回收站' : '已删除'}`)
+        await deleteWithProtection(p, options)
+        results.push(`${relative(cwd, p) || p} → 已移入回收站`)
       }
 
       return {
@@ -116,6 +102,19 @@ function deleteTool(cwd: string, env: ExecutionEnv): AgentTool {
       }
     },
   }
+}
+
+/**
+ * 删除保护 —— 走系统回收站而不是真删。
+ * 回收站实现由 Composition Root 注入（Electron shell.trashItem）。
+ * 失败时不退化为直接删除。
+ */
+async function deleteWithProtection(
+  absPath: string,
+  options: BuiltinToolsOptions,
+): Promise<void> {
+  if (!existsSync(absPath)) throw new Error(`文件不存在：${absPath}`)
+  await options.trashItem(absPath)
 }
 
 // ── glob（自己实现：agent-core 里没有）──────────────────────────
@@ -152,19 +151,6 @@ function globTool(cwd: string, env: ExecutionEnv): AgentTool {
   }
 }
 
-/**
- * 删除保护 —— 走系统回收站而不是真删。
- *
- * Electron 的 `shell.trashItem` 在三个平台都能用；动态 import 让本文件
- * 在无 Electron 环境（测试脚本）里也能加载。删除保护失败时不退化为直接删除。
- */
-async function deleteWithProtection(absPath: string): Promise<'trashed' | 'deleted'> {
-  if (!existsSync(absPath)) throw new Error(`文件不存在：${absPath}`)
-  const { shell } = await import('electron')
-  await shell.trashItem(absPath)
-  return 'trashed'
-}
-
 function walk(dir: string, out: string[], re: RegExp, depth: number): void {
   if (depth > 8 || out.length >= 500) return // 深度和数量都要封顶，否则大仓库能跑很久
   let entries: string[]
@@ -193,8 +179,6 @@ function walk(dir: string, out: string[], re: RegExp, depth: number): void {
  * 沙箱在 env 层对文件类工具是硬约束，但对 `exec` 只是软约束 ——
  * 任意 shell 命令无法静态解析出会碰哪些文件。
  * 所以这里只挡掉能绕过一切限制的系统级工具，其余靠权限提示把关。
- *
- * 由授权前的策略层与 bash prepare 共同调用。
  */
 export function rejectSystemTools(command: string): void {
   for (const re of SYSTEM_TOOL_PATTERNS) {

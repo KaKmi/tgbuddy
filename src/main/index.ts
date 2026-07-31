@@ -9,7 +9,7 @@ import {
   createApplication,
   type TgBuddyApplication,
 } from './bootstrap/create-application.ts'
-import { DATA_DIR } from './channel-store.ts'
+import { DATA_DIR } from './data-dir.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 // Electron E2E 使用已构建的 Renderer，避免再启动一套 Vite 服务。
