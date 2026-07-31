@@ -134,6 +134,12 @@ M2 E2E：complete
   E2E 发现的真实 bug：denied 态被 tool_end 覆盖（reducer 修复 + 单测）；根目录文件 grant 候选命中不了（suggestGrants 修复 + 单测）；M1 fixture 因 run cwd 语义变更回归（TGBUDDY_WORKSPACE_DIR 隔离）
   Concerns: 「已拒绝」只保证实时卡片窗口，历史回放仍映射为 error（S06 已记录，留 C12/U06）；全局规则/settings 页 UI 属 U04。
 
+M2 QA：complete
+  Commits: （本 Slice 修复 + 报告）
+  Results: 探索式 6/6 通过（重载恢复、stop 清理、工作区去重、模式持久化、模态 Esc、规则删除），8 张截图证据
+  QA 发现的真实 bug：拒绝理由未透传给模型（PermissionResponse.reason 在 S06 broker 迁移中丢失）——修复为 `PermissionAskOutcome { allowed, reason? }`，PolicyEngine 拒绝时使用用户理由；回归测试 + 全量 195/195 + E2E 13/13
+  Concerns: 无未解决 P1/P2。
+
 S06: "inline 权限队列与重载恢复" — complete
   Commits: 7760e5e
   Files: src/runtime/pending/pending-requests.ts, src/runtime/permissions/permission-ask-broker.ts, src/runtime/index.ts, src/main/pending-request.ts（删除）, src/main/ask-user-service.ts, src/main/plan-service.ts, src/main/permission-service.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/renderer/atoms/agent.ts, src/renderer/components/ToolCard.tsx, src/renderer/hooks/useGlobalAgentListeners.ts, tests/pending-request.test.ts, tests/unit/runtime/permission-ask-broker.test.ts

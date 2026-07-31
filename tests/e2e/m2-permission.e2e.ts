@@ -45,8 +45,8 @@ test('写工具默认询问：允许后执行成功，拒绝后工具落为已�
     await send(tgbuddy.page, 'M2 写入')
     await expect(tgbuddy.page.getByText('请求执行 write')).toBeVisible()
     await tgbuddy.page.getByRole('button', { name: '拒绝', exact: true }).click()
-    // 拒绝的耐用证据：策略把拦截原因回给模型，模型不再拿到结果
-    await expect(tgbuddy.page.getByText(/用户拒绝了授权/)).toBeVisible()
+    // 拒绝的耐用证据：用户理由透传给策略层并回给模型（不再拿到结果）
+    await expect(tgbuddy.page.getByText(/用户拒绝了该操作/)).toBeVisible()
     await expect(tgbuddy.page.getByRole('button', { name: '发送', exact: true })).toBeVisible()
   } finally {
     await rm(workspace, { recursive: true, force: true })

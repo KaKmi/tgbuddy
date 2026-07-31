@@ -30,6 +30,7 @@ export {
   type PermissionAskInput,
   type PolicyEngineDependencies,
 } from './permissions/policy-engine.ts'
+export type { PermissionAskOutcome } from './permissions/permission-ask-broker.ts'
 export {
   assessRisk,
   createPermissionAskBroker,

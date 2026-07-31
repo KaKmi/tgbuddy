@@ -90,7 +90,7 @@ describe('PermissionAskBroker', () => {
     expect(broker.pending()[0]?.requestId).toBe('request-1')
 
     broker.respond({ requestId: 'request-1', allowed: true })
-    await expect(result).resolves.toBe(true)
+    await expect(result).resolves.toEqual({ allowed: true })
     expect(broker.pending()).toEqual([])
   })
 
@@ -99,9 +99,26 @@ describe('PermissionAskBroker', () => {
     const result = broker.ask(writeInput(), new AbortController().signal)
 
     expect(broker.respond({ requestId: 'request-1', allowed: false })).toBe(true)
-    await expect(result).resolves.toBe(false)
+    await expect(result).resolves.toEqual({ allowed: false })
     expect(broker.pending()).toEqual([])
     expect(broker.respond({ requestId: 'request-1', allowed: true })).toBe(false)
+  })
+
+  test('拒绝理由透传给策略层：PermissionResponse.reason 不丢失', async () => {
+    const { broker } = harness()
+    const result = broker.ask(writeInput(), new AbortController().signal)
+
+    expect(
+      broker.respond({
+        requestId: 'request-1',
+        allowed: false,
+        reason: '不要动这个文件，先看日志',
+      }),
+    ).toBe(true)
+    await expect(result).resolves.toEqual({
+      allowed: false,
+      reason: '不要动这个文件，先看日志',
+    })
   })
 
   test('AbortSignal 中止时释放挂起（stop 清理）', async () => {
@@ -112,7 +129,7 @@ describe('PermissionAskBroker', () => {
 
     controller.abort()
 
-    await expect(result).resolves.toBe(false)
+    await expect(result).resolves.toEqual({ allowed: false, reason: '操作已中止' })
     expect(broker.pending()).toEqual([])
   })
 
@@ -123,7 +140,7 @@ describe('PermissionAskBroker', () => {
 
     const result = broker.ask(writeInput(), controller.signal)
 
-    await expect(result).resolves.toBe(false)
+    await expect(result).resolves.toEqual({ allowed: false, reason: '操作已中止' })
     expect(emitted).toHaveLength(0)
     expect(broker.pending()).toEqual([])
   })
@@ -141,12 +158,12 @@ describe('PermissionAskBroker', () => {
 
     broker.clearSession('session-1')
 
-    await expect(first).resolves.toBe(false)
+    await expect(first).resolves.toEqual({ allowed: false, reason: '会话已结束' })
     expect(broker.pending()).toHaveLength(1)
     expect(broker.pending()[0]?.sessionId).toBe('session-2')
 
     broker.clearSession('session-2')
-    await expect(second).resolves.toBe(false)
+    await expect(second).resolves.toEqual({ allowed: false, reason: '会话已结束' })
     expect(broker.pending()).toEqual([])
   })
 

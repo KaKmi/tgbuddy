@@ -27,8 +27,11 @@ export interface PolicyEngineDependencies {
   getMode(sessionId: string): PermissionMode
   /** project scope 规则的有效性需要会话所属工作区 */
   getWorkspaceId(sessionId: string): string | undefined
-  /** ask 决策的落点：挂起等用户响应，返回是否放行 */
-  ask(input: PermissionAskInput, signal: AbortSignal): Promise<boolean>
+  /** ask 决策的落点：挂起等用户响应，返回是否放行及拒绝理由 */
+  ask(
+    input: PermissionAskInput,
+    signal: AbortSignal,
+  ): Promise<{ allowed: boolean; reason?: string }>
 }
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search'])
@@ -159,7 +162,7 @@ export function createPolicyEngine(
         }
       }
 
-      const allowed = await dependencies.ask(
+      const outcome = await dependencies.ask(
         {
           sessionId,
           toolCallId: input.toolCallId,
@@ -168,9 +171,9 @@ export function createPolicyEngine(
         },
         signal,
       )
-      return allowed
+      return outcome.allowed
         ? { action: 'allow' }
-        : deny('用户拒绝了授权')
+        : deny(outcome.reason ?? '用户拒绝了授权')
     },
   }
 }

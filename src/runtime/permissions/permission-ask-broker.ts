@@ -19,13 +19,19 @@ import type { PermissionAskInput } from './policy-engine.ts'
  * `PermissionRuleRepository` 的职责，本类只做“等用户”这件事。
  */
 export interface PermissionAskBroker {
-  ask(input: PermissionAskInput, signal: AbortSignal): Promise<boolean>
+  ask(input: PermissionAskInput, signal: AbortSignal): Promise<PermissionAskOutcome>
   /**
    * 用户响应。返回是否找到并兑现了请求 —— 重复响应/已消失的请求返回 false。
    */
   respond(response: PermissionResponse): boolean
   pending(): PermissionRequest[]
   clearSession(sessionId: string): void
+}
+
+export interface PermissionAskOutcome {
+  allowed: boolean
+  /** 拒绝时用户给出的理由，模型据此换一种方式（PermissionResponse.reason 透传） */
+  reason?: string
 }
 
 export interface CreatePermissionAskBrokerOptions {
@@ -103,9 +109,9 @@ function extractPath(args: Record<string, unknown>): string | undefined {
 export function createPermissionAskBroker(
   options: CreatePermissionAskBrokerOptions,
 ): PermissionAskBroker {
-  const pending = new PendingRequests<PermissionRequest, boolean>(
-    () => false,
-    () => false,
+  const pending = new PendingRequests<PermissionRequest, PermissionAskOutcome>(
+    () => ({ allowed: false, reason: '操作已中止' }),
+    () => ({ allowed: false, reason: '会话已结束' }),
   )
 
   return {
@@ -132,7 +138,10 @@ export function createPermissionAskBroker(
     respond(response) {
       const request = pending.respond(
         response.requestId,
-        response.allowed,
+        {
+          allowed: response.allowed,
+          ...(response.reason ? { reason: response.reason } : {}),
+        },
       )
       if (request && response.allowed && response.grant && !request.neverPersist) {
         options.applyGrant?.(request, response.grant)

@@ -28,7 +28,12 @@ function harness(options: HarnessOptions = {}): {
     getWorkspaceId: options.workspaceId ?? (() => 'ws-1'),
     ask: async (input, signal) => {
       askCalls.push({ input, signal })
-      return options.ask ? options.ask(input, signal) : true
+      const outcome = options.ask
+        ? options.ask(input, signal)
+        : { allowed: true }
+      return typeof outcome === 'boolean'
+        ? { allowed: outcome }
+        : outcome
     },
   })
   return { policy, askCalls, controller }
@@ -63,9 +68,9 @@ describe('PolicyEngine 基础决策', () => {
       toolName: 'write',
     })
 
-    const denyHarness = harness({ ask: async () => false })
+    const denyHarness = harness({ ask: async () => ({ allowed: false, reason: '用户不想执行' }) })
     expect(await denyHarness.policy.evaluate(tool(), denyHarness.controller.signal))
-      .toEqual({ action: 'deny', reason: expect.stringContaining('拒绝') })
+      .toEqual({ action: 'deny', reason: '用户不想执行' })
   })
 
   test('bash 命令默认询问；ask_user 等控制工具直接 allow', async () => {
