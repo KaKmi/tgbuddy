@@ -32,11 +32,15 @@ import {
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
 import { EncryptedFileSecretStore } from '../../infrastructure/secrets/index.ts'
-import { createFsSkillCatalog } from '../../infrastructure/skills/index.ts'
+import {
+  createFsSkillCatalog,
+  createFsSkillLoader,
+} from '../../infrastructure/skills/index.ts'
 import { NodeWorkspaceMountResolver } from '../../infrastructure/workspace/index.ts'
 import {
   buildAskUserTool,
   buildPlanModeTools,
+  buildSkillTool,
   createPiAgentEngine,
   createPiContextCompactor,
   createPiProviderCatalog,
@@ -112,6 +116,7 @@ export async function createApplication(
       return mount.ok ? [join(mount.mount.path, '.tgbuddy', 'skills')] : []
     },
   })
+  const skillLoader = createFsSkillLoader()
   // C05：内置工具统一注册，Run 启动按 snapshot 冻结启用集合。
   const toolRegistry = createBuiltinToolRegistry()
   // C06：工具三档权限覆盖持久化，PolicyEngine 在规则之下读取。
@@ -287,6 +292,15 @@ export async function createApplication(
               requestAnswers: (questions, signal) =>
                 askUserBroker.requestAnswers({ sessionId, questions }, signal),
             }))
+          }
+          if (enabled.has('skill')) {
+            // C08：技能正文按需加载，技能清单在 Run 启动时冻结。
+            tools.push(
+              buildSkillTool({
+                skills: invocation.skills ?? [],
+                loader: skillLoader,
+              }),
+            )
           }
           return tools
         },

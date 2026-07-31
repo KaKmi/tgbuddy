@@ -69,6 +69,10 @@ export {
 } from './tools/tool-settings-service.ts'
 export type { SkillCatalog } from './skills/ports/skill-catalog.ts'
 export type {
+  LoadedSkillContent,
+  SkillLoader,
+} from './skills/ports/skill-loader.ts'
+export type {
   AgentRuntimeEvent,
   AgentRuntimeEventListener,
   AgentRuntimeEventPublisher,

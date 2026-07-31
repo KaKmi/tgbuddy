@@ -40,7 +40,7 @@ export interface PolicyEngineDependencies {
   getToolPermission?(toolName: string): ToolPermission | undefined
 }
 
-const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search'])
+const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search', 'skill'])
 const CONTROL_TOOLS = new Set(['enter_plan_mode', 'exit_plan_mode', 'ask_user'])
 
 export function isControlTool(toolName: string): boolean {

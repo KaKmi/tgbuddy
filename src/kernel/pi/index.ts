@@ -31,6 +31,10 @@ export {
   type ModelListFetcher,
 } from './pi-provider-catalog.ts'
 export {
+  buildSkillTool,
+  type BuildSkillToolOptions,
+} from './pi-skill-tool.ts'
+export {
   compactPreparedContext,
   compactStoredContext,
   convertStoredMessagesToLlm,

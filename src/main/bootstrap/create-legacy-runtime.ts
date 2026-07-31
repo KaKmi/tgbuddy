@@ -87,6 +87,7 @@ export function createLegacyRuntime(
         options.workspaces,
         options.channels,
         options.profiles,
+        options.skills,
       ),
     context,
     lifecycle: {
@@ -243,6 +244,7 @@ async function createAgentInvocation(
   workspaces: WorkspaceCommands,
   channels: ChannelService,
   profiles: ProfileService,
+  skills: SkillCatalog,
 ): Promise<AgentInvocation> {
   const meta = sessions.list().find((session) => session.id === input.sessionId)
   if (!meta) throw new Error(`会话不存在：${input.sessionId}`)
@@ -273,6 +275,10 @@ async function createAgentInvocation(
     throw new Error(mountFailureMessage(mount))
   }
   const workspaceDir = mount.mount.path
+  // C08：Run 启动时冻结启用技能摘要；正文只在 Agent 调用 skill 工具时加载。
+  const enabledSkills = skills
+    .list(meta.workspaceId)
+    .filter((skill) => skill.enabled)
 
   return {
     sessionId: input.sessionId,
@@ -281,14 +287,17 @@ async function createAgentInvocation(
     cwd: workspaceDir,
     channel,
     modelId,
+    skills: enabledSkills,
     systemPrompt:
-      selection?.systemPrompt ?? buildSystemPrompt(workspaceDir, mode),
+      selection?.systemPrompt
+      ?? buildSystemPrompt(workspaceDir, mode, enabledSkills),
   }
 }
 
 function buildSystemPrompt(
   workspaceDir: string,
   mode: PermissionMode,
+  skills: ReturnType<SkillCatalog['list']> = [],
 ): string {
   return [
     '你是 TgBuddy 的 Agent 助手。回答简洁准确，中文优先。',
@@ -300,6 +309,18 @@ function buildSystemPrompt(
           '',
           '## 计划模式',
           '当前只分析问题并给出实施计划，不执行会改变工作区的操作。',
+        ]
+      : []),
+    ...(skills.length > 0
+      ? [
+          '',
+          '## 技能',
+          '可用技能（正文按需加载，调用 skill 工具获取）：',
+          ...skills.map(
+            (skill) =>
+              `- ${skill.name}（${skill.title}）：${skill.description}`
+              + (skill.trigger ? ` 触发词：${skill.trigger}` : ''),
+          ),
         ]
       : []),
   ].join('\n')

@@ -1,5 +1,6 @@
 import type { Channel } from '../../shared/contracts/channel.ts'
 import type { AgentEvent } from '../../shared/contracts/events.ts'
+import type { SkillManifest } from '../../shared/contracts/skill.ts'
 
 /**
  * 一次 Run 交给内核时的不可变快照。
@@ -16,6 +17,8 @@ export interface AgentInvocation {
   channel: Channel
   modelId: string
   systemPrompt: string
+  /** C08：Run 启动时冻结的启用技能摘要，正文按需加载 */
+  skills?: SkillManifest[]
   /**
    * 每次真正请求模型前执行的容量护栏。返回 true 表示历史已压缩，
    * kernel 需要重新读取持久化上下文。
