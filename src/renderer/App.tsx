@@ -12,6 +12,10 @@ import type { AttachmentDraft, AttachmentRef } from '../shared/contracts/attachm
 import { AttachmentChipList } from './components/AttachmentChips.tsx'
 import { ResultsPanel } from './features/results/ResultsPanel.tsx'
 import {
+  injectEditIntent,
+  stripEditIntent,
+} from './features/results/edit-draft.ts'
+import {
   currentMessagesAtom,
   currentSessionIdAtom,
   currentStreamAtom,
@@ -92,6 +96,8 @@ export function App() {
   // A02：输入区附件草稿（已 stage 到 BlobStore，发送前可移除）
   const [attachmentDrafts, setAttachmentDrafts] = useState<AttachmentDraft[]>([])
   const attachmentInputRef = useRef<HTMLInputElement>(null)
+  // A08：输入区已注入的「让 Agent 改这份」引用（切换会话时清理错误引用）
+  const [editRef, setEditRef] = useState<{ sessionId: string; path: string }>()
   const queuedPrompt = currentId ? queuedPrompts.get(currentId) : undefined
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId)
 
@@ -246,6 +252,21 @@ export function App() {
       console.error('[附件] discard 失败（交给 A09 引用计数清理）：', error)
     }
   }
+
+  /** A08：把产物引用 + 意图注入输入区，不自动发送 */
+  function requestArtifactEdit(artifact: { path?: string }) {
+    const path = artifact.path
+    if (!currentId || !path) return
+    setInput((current) => injectEditIntent(current, path))
+    setEditRef({ sessionId: currentId, path })
+  }
+
+  // A08：切换会话后清理不属于当前会话的注入引用，避免发错目标
+  useEffect(() => {
+    if (!editRef || editRef.sessionId === currentId) return
+    setInput((current) => stripEditIntent(current, editRef.path))
+    setEditRef(undefined)
+  }, [currentId, editRef])
 
   async function editAndResend(messageId: string, text: string) {
     if (!currentId || stream.running || stream.compaction) return
@@ -643,7 +664,10 @@ export function App() {
       </main>
 
       {/* ── 结果区（A06：产物列表，时间倒序 + 分组 + 类型筛选）────────── */}
-      <ResultsPanel sessionId={currentId ?? undefined} />
+      <ResultsPanel
+        sessionId={currentId ?? undefined}
+        onEditRequest={requestArtifactEdit}
+      />
     </div>
   )
 }

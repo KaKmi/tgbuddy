@@ -25,7 +25,13 @@ const KIND_LABEL: Record<ArtifactRef['kind'], string> = {
 }
 
 /** A06：右侧结果区。时间倒序、分「本次任务/更早」、类型筛选、选中态（A07 预览用）。 */
-export function ResultsPanel({ sessionId }: { sessionId?: string }) {
+export function ResultsPanel({
+  sessionId,
+  onEditRequest,
+}: {
+  sessionId?: string
+  onEditRequest?: (artifact: ArtifactRef) => void
+}) {
   const [artifacts, setArtifacts] = useState<ArtifactRef[]>([])
   const [filter, setFilter] = useState<ArtifactFilter>('all')
   const [selectedId, setSelectedId] = useState<string>()
@@ -139,17 +145,32 @@ export function ResultsPanel({ sessionId }: { sessionId?: string }) {
         <div className="border-t bg-background px-3 py-2">
           <div className="mb-1.5 flex items-center justify-between">
             <span className="text-[11px] text-muted-foreground">预览（只读）</span>
-            <button
-              type="button"
-              data-testid="artifact-open"
-              onClick={() => {
-                if (!sessionId || !selectedId) return
-                void window.tgbuddy.artifact.open({ sessionId, artifactId: selectedId })
-              }}
-              className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-[#8ba7c4] hover:bg-white/10"
-            >
-              用默认应用打开
-            </button>
+            <div className="flex gap-1.5">
+              {preview.kind === 'text' && onEditRequest && (
+                <button
+                  type="button"
+                  data-testid="artifact-edit-request"
+                  onClick={() => {
+                    const artifact = artifacts.find((item) => item.id === selectedId)
+                    if (artifact) onEditRequest(artifact)
+                  }}
+                  className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-[#8ba7c4] hover:bg-white/10"
+                >
+                  让 Agent 改这份
+                </button>
+              )}
+              <button
+                type="button"
+                data-testid="artifact-open"
+                onClick={() => {
+                  if (!sessionId || !selectedId) return
+                  void window.tgbuddy.artifact.open({ sessionId, artifactId: selectedId })
+                }}
+                className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-[#8ba7c4] hover:bg-white/10"
+              >
+                用默认应用打开
+              </button>
+            </div>
           </div>
           {preview.kind === 'text' ? (
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-muted-foreground">

@@ -411,3 +411,13 @@ A07 "Artifact 只读预览与外部打开" — complete
   RED/GREEN: 4 项路径逃逸测试（相对拼接/mount 内绝对/..逃逸/跨盘绝对）
   Concerns: 纯字符串路径函数放 Main 层（runtime 不得依赖 node:path）；
     二进制用 NUL 字节启发式 + mime image 走外部打开；预览只读，改动回对话（A08）
+
+A08 "「让 Agent 改这份」入口" — complete
+  Commits: （本 Slice）
+  Files: src/renderer/features/results/edit-draft.ts、ResultsPanel.tsx（编辑请求按钮）、
+    src/renderer/App.tsx（草稿注入 + 会话切换清理）、tests/edit-draft.test.ts
+  Produces: `injectEditIntent`/`hasEditIntent`/`stripEditIntent` 纯函数、
+    ResultsPanel「让 Agent 改这份」按钮（仅文本预览显示）、输入区草稿注入（不自动发送）
+  RED/GREEN: 4 项（空/已有草稿注入/幂等/strip 保留用户内容/跨路径隔离）
+  Concerns: 只注入文本引用，复用普通 send 流程，无 Artifact 专用执行入口；
+    切换会话时按 editRef 清理旧会话注入的引用；不允许预览区直接改文件
