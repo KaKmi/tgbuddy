@@ -20,6 +20,7 @@ export {
 } from './secrets/secret-store.ts'
 export type { SecretRef } from '../shared/contracts/secret.ts'
 export type { Profile, ProfileSaveInput } from '../shared/contracts/profile.ts'
+export type { ToolDescriptor, ToolPermission } from '../shared/contracts/tool.ts'
 export type { ChannelRepository } from './channels/channel-repository.ts'
 export {
   createChannelService,
@@ -42,6 +43,15 @@ export {
   MemoryProfileRepository,
   type ProfileRepository,
 } from './profiles/profile-repository.ts'
+export {
+  createToolRegistry,
+  type ToolRegistry,
+  type CreateToolRegistryOptions,
+} from './tools/tool-registry.ts'
+export {
+  BUILTIN_TOOL_DESCRIPTORS,
+  createBuiltinToolRegistry,
+} from './tools/builtin-tools.ts'
 export type {
   AgentRuntimeEvent,
   AgentRuntimeEventListener,

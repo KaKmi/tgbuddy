@@ -1,4 +1,5 @@
 import { safeStorage, type BrowserWindow } from 'electron'
+import type { AgentTool } from '@earendil-works/pi-agent-core'
 import {
   basename,
   dirname,
@@ -7,6 +8,7 @@ import {
 } from 'node:path'
 import {
   createAskUserBroker,
+  createBuiltinToolRegistry,
   createChannelService,
   createPlanAskBroker,
   createPermissionAskBroker,
@@ -98,6 +100,8 @@ export async function createApplication(
     createId,
   })
   migrateLegacyChannels(channels, channelRepository)
+  // C05：内置工具统一注册，Run 启动按 snapshot 冻结启用集合。
+  const toolRegistry = createBuiltinToolRegistry()
   const mountResolver = new NodeWorkspaceMountResolver()
   const workspaceService = createWorkspaceService({
     repository: workspaceRepository,
@@ -220,10 +224,17 @@ export async function createApplication(
         envFactory: new PiRunExecutionEnvFactory(),
         tools: (invocation, env) => {
           const sessionId = invocation.sessionId
-          return [
-            ...buildBuiltinTools(invocation.cwd, env),
+          const enabled = new Set(
+            toolRegistry.snapshot().map((descriptor) => descriptor.name),
+          )
+          const tools: AgentTool[] = []
+          // 基础六工具：只在 snapshot 启用时保留，顺序稳定。
+          for (const tool of buildBuiltinTools(invocation.cwd, env)) {
+            if (enabled.has(tool.name)) tools.push(tool)
+          }
+          if (enabled.has('enter_plan_mode')) {
             // S09：计划模式工具由 kernel/pi adapter 提供，模式本身是 Session 元数据。
-            ...buildPlanModeTools({
+            tools.push(...buildPlanModeTools({
               // 模式是 Session 元数据：读取与写入都直连 catalog，不再有第二份 Map。
               getMode: () =>
                 sessionRepository.get(sessionId)?.permissionMode ?? 'auto',
@@ -251,12 +262,15 @@ export async function createApplication(
               },
               requestApproval: (plan, signal) =>
                 planAskBroker.requestApproval({ sessionId, plan }, signal),
-            }),
-            buildAskUserTool({
+            }))
+          }
+          if (enabled.has('ask_user')) {
+            tools.push(buildAskUserTool({
               requestAnswers: (questions, signal) =>
                 askUserBroker.requestAnswers({ sessionId, questions }, signal),
-            }),
-          ]
+            }))
+          }
+          return tools
         },
         toolPolicy: createPolicyEngine({
           rules: permissionRules,
