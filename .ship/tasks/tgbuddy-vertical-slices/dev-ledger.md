@@ -295,3 +295,22 @@ M3 后续用户手动 QA（ask_user 卡片）— complete
   QA 发现的真实缺陷（已修复 + 回归）：
   - P1：AskUserCard 选中选项时会把 `custom[id]` 清成空串，提交判定 `custom[id] ?? answers[id]` 不会把空串回退到选项答案，导致按钮一直禁用；修复为提取纯函数 `resolveAskUserAnswer`/`isAskUserComplete`（空串视为「未自定义」再回退选项），提交值同步走同一函数
   Concerns: 全量单测 307/307（新增 3 项）、E2E 20/20（ask_user 用例改为第一题点选选项回归）、architecture/typecheck/build 全过
+
+权限模型收口（用户方向：工具权限只读 + 计划模式 skill 化 + 审批 Codex 化）— complete
+  Commits: c531488（feat）、（docs）
+  Results: 对照 Proma（permissionMode + SAFE_TOOLS 分类 + 会话白名单，无 per-tool 三档）与 pi
+  （beforeToolCall/tool_call block 拦截 + setTools/setActiveTools 动态工具集），把 TgBuddy 权限收敛为
+  「权限模式（默认/计划/完全访问）+ 总是允许规则 + 内置分类兜底」三层
+  变更：
+  - 删除 per-tool 三档设置链路：tool-settings repository/service、SqliteToolSettingsRepository、
+    迁移 008（旧库残留孤儿表无害）、IPC/Preload 四个写接口；工具页只读展示内置分类默认徽标
+  - PolicyEngine 去掉 getToolPermission 依赖：决策只剩 模式 → 规则 → 内置分类 → neverPersist 硬约束
+  - 计划模式 skill 化：新增内置技能 `plan-mode`（assets/skills/builtin/plan-mode/SKILL.md，中文完整
+    工作流：调研规则/计划结构/提交审批/修订）；移除 enter_plan_mode 工具，exit_plan_mode 收缩为宿主
+    只读能力始终注入（同 skill 工具不进工具区）；模式 chip 手动切换（Codex 显式模态）
+  - 审批卡 Codex 化：TL;DR 摘要 + 展开完整计划 + 拒绝意见输入
+  - QA 驱动与 E2E 同步：C06 用例改为「工具只读展示 + 完全访问放行 + 默认权限询问」；
+    计划闭环用例改为 chip 进入 + 提交计划 + 审批；m2-permission 重启用例修复 strict-mode 竞态（.last()）
+  Concerns: 全量单测 297/297、E2E 20/20、architecture/typecheck/build 全过；per-tool「禁止」能力
+  随三档一并移除，需要精确拒绝时用 deny 规则（工具×路径/前缀/方法）；迁移 008 移除后旧库的表保留，
+  不主动删用户数据
