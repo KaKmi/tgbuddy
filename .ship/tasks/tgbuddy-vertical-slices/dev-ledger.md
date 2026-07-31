@@ -198,3 +198,11 @@ C05: "ToolRegistry 与内置工具快照" — complete
   验证: `bun test tests/unit/runtime/tool-registry.test.ts`（7/7）、全量 `bun test` 240/240、check:architecture、typecheck、build 全过
   删除项: 无（main/tools/index.ts 构造职责保留，C12 删除；元数据已迁入 runtime 描述符）
   Concerns: 描述符元数据与 pi 工具对象内的 description 各自维护（settings 展示用描述符、模型看到的是 pi 原文，名称已用测试对齐）；enable/disable 暂存内存，持久化与 PolicyEngine 接线在 C06。
+
+C06: "工具三档权限设置" — complete
+  Commits: f67f1a2
+  Files: src/shared/contracts/tool.ts, src/runtime/tools/tool-settings-repository.ts, src/runtime/tools/tool-settings-service.ts, src/infrastructure/sqlite/migrations/008_app_tool_settings.sql, src/infrastructure/sqlite/repositories/sqlite-tool-settings-repository.ts, src/infrastructure/sqlite/app-database.ts, src/infrastructure/sqlite/index.ts, src/runtime/permissions/policy-engine.ts, src/runtime/app/agent-runtime.ts, src/shared/contracts/ipc.ts, src/main/ipc.ts, src/preload/index.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/renderer/features/settings/ChannelSettingsPanel.tsx, tests/unit/runtime/tool-settings-service.test.ts, tests/unit/runtime/policy-engine.test.ts, tests/unit/runtime/agent-runtime.test.ts
+  Produces: `ToolSettingView`（shared 契约）；`ToolPermissionSetting`/`ToolSettingsRepository` 端口 + `MemoryToolSettingsRepository` + `SqliteToolSettingsRepository` + `008_app_tool_settings.sql`；`createToolSettingsService()`（覆盖优先→内置默认，set/reset/resetAll/bulkSetAsk，PolicyEngine 钩子 getPermission）；PolicyEngine `getToolPermission` 集成（规则 > 三档默认 > 内置兜底；破坏性命令硬约束不被「允许」覆盖但「禁止」生效；读类默认放行移到规则之后）；SettingsCommands + IPC `tool:list/permission-set/permission-reset/permissions-reset/bulk-ask` + Preload；设置面板「工具」区（三档分段控件数值从原型提取、全部改为询问/恢复推荐/单工具重置）
+  验证: `bun test tests/unit/runtime/tool-settings-service.test.ts`（6/6）+ policy-engine 新增 5 项、全量 `bun test` 251/251、check:architecture、typecheck、build 全过
+  删除项: 无（UI setting 不写进 Tool 实例，只写覆盖项仓库）
+  Concerns: 三档默认只按 toolId 精确匹配（C10 后 MCP 用 server.method id）；禁用工具不在 engine snapshot，设置页仍可编辑其权限值（下次启用时生效）；规则优先级测试覆盖「规则放行 > 工具页禁止」。
