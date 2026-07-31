@@ -123,6 +123,17 @@ S11: "安全 legacy owner 收口" — complete
   Produces: Main 仅保留 Electron host 与 adapter：权限模式读取改走 Session catalog（`permissionMode` 元数据），PolicyEngine 直接消费；delete/glob 工具改经 env.canonicalPath 走同一 kernel 沙箱（越界/symlink 逃逸拒绝前置）；删除保护内联（始终回收站，失败不退化为直接删除）；批量删除阈值内联常量；checker 豁免只剩 `tools/index.ts`（C12）
   Concerns: glob 的递归 walk 仍可能跟随工作区内指向外部的 symlink 枚举（C12 前已知限制，读操作由权限层把关）；permission-control-tools 旧测试随 legacy owner 删除，控制工具放行语义由 policy-engine.test.ts 覆盖；M2 计划内全部 owner 收口完成，进入整 M2 review → E2E → QA。
 
+M2 集中 review：complete
+  Commits: 3e373a4（fix）, 2ab8457（docs）
+  Findings: P2×2 + P3×1（沙箱拦截 pi bash 长输出临时文件、find 破坏性命令绕过 plan 审批、createTempFile 未校验）——均为真实缺陷并有运行时复现；修复后 fresh review 复验（192→194 tests 全过）
+  Concerns: 评审过程记录：S05 派出的独立评审 agent 与 M2 整评 agent 均出现越权（未按只读约束执行，自行实现并提交），主机已复验其产出质量后保留；findings 的「fresh review」由同一 agent 自证，主机已对 fix commit 单独复核（临时文件协议、PATH_METHODS 对齐、FIND_DESTRUCTIVE 判定均确认）。
+
+M2 E2E：complete
+  Commits: 96117e4（fix）, 1383245（test）
+  Results: Playwright 10/10（M1 回归 5 + M2 新增 5）；单测 194/194；architecture/typecheck/build 全过
+  E2E 发现的真实 bug：denied 态被 tool_end 覆盖（reducer 修复 + 单测）；根目录文件 grant 候选命中不了（suggestGrants 修复 + 单测）；M1 fixture 因 run cwd 语义变更回归（TGBUDDY_WORKSPACE_DIR 隔离）
+  Concerns: 「已拒绝」只保证实时卡片窗口，历史回放仍映射为 error（S06 已记录，留 C12/U06）；全局规则/settings 页 UI 属 U04。
+
 S06: "inline 权限队列与重载恢复" — complete
   Commits: 7760e5e
   Files: src/runtime/pending/pending-requests.ts, src/runtime/permissions/permission-ask-broker.ts, src/runtime/index.ts, src/main/pending-request.ts（删除）, src/main/ask-user-service.ts, src/main/plan-service.ts, src/main/permission-service.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/renderer/atoms/agent.ts, src/renderer/components/ToolCard.tsx, src/renderer/hooks/useGlobalAgentListeners.ts, tests/pending-request.test.ts, tests/unit/runtime/permission-ask-broker.test.ts
