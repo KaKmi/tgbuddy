@@ -16,18 +16,18 @@
 | Scenario | Result | Duration | Entries | DB bytes | WAL bytes |
 |---|---|---:|---:|---:|---:|
 | runtime | passed | 1 | 0 | 0 | 0 |
-| app-database | passed | 36 | 2 | 53248 | 0 |
-| session-catalog | passed | 41 | 2 | 53248 | 0 |
-| permission-rules | passed | 28 | 1 | 53248 | 0 |
-| pi-session-store | passed | 105 | 1 | 139264 | 0 |
-| bootstrap | passed | 27 | 0 | 81920 | 0 |
-| ordered-entries | passed | 1857 | 1000 | 888832 | 0 |
-| session-isolation | passed | 411 | 200 | 245760 | 0 |
-| crash-recovery | passed | 2128 | 251 | 299008 | 0 |
-| compaction | passed | 33 | 4 | 81920 | 0 |
-| delete-cleanup | passed | 26 | 100 | 245760 | 0 |
-| wal-backup-restore | passed | 2076 | 1001 | 884736 | 0 |
-| legacy-import | passed | 322 | 35 | 90112 | 0 |
+| app-database | passed | 46 | 2 | 53248 | 0 |
+| session-catalog | passed | 47 | 2 | 53248 | 0 |
+| permission-rules | passed | 37 | 1 | 53248 | 0 |
+| pi-session-store | passed | 117 | 1 | 139264 | 0 |
+| bootstrap | passed | 37 | 0 | 81920 | 0 |
+| ordered-entries | passed | 6762 | 1000 | 888832 | 0 |
+| session-isolation | passed | 473 | 200 | 245760 | 0 |
+| crash-recovery | passed | 2018 | 249 | 290816 | 0 |
+| compaction | passed | 36 | 4 | 81920 | 0 |
+| delete-cleanup | passed | 27 | 100 | 245760 | 0 |
+| wal-backup-restore | passed | 2242 | 1001 | 884736 | 0 |
+| legacy-import | passed | 288 | 35 | 90112 | 0 |
 
 ## Compatibility warnings
 - model_change.channelId 以 legacy.model_change 保存，未伪装为 provider。
