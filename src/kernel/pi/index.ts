@@ -35,6 +35,10 @@ export {
   type BuildSkillToolOptions,
 } from './pi-skill-tool.ts'
 export {
+  buildMcpTool,
+  type BuildMcpToolOptions,
+} from './pi-mcp-tool.ts'
+export {
   compactPreparedContext,
   compactStoredContext,
   convertStoredMessagesToLlm,

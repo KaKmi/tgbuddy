@@ -23,6 +23,10 @@ export interface ToolDescriptor {
   enabled: boolean
   /** 附加说明（如 bash 的破坏性命令提示） */
   note?: string
+  /** C10/C11：MCP 工具的服务配置 id（内置工具无） */
+  owner?: string
+  /** C10：MCP tools/list 返回的 JSON Schema，供后续精确参数化 */
+  inputSchema?: unknown
 }
 
 /** 设置页工具列表行：描述符 + 最终三档权限（覆盖优先，否则默认）。 */

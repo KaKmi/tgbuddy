@@ -3,6 +3,7 @@ import type {
   PermissionRule,
 } from '../../shared/contracts/permission.ts'
 import type { ToolPermission } from '../../shared/contracts/tool.ts'
+import { isReadLikeMcpMethod } from '../mcp/mcp-manager.ts'
 import {
   isNeverPersist,
   isReadOnlyCommand,
@@ -131,7 +132,14 @@ export function createPolicyEngine(
 
       if (mode === 'plan') {
         if (READONLY_TOOLS.has(toolName)) return { action: 'allow' }
-        if (toolName.startsWith('mcp__')) return { action: 'allow' }
+        // C11：MCP 方法名使用 server.method；只放行读类方法。
+        if (
+          toolName.includes('.')
+          && !CONTROL_TOOLS.has(toolName)
+          && isReadLikeMcpMethod(toolName)
+        ) {
+          return { action: 'allow' }
+        }
         if (
           (toolName === 'write' || toolName === 'edit')
           && extractPath(args)?.endsWith('.md')

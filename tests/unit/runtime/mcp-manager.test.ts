@@ -41,15 +41,18 @@ class MemoryMcpConfigRepository implements McpConfigRepository {
 class FakeTransport implements McpTransport {
   readonly #behavior: 'ok' | 'fail' | 'hang'
   readonly #tools: Array<{ name: string; description?: string }>
+  readonly #callBehavior: 'ok' | 'error' | 'hang' | 'isError'
   connected = false
   disconnected = false
 
   constructor(
     behavior: 'ok' | 'fail' | 'hang' = 'ok',
     tools: Array<{ name: string; description?: string }> = [],
+    callBehavior: 'ok' | 'error' | 'hang' | 'isError' = 'ok',
   ) {
     this.#behavior = behavior
     this.#tools = tools
+    this.#callBehavior = callBehavior
   }
 
   async connect(signal: AbortSignal): Promise<void> {
@@ -76,6 +79,26 @@ class FakeTransport implements McpTransport {
 
   async listTools(): Promise<Array<{ name: string; description?: string }>> {
     return this.#tools
+  }
+
+  async call(
+    method: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<{ text: string; isError: boolean }> {
+    if (this.#callBehavior === 'error') {
+      throw new Error('MCP 调用失败')
+    }
+    if (this.#callBehavior === 'isError') {
+      return { text: '服务端返回错误', isError: true }
+    }
+    if (this.#callBehavior === 'hang') {
+      await new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason))
+      })
+      return { text: '', isError: false }
+    }
+    return { text: `${method}:${String(args.text ?? '')}`, isError: false }
   }
 }
 
@@ -110,6 +133,13 @@ function createFixture(): {
       const transport = new FakeTransport(
         behavior === 'fail' ? 'fail' : behavior === 'hang' ? 'hang' : 'ok',
         tools,
+        (config.env?.CALL === 'error'
+          ? 'error'
+          : config.env?.CALL === 'isError'
+            ? 'isError'
+            : config.env?.CALL === 'hang'
+              ? 'hang'
+              : 'ok') as 'ok' | 'error' | 'hang' | 'isError',
       )
       transportsByConfig.set(config.id, transport)
       transports.push(transport)
@@ -276,5 +306,49 @@ describe('McpManager', () => {
     const status = await manager.connect('mcp-b')
     expect(status.state).toBe('error')
     expect(status.error).toMatch(/冲突|重名/)
+  })
+
+  test('调用 MCP 工具：成功返回文本结果', async () => {
+    const { manager } = createFixture()
+    manager.save(serverInput({ key: 'pg' }))
+    await manager.connect('mcp-1')
+
+    const text = await manager.call('mcp-1', 'query', { text: 'x' })
+    expect(text).toBe('query:x')
+  })
+
+  test('调用未连接服务抛出可诊断错误（断线不伪造成功）', async () => {
+    const { manager } = createFixture()
+    manager.save(serverInput({ key: 'pg' }))
+    await expect(manager.call('mcp-1', 'query', {})).rejects.toThrow(/未连接/)
+  })
+
+  test('调用失败与结构化错误都抛到工具层', async () => {
+    const errorFixture = createFixture()
+    errorFixture.manager.save(
+      serverInput({ key: 'pg', env: { CALL: 'error' } }),
+    )
+    await errorFixture.manager.connect('mcp-1')
+    await expect(
+      errorFixture.manager.call('mcp-1', 'query', {}),
+    ).rejects.toThrow(/MCP 调用失败/)
+
+    const isErrorFixture = createFixture()
+    isErrorFixture.manager.save(
+      serverInput({ key: 'pg', env: { CALL: 'isError' } }),
+    )
+    await isErrorFixture.manager.connect('mcp-1')
+    await expect(
+      isErrorFixture.manager.call('mcp-1', 'query', {}),
+    ).rejects.toThrow(/服务端返回错误/)
+  })
+
+  test('调用超时可取消并映射为可操作错误', async () => {
+    const { manager } = createFixture()
+    manager.save(serverInput({ key: 'pg', env: { CALL: 'hang' } }))
+    await manager.connect('mcp-1')
+    await expect(
+      manager.call('mcp-1', 'query', {}, AbortSignal.timeout(20)),
+    ).rejects.toThrow(/超时|取消/)
   })
 })

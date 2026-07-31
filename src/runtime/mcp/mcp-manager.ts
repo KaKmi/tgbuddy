@@ -7,6 +7,7 @@ import type {
 import type { SecretStore } from '../secrets/secret-store.ts'
 import type { McpConfigRepository } from './mcp-config-repository.ts'
 import type {
+  McpCallResult,
   McpTransport,
   McpToolDefinition,
   McpTransportFactory,
@@ -33,6 +34,13 @@ export interface McpManager {
   disconnect(serverId: string): Promise<void>
   status(serverId: string): McpServerStatus
   statuses(): McpServerStatus[]
+  /** C11：调用已连接服务的工具方法；未连接/断线一律抛错 */
+  call(
+    serverId: string,
+    method: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<string>
 }
 
 interface ConnectionState {
@@ -190,6 +198,35 @@ export function createMcpManager(
     statuses() {
       return options.repository.list().map((config) => statusOf(config.id))
     },
+    async call(serverId, method, args, signal) {
+      const state = states.get(serverId)
+      if (!state?.transport || state.state !== 'connected') {
+        throw new Error(`MCP 服务未连接：${serverId}，请先在设置中连接再调用`)
+      }
+      const controller = new AbortController()
+      const timer = setTimeout(() => {
+        controller.abort(new DOMException('调用超时', 'TimeoutError'))
+      }, timeoutMs)
+      const onExternalAbort = (): void => controller.abort(signal?.reason)
+      if (signal?.aborted) controller.abort(signal.reason)
+      else signal?.addEventListener('abort', onExternalAbort)
+      try {
+        const result: McpCallResult = await state.transport.call(
+          method,
+          args,
+          controller.signal,
+        )
+        if (result.isError) {
+          throw new Error(result.text || `MCP 方法执行失败：${method}`)
+        }
+        return result.text
+      } catch (error) {
+        throw new Error(describeConnectError(error))
+      } finally {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', onExternalAbort)
+      }
+    },
   }
 }
 
@@ -202,6 +239,12 @@ function slugifyServerKey(name: string): string {
 }
 
 const READ_PREFIXES = ['get', 'list', 'search', 'read', 'fetch', 'query']
+
+/** C11：plan 模式只放行读类 MCP 方法（与默认权限启发式同源）。 */
+export function isReadLikeMcpMethod(method: string): boolean {
+  const first = method.split(/[._-]/)[0]?.toLowerCase()
+  return Boolean(first && READ_PREFIXES.includes(first))
+}
 
 function buildMcpToolDescriptors(
   config: McpServerConfig,
@@ -216,6 +259,8 @@ function buildMcpToolDescriptors(
       description: tool.description ?? 'MCP 服务提供的工具',
       category: 'mcp',
       source: config.name,
+      owner: config.id,
+      inputSchema: tool.inputSchema,
       defaultPermission: defaultMcpPermission(tool.name),
       enabled: true,
     }

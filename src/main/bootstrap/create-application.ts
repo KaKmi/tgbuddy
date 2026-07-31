@@ -42,6 +42,7 @@ import {
 import { NodeWorkspaceMountResolver } from '../../infrastructure/workspace/index.ts'
 import {
   buildAskUserTool,
+  buildMcpTool,
   buildPlanModeTools,
   buildSkillTool,
   createPiAgentEngine,
@@ -313,6 +314,25 @@ export async function createApplication(
               buildSkillTool({
                 skills: invocation.skills ?? [],
                 loader: skillLoader,
+              }),
+            )
+          }
+          // C11：已连接 MCP 的 server.method 工具进入本次 Run 的工具集。
+          for (const descriptor of toolRegistry.snapshot()) {
+            if (descriptor.category !== 'mcp') continue
+            const owner = descriptor.owner
+            if (!owner) continue
+            const method = descriptor.name.slice(
+              descriptor.name.indexOf('.') + 1,
+            )
+            tools.push(
+              buildMcpTool({
+                toolId: descriptor.id,
+                method,
+                label: descriptor.label,
+                description: descriptor.description,
+                call: (args, signal) =>
+                  mcp.call(owner, method, args, signal),
               }),
             )
           }

@@ -2,6 +2,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import {
+  CallToolResultSchema,
+  type CallToolResult,
+} from '@modelcontextprotocol/sdk/types.js'
 import type { McpServerConfig } from '../../shared/contracts/mcp.ts'
 import type {
   McpTransport,
@@ -63,5 +67,25 @@ class SdkMcpTransport implements McpTransport {
       ...(tool.description ? { description: tool.description } : {}),
       inputSchema: tool.inputSchema,
     }))
+  }
+
+  async call(
+    method: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<{ text: string; isError: boolean }> {
+    const result = (await this.#client.callTool(
+      { name: method, arguments: args },
+      CallToolResultSchema,
+      { signal },
+    )) as CallToolResult
+    const text = result.content
+      .filter(
+        (content): content is { type: 'text'; text: string } =>
+          content.type === 'text',
+      )
+      .map((content) => content.text)
+      .join('\n')
+    return { text, isError: result.isError ?? false }
   }
 }

@@ -83,6 +83,7 @@ export type {
 } from './mcp/ports/mcp-transport.ts'
 export {
   createMcpManager,
+  isReadLikeMcpMethod,
   type CreateMcpManagerOptions,
   type McpManager,
 } from './mcp/mcp-manager.ts'
