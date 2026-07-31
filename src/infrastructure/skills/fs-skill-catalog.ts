@@ -10,7 +10,10 @@ import type {
   SkillManifest,
   SkillSource,
 } from '../../shared/contracts/skill.ts'
-import { parseSkillManifest } from '../../shared/skill-manifest-parser.ts'
+import {
+  parseSkillFrontmatter,
+  parseSkillManifest,
+} from '../../shared/skill-manifest-parser.ts'
 import type { SkillCatalog } from '../../runtime/skills/ports/skill-catalog.ts'
 
 export interface CreateFsSkillCatalogOptions {
@@ -97,10 +100,21 @@ function collectGroup(
       }
       if (!isDirectory) continue
       const manifestPath = join(dir, MANIFEST_FILE)
-      if (!existsSync(manifestPath)) continue
       try {
-        const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown
-        const skill = parseSkillManifest(parsed, { source, root: dir })
+        let skill
+        if (existsSync(manifestPath)) {
+          // 自定义 manifest（skill.json）优先：带 title/trigger/tags 等富元数据
+          const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown
+          skill = parseSkillManifest(parsed, { source, root: dir })
+        } else {
+          // 标准 SKILL.md 技能：从 YAML frontmatter 解析元数据
+          const skillMdPath = join(dir, 'SKILL.md')
+          if (!existsSync(skillMdPath)) continue
+          skill = parseSkillFrontmatter(readFileSync(skillMdPath, 'utf8'), {
+            source,
+            root: dir,
+          })
+        }
         if (seen.has(skill.name)) {
           console.warn(`[skills] 跳过重复技能名 ${skill.name}（${dir}）`)
           continue

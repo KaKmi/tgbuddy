@@ -62,6 +62,46 @@ describe('Skill manifest parser', () => {
 })
 
 describe('FsSkillCatalog', () => {
+  test('标准 SKILL.md frontmatter 技能（无 skill.json）也能被发现', () => {
+    const root = makeRoot()
+    try {
+      mkdirSync(join(root, 'pdf'), { recursive: true })
+      writeFileSync(
+        join(root, 'pdf', 'SKILL.md'),
+        '---\nname: pdf\ndescription: PDF 处理指南\nversion: "1.0.1"\n---\n\n# PDF\n正文',
+        'utf8',
+      )
+      const catalog = createFsSkillCatalog({
+        builtinRoots: [root],
+        userRoots: [],
+        workspaceRoots: () => [],
+      })
+      const item = catalog.groups('ws-1')[0]?.items[0]
+      expect(item?.name).toBe('pdf')
+      expect(item?.title).toBe('pdf')
+      expect(item?.version).toBe('1.0.1')
+      expect(item?.description).toContain('PDF 处理指南')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('SKILL.md 缺少 name/description 时跳过并记录诊断', () => {
+    const root = makeRoot()
+    try {
+      mkdirSync(join(root, 'bad-skill'), { recursive: true })
+      writeFileSync(join(root, 'bad-skill', 'SKILL.md'), '没有 frontmatter', 'utf8')
+      const catalog = createFsSkillCatalog({
+        builtinRoots: [root],
+        userRoots: [],
+        workspaceRoots: () => [],
+      })
+      expect(catalog.groups('ws-1')[0]?.items).toHaveLength(0)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test('发现内置/用户级/工作区技能并按来源分组', () => {
     const builtinRoot = makeRoot()
     const userRoot = makeRoot()

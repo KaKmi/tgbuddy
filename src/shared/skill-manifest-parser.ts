@@ -63,3 +63,41 @@ export function parseSkillManifest(
     enabled: true,
   }
 }
+
+/**
+ * 解析标准 SKILL.md 的 YAML frontmatter（Codex/Proma 技能格式）。
+ * 目录里没有 skill.json 时由 catalog 走此路径；有 skill.json 仍以它为元数据源。
+ */
+export function parseSkillFrontmatter(
+  content: string,
+  context: ParseSkillManifestContext,
+): SkillManifest {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---/)
+  if (!match?.[1]) {
+    throw new Error(`技能缺少 YAML frontmatter：${context.root}/SKILL.md`)
+  }
+  const fields: Record<string, string> = {}
+  for (const line of match[1].split('\n')) {
+    const colonIdx = line.indexOf(':')
+    if (colonIdx === -1) continue
+    const key = line.slice(0, colonIdx).trim()
+    const value = line.slice(colonIdx + 1).trim().replace(/^["']|["']$/g, '')
+    if (key) fields[key] = value
+  }
+  const name = fields.name ?? ''
+  const description = fields.description ?? ''
+  if (!name) throw new Error(`技能 SKILL.md 缺少 name：${context.root}`)
+  if (!description) {
+    throw new Error(`技能 SKILL.md 缺少 description：${context.root}`)
+  }
+  return parseSkillManifest(
+    {
+      name,
+      // 标准 frontmatter 没有独立 title，用 name 作为展示名
+      title: name,
+      description,
+      version: fields.version || '1.0.0',
+    },
+    context,
+  )
+}

@@ -355,12 +355,10 @@ function buildSystemPrompt(
       ? [
           '',
           '## 技能',
-          '可用技能（正文按需加载，调用 skill 工具获取）：',
-          ...skills.map(
-            (skill) =>
-              `- ${skill.name}（${skill.title}）：${skill.description}`
-              + (skill.trigger ? ` 触发词：${skill.trigger}` : ''),
-          ),
+          // 只列名字：正文按需加载，不把完整 description 常驻 prompt
+          //（既省 token，也避免描述里的触发词干扰模型/测试判定）。
+          '可用技能（需要时调用 skill 工具加载正文）：',
+          ...skills.map((skill) => `- ${skill.name}（${skill.title}）`),
         ]
       : []),
   ].join('\n')

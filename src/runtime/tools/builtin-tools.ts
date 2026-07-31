@@ -98,16 +98,6 @@ export const BUILTIN_TOOL_DESCRIPTORS: readonly ToolDescriptor[] = [
     defaultPermission: 'ask',
     enabled: true,
   },
-  {
-    id: 'skill',
-    name: 'skill',
-    label: '加载技能',
-    description: '按名称加载技能正文与引用资源（按需读取，不常驻 prompt）',
-    category: 'builtin',
-    source: '内置',
-    defaultPermission: 'allow',
-    enabled: true,
-  },
 ]
 
 export function createBuiltinToolRegistry(): ToolRegistry {

@@ -317,15 +317,14 @@ export async function createApplication(
                 askUserBroker.requestAnswers({ sessionId, questions }, signal),
             }))
           }
-          if (enabled.has('skill')) {
-            // C08：技能正文按需加载，技能清单在 Run 启动时冻结。
-            tools.push(
-              buildSkillTool({
-                skills: invocation.skills ?? [],
-                loader: skillLoader,
-              }),
-            )
-          }
+          // C08：技能加载是宿主只读能力，不参与工具三档设置（技能从工具区移除）；
+          // 启用的技能清单来自 Run 启动时冻结的 invocation.skills。
+          tools.push(
+            buildSkillTool({
+              skills: invocation.skills ?? [],
+              loader: skillLoader,
+            }),
+          )
           // C11：已连接 MCP 的 server.method 工具进入本次 Run 的工具集。
           for (const descriptor of frozen) {
             if (descriptor.category !== 'mcp') continue
