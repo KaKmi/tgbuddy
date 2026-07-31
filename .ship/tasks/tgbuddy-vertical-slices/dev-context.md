@@ -136,6 +136,22 @@ SQLite、kernel、bundle 和 UI Slice 再按计划追加 `spike:sqlite`、`probe
 - Review cadence:
   - 按用户决定，K07–K17 不再逐 Slice 等 peer review；保持一 Slice 一 commit，K17 后、M1 E2E 前集中 review。
 
+### S01: Workspace catalog 与选择器
+
+- Reference: `src/runtime/sessions/session-commands.ts`
+  - Why analogous: S01 沿用既有 port + factory 模式，命令函数只做语义编排，存储实现注入。
+  - Mirror: 工厂注入 repository/createId/now；命令返回 serializable contract；IPC/Preload 只转发。
+  - Deviations: WorkspaceService 额外持有选择状态（`current()`/`select()`）；Runtime 不依赖 Node，路径绝对化/大小写归一/目录名通过 `WorkspacePathPort` 注入。
+- Reference: `src/infrastructure/sqlite/repositories/sqlite-session-repository.ts`
+  - Why analogous: app 表 SQLite adapter 的既有结构（AppDatabase.use、row 映射、创建后回读）。
+  - Mirror: 单连接借用、`app_*` 表、稳定列名、创建后 `#require` 回读。
+  - Deviations: `004_app_workspaces.sql` 独立表；去重键由 Service 层注入端口计算，repository 只按行存取。
+- Reference: `src/renderer/App.tsx` 侧栏 + `src/shared/contracts/ipc.ts`
+  - Why analogous: Renderer 经 preload 调用 typed IPC 的既有纵向闭环。
+  - Mirror: 四步同步（contract → main handler → preload → atoms/组件）、Jotai 镜像主进程状态、Tailwind 既有 token。
+  - Deviations: 选择状态权威在 Runtime，Renderer 只镜像；目录选择走独立 `workspace:pick` 宿主通道，`workspace:create` 保持纯 Runtime 调用。
+- Review cadence（用户策略调整）: 简单 Slice 继续逐 Slice 开发不 review；复杂度高或数据/安全语义重的 Slice 由执行者自行判断是否加 peer review；M2 全部完成后仍执行整 M2 review → E2E → QA。
+
 ## Waves
 
 M1 的 K01–K17 存在严格数据/装配依赖，并共享 Composition Root、Runtime contract 或 compatibility owner，因此全部顺序执行：
