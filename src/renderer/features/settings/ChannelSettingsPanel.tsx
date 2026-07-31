@@ -326,6 +326,8 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
       ...current,
       [serverId]: { serverId, state: 'off' },
     }))
+    // 断开后工具已从注册表移除，刷新设置页工具列表保持一致。
+    await refresh()
   }
 
   async function removeMcp(serverId: string) {
@@ -396,8 +398,8 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
         if (event.target === event.currentTarget) props.onClose()
       }}
     >
-      <div className="flex h-full w-[420px] flex-col border-l border-white/5 bg-background shadow-2xl">
-        <div className="border-b border-white/5 p-4">
+        <div className="flex h-full w-[420px] flex-col border-l border-white/5 bg-background shadow-2xl">
+          <div className="border-b border-white/5 p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[14px] font-medium text-foreground">模型与密钥</div>
@@ -415,6 +417,15 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
             </button>
           </div>
         </div>
+
+        {error && (
+          <div
+            data-testid="settings-error"
+            className="mx-4 mt-3 rounded-md bg-red-950/50 px-3 py-2 text-[11.5px] text-[#c9635b]"
+          >
+            {error}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-4">
           <div className="mb-2 flex items-center gap-2 px-0.5">
