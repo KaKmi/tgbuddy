@@ -147,6 +147,59 @@ async function handleRequest(
       }
       return
     }
+    if (prompt.includes('M2 计划')) {
+      const toolResults = messages.filter((message) => message.role === 'tool').length
+      if (toolResults === 0) {
+        streamToolCall(
+          response,
+          'enter_plan_mode',
+          { reason: '先出计划再执行' },
+          'call_e2e_plan',
+        )
+      } else if (toolResults === 1) {
+        streamToolCall(
+          response,
+          'exit_plan_mode',
+          { plan: '1. 修改 m2-write.txt\n2. 验证内容' },
+          'call_e2e_plan',
+        )
+      } else {
+        await streamText(response, 'M2 计划完成')
+      }
+      return
+    }
+    if (prompt.includes('M2 提问')) {
+      if (lastMessage?.role === 'tool') {
+        await streamText(response, 'M2 提问完成')
+      } else {
+        streamToolCall(
+          response,
+          'ask_user',
+          {
+            questions: [
+              {
+                header: '目标',
+                question: '这次修改的目标是什么？',
+                options: [
+                  { label: '修 bug', description: '修复现有问题' },
+                  { label: '加功能（推荐）', description: '新增能力' },
+                ],
+              },
+              {
+                header: '范围',
+                question: '影响范围？',
+                options: [
+                  { label: '单文件', description: '只动一个文件' },
+                  { label: '多文件', description: '涉及多个文件' },
+                ],
+              },
+            ],
+          },
+          'call_e2e_ask',
+        )
+      }
+      return
+    }
     if (prompt.includes('排队消息')) {
       await streamText(response, '排队消息已在压缩后执行')
       return
