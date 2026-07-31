@@ -128,8 +128,13 @@ const server = createServer((req, res) => {
       const latestUser = [...messages].reverse().find((m) => m.role === 'user')
       const prompt = messageText(latestUser)
       const lastMessage = messages.at(-1)
+      // 只有「pi 生成的压缩请求」system 消息才算摘要场景，
+      // 排除应用自己的技能清单段，避免描述里的 summar 等词误判。
       const isSummary = messages.some(
-        (m) => m.role === 'system' && /summar|summary|摘要/i.test(messageText(m)),
+        (m) =>
+          m.role === 'system'
+          && /summar|summary|摘要/i.test(messageText(m))
+          && !messageText(m).includes('## 技能'),
       )
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
       if (isSummary) {

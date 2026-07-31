@@ -80,10 +80,14 @@ async function handleRequest(
       .reverse()
       .find((message) => message.role === 'user')
     const prompt = latestUserText ? messageText(latestUserText) : ''
+    // 只有「pi 生成的压缩请求」system 消息才算摘要场景；
+    // 应用自己的 system prompt（含「## 技能」清单）即使描述里出现
+    // summar 等词也不能误判成压缩请求。
     const isSummary = messages.some(
       (message) =>
         message.role === 'system'
-        && /summar|summary|摘要/i.test(messageText(message)),
+        && /summar|summary|摘要/i.test(messageText(message))
+        && !messageText(message).includes('## 技能'),
     )
     const lastMessage = messages.at(-1)
 
