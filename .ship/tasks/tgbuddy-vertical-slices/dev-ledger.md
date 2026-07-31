@@ -206,3 +206,11 @@ C06: "工具三档权限设置" — complete
   验证: `bun test tests/unit/runtime/tool-settings-service.test.ts`（6/6）+ policy-engine 新增 5 项、全量 `bun test` 251/251、check:architecture、typecheck、build 全过
   删除项: 无（UI setting 不写进 Tool 实例，只写覆盖项仓库）
   Concerns: 三档默认只按 toolId 精确匹配（C10 后 MCP 用 server.method id）；禁用工具不在 engine snapshot，设置页仍可编辑其权限值（下次启用时生效）；规则优先级测试覆盖「规则放行 > 工具页禁止」。
+
+C07: "Skill manifest 发现与设置列表" — complete
+  Commits: da9d43d
+  Files: src/shared/contracts/skill.ts, src/shared/skill-manifest-parser.ts, src/runtime/skills/ports/skill-catalog.ts, src/infrastructure/skills/fs-skill-catalog.ts, src/infrastructure/skills/index.ts, src/runtime/app/agent-runtime.ts, src/shared/contracts/ipc.ts, src/main/ipc.ts, src/preload/index.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/renderer/App.tsx, src/renderer/features/settings/ChannelSettingsPanel.tsx, assets/skills/builtin/reg-check/skill.json, tests/unit/skills.test.ts, tests/unit/runtime/agent-runtime.test.ts
+  Produces: `SkillManifest`/`SkillGroupView`/`SkillSource`（shared 契约）；`parseSkillManifest()` 纯解析校验；`SkillCatalog` 端口（groups/list/setEnabled）+ `FsSkillCatalog`/`createFsSkillCatalog()`（扫描各来源根目录 skill.json、坏 manifest 跳过记录、同源重复名去重、workspaceRoots 随 workspaceId 解析）；SettingsCommands + IPC `skill:list/set-enabled` + Preload；设置面板「技能」区（按来源分组、切换开关、tag 样式取自原型、workspaceId 变化自动刷新）；内置示例技能 assets/skills/builtin/reg-check
+  验证: `bun test tests/unit/skills.test.ts`（8/8）、全量 `bun test` 259/259、check:architecture、typecheck、build 全过
+  删除项: 无（列表阶段不加载正文，不执行 Skill）
+  Concerns: 禁用状态存内存、重启丢失（计划 C07 文件清单无 settings repository，ledger 记录缺口，C12 前如 QA 暴露再补持久化）；内置技能根用 process.cwd()/assets（打包目录策略留 M6）；正文与引用资源加载在 C08。
