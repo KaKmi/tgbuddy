@@ -102,3 +102,21 @@ M4（A01–A09）与 M5（D01–D04）与项目文档（docs/02 1.6/2.4、docs/0
    修正 docs/06 决定 2 中「完整版仍然送给模型」的表述；
 2. **A05 补 lineage**：Artifact producer 记录 root/child 与来源技能（docs/06 决定 1 要求「谁产生的」），
    child 产物归属在 D04 折叠组展示时使用。
+
+## 11. A02 附件数据流（消息信封扩展）
+
+附件是**应用元数据**，不属于 pi 消息本体（保持「零翻译」信封原则），因此：
+
+- **选择 → stage**：Renderer `<input type=file>` 读字节 → IPC `attachment:stage {name,mime,bytes}`
+  → Main 写 BlobStore → 返回 `AttachmentRef{id,name,size,mime,blob}`（Renderer 永不接触 Node 路径）；
+- **取消 → discard**：未提交的草稿移除时 IPC `attachment:discard {ref}` 删 Blob（引用计数由 A09 兜底）；
+- **发送 → 持久化**：`StartRunInput.attachments?: AttachmentRef[]` → RunInvocation → pi-engine 在
+  用户消息 `message_end` 落库后，经注入的 `persistAttachments(sessionId, entryId, refs)` 端口写入
+  `app_attachments` 表（key: session_id + entry_id）；**不改 pi 消息内容**；
+- **回放**：`SessionMessageHistory.messages()` 按 entry_id join `app_attachments`，
+  `KernelMessage.attachments?: AttachmentRef[]` 随信封给渲染层还原 chips；
+- **A03 衔接**：模型上下文转换直接读 `KernelMessage.attachments`（图片走 pi 原生
+  `prompt(text, {images})`），不再需要解析任何文本。
+
+失败模式：stage 失败→chip 不出现且不占 blob；discard 失败→留给 A09 引用计数清理；
+message_end 与附件写库不在同一事务→以 entry_id 为 key 幂等覆盖，A09 启动扫描补孤儿。
