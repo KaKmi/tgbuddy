@@ -32,6 +32,14 @@ export interface CreatePermissionAskBrokerOptions {
   createId(): string
   /** 登记后再推送；推送失败必须让调用方可见，不能留下悬挂记录 */
   emitRequest(request: PermissionRequest): void
+  /**
+   * 用户勾选「总是允许」并允许时的落点。S07 起由 Composition Root 注入，
+   * 负责按 scope 解析 ownerId 并写入规则仓库；本类不直接依赖仓库。
+   */
+  applyGrant?(
+    request: PermissionRequest,
+    grant: NonNullable<PermissionResponse['grant']>,
+  ): void
 }
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search'])
@@ -109,7 +117,14 @@ export function createPermissionAskBroker(
       return pending.suspend(request, options.emitRequest, signal)
     },
     respond(response) {
-      return pending.respond(response.requestId, response.allowed) !== undefined
+      const request = pending.respond(
+        response.requestId,
+        response.allowed,
+      )
+      if (request && response.allowed && response.grant && !request.neverPersist) {
+        options.applyGrant?.(request, response.grant)
+      }
+      return request !== undefined
     },
     pending: () => pending.list(),
     clearSession: (sessionId) => pending.clearSession(sessionId),

@@ -58,6 +58,8 @@ const api = {
   permission: {
     respond: (res) => ipcRenderer.invoke(IPC.PERMISSION_RESPOND, res),
     pending: () => ipcRenderer.invoke(IPC.PERMISSION_PENDING),
+    rules: () => ipcRenderer.invoke(IPC.PERMISSION_RULES),
+    removeRule: (id) => ipcRenderer.invoke(IPC.PERMISSION_RULE_REMOVE, { id }),
   },
   plan: {
     respond: (res) => ipcRenderer.invoke(IPC.PLAN_RESPOND, res),

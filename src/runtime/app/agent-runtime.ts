@@ -8,6 +8,7 @@ import type {
   PermissionMode,
   PermissionRequest,
   PermissionResponse,
+  PermissionRule,
   PlanRequest,
   PlanResponse,
 } from '../../shared/contracts/permission.ts'
@@ -67,6 +68,8 @@ export interface RunCommands {
 export interface PermissionCommands {
   respond(response: PermissionResponse): void
   pending(): PermissionRequest[]
+  listRules(): PermissionRule[]
+  removeRule(id: string): void
 }
 
 export interface PlanCommands {
@@ -206,6 +209,8 @@ export function createAgentRuntime(
         })
       },
       pending: dependencies.permissions.pending,
+      listRules: dependencies.permissions.listRules,
+      removeRule: dependencies.permissions.removeRule,
     },
     plans: {
       respond(response) {

@@ -143,6 +143,18 @@ export function registerIpc(
     IPC.PERMISSION_PENDING,
     (): IpcResponse<'permission:pending'> => agentRuntime.permissions.pending(),
   )
+  ipcMain.handle(
+    IPC.PERMISSION_RULES,
+    (): IpcResponse<'permission:rules'> => agentRuntime.permissions.listRules(),
+  )
+  ipcMain.handle(
+    IPC.PERMISSION_RULE_REMOVE,
+    (
+      _event,
+      input: IpcRequest<'permission:rule-remove'>,
+    ): IpcResponse<'permission:rule-remove'> =>
+      agentRuntime.permissions.removeRule(input.id),
+  )
 
   ipcMain.handle(
     IPC.PLAN_RESPOND,

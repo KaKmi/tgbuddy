@@ -26,6 +26,8 @@ export type RuleMatch =
 export type RuleScope = 'session' | 'project' | 'global'
 
 export interface PermissionRule {
+  /** 规则唯一标识；SQLite/内存仓库都以此删除 */
+  id: string
   tool: string
   match: RuleMatch
   pattern: string
@@ -42,6 +44,10 @@ export interface PermissionRule {
   neverPersist: boolean
   /** 归属：scope 为 session/project 时用于失效判断 */
   ownerId?: string
+  /** 规则来源，设置页展示用：用户授权卡创建为 user，系统策略为 system */
+  source?: 'user' | 'system'
+  /** 创建原因，如「授权卡“总是允许”」 */
+  reason?: string
   createdAt: number
   /** 命中次数，设置页展示用 */
   hits: number

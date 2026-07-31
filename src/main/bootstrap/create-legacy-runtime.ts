@@ -15,6 +15,7 @@ import {
   type AgentInvocation,
   type ContextCompactor,
   type PermissionAskBroker,
+  type PermissionRuleRepository,
   mountFailureMessage,
   type SessionCommands,
   type SessionMessageHistory,
@@ -39,6 +40,8 @@ export interface CreateLegacyRuntimeOptions {
   contextCompactor: ContextCompactor
   /** S06：授权请求由 Runtime broker 持有；respond/pending/clearSession 都走它 */
   permissions: PermissionAskBroker
+  /** S07：规则持久化仓库（SQLite），同时服务策略引擎与规则列表 IPC */
+  rules: PermissionRuleRepository
   dispose?(): Promise<void>
 }
 
@@ -93,7 +96,15 @@ export function createLegacyRuntime(
     permissions: {
       respond: (response) => options.permissions.respond(response),
       pending: options.permissions.pending,
-      expireSessionRules: permission.expireSessionRules,
+      expireSessionRules(sessionId) {
+        for (const rule of options.rules.list()) {
+          if (rule.scope === 'session' && rule.ownerId === sessionId) {
+            options.rules.remove(rule.id)
+          }
+        }
+      },
+      listRules: () => options.rules.list(),
+      removeRule: (id) => options.rules.remove(id),
     },
     plans: {
       respond: plan.respond,

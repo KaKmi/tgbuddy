@@ -12,6 +12,7 @@ import type { SessionMessage } from '../../shared/types/message.ts'
 import type {
   AskUserRequest,
   PermissionRequest,
+  PermissionRule,
   PlanRequest,
 } from '../../shared/types/permission.ts'
 import type { MarkerKind } from '../components/SystemMarker.tsx'
@@ -158,6 +159,9 @@ export function dequeueQueuedPrompt(
  * 用数组而不是单值，是为了渲染进程重载后能一次性把挂起的全捞回来。
  */
 export const pendingPermissionsAtom = atom<Map<string, PermissionRequest[]>>(new Map())
+
+/** 已持久化的「总是允许」规则（主进程 SQLite 的镜像） */
+export const permissionRulesAtom = atom<PermissionRule[]>([])
 
 /** sessionId → 待审批的计划 */
 export const pendingPlansAtom = atom<Map<string, PlanRequest[]>>(new Map())

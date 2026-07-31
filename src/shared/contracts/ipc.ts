@@ -26,6 +26,7 @@ import type {
   PermissionMode,
   PermissionRequest,
   PermissionResponse,
+  PermissionRule,
   PlanRequest,
   PlanResponse,
 } from './permission.ts'
@@ -62,6 +63,8 @@ export const IPC = {
   PERMISSION_RESPOND: 'permission:respond',
   /** 渲染进程重载后捞回挂起的请求 */
   PERMISSION_PENDING: 'permission:pending',
+  PERMISSION_RULES: 'permission:rules',
+  PERMISSION_RULE_REMOVE: 'permission:rule-remove',
 
   // 计划模式
   PLAN_RESPOND: 'plan:respond',
@@ -86,7 +89,11 @@ export const IPC = {
 
 // ── 请求/响应类型 ─────────────────────────────────────────────────
 
-export type { PermissionRequest, PermissionResponse } from './permission.ts'
+export type {
+  PermissionRequest,
+  PermissionResponse,
+  PermissionRule,
+} from './permission.ts'
 export type { SessionMeta } from './session.ts'
 export type { Workspace } from './workspace.ts'
 export type { WorkspaceMountResolution } from './workspace.ts'
@@ -136,6 +143,8 @@ export interface IpcCommandMap {
   'agent:stop': IpcCommand<string, void>
   'permission:respond': IpcCommand<PermissionResponse, void>
   'permission:pending': IpcCommand<undefined, PermissionRequest[]>
+  'permission:rules': IpcCommand<undefined, PermissionRule[]>
+  'permission:rule-remove': IpcCommand<{ id: string }, void>
   'plan:respond': IpcCommand<PlanResponse, void>
   'plan:pending': IpcCommand<undefined, PlanRequest[]>
   'mode:set': IpcCommand<{ sessionId: string; mode: PermissionMode }, void>
@@ -204,6 +213,8 @@ export interface TgBuddyAPI {
   permission: {
     respond(res: IpcRequest<'permission:respond'>): Promise<IpcResponse<'permission:respond'>>
     pending(): Promise<IpcResponse<'permission:pending'>>
+    rules(): Promise<IpcResponse<'permission:rules'>>
+    removeRule(id: IpcRequest<'permission:rule-remove'>['id']): Promise<IpcResponse<'permission:rule-remove'>>
   }
   plan: {
     respond(res: IpcRequest<'plan:respond'>): Promise<IpcResponse<'plan:respond'>>

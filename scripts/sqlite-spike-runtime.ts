@@ -42,6 +42,7 @@ export const REQUIRED_SCENARIOS = [
   'runtime',
   'app-database',
   'session-catalog',
+  'permission-rules',
   'pi-session-store',
   'bootstrap',
   'ordered-entries',

@@ -1,4 +1,5 @@
 export { AppDatabase } from './app-database.ts'
+export { SqlitePermissionRuleRepository } from './repositories/sqlite-permission-rule-repository.ts'
 export { SqliteWorkspaceRepository } from './repositories/sqlite-workspace-repository.ts'
 export {
   canonicalJson,

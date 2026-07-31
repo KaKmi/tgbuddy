@@ -101,6 +101,7 @@ describe('PolicyEngine 基础决策', () => {
   test('tool 匹配的 allow 规则直接放行，deny 规则直接拒绝，都不询问', async () => {
     const rules: PermissionRule[] = [
       {
+        id: 'rule-allow',
         tool: 'write',
         match: 'tool',
         pattern: 'write',
@@ -111,6 +112,7 @@ describe('PolicyEngine 基础决策', () => {
         action: 'allow',
       },
       {
+        id: 'rule-deny',
         tool: 'edit',
         match: 'tool',
         pattern: 'edit',
@@ -132,6 +134,7 @@ describe('PolicyEngine 基础决策', () => {
   test('path 规则按 glob 匹配，prefix 规则匹配命令前缀，method 规则匹配工具名', async () => {
     const rules: PermissionRule[] = [
       {
+        id: 'rule-path',
         tool: 'write',
         match: 'path',
         pattern: 'C:/work/docs/**',
@@ -141,6 +144,7 @@ describe('PolicyEngine 基础决策', () => {
         hits: 0,
       },
       {
+        id: 'rule-prefix',
         tool: 'bash',
         match: 'prefix',
         pattern: 'git status',
@@ -150,6 +154,7 @@ describe('PolicyEngine 基础决策', () => {
         hits: 0,
       },
       {
+        id: 'rule-method',
         tool: 'mcp__db',
         match: 'method',
         pattern: 'mcp__db',
@@ -174,6 +179,7 @@ describe('PolicyEngine 基础决策', () => {
   test('scope 有效期：session 规则只匹配本会话，project 规则匹配当前工作区，global 常匹配', async () => {
     const rules: PermissionRule[] = [
       {
+        id: 'rule-session',
         tool: 'write',
         match: 'tool',
         pattern: 'write',
@@ -184,6 +190,7 @@ describe('PolicyEngine 基础决策', () => {
         hits: 0,
       },
       {
+        id: 'rule-project',
         tool: 'edit',
         match: 'tool',
         pattern: 'edit',
@@ -210,6 +217,7 @@ describe('PolicyEngine 基础决策', () => {
   test('neverPersist 操作跳过规则直接询问', async () => {
     const rules: PermissionRule[] = [
       {
+        id: 'rule-bash',
         tool: 'bash',
         match: 'tool',
         pattern: 'bash',

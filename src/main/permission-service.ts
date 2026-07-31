@@ -61,7 +61,9 @@ let rules: PermissionRule[] | null = null
 function loadRules(): PermissionRule[] {
   if (rules) return rules
   const parsed = readJsonFileSafe<RulesFile>(RULES_FILE)
-  rules = Array.isArray(parsed?.rules) ? parsed.rules : []
+  rules = Array.isArray(parsed?.rules)
+    ? parsed.rules.map((rule) => ({ ...rule, id: rule.id ?? randomUUID() }))
+    : []
   return rules
 }
 
@@ -84,9 +86,9 @@ export function setMode(sessionId: string, mode: PermissionMode): void {
 
 // ── 规则 ──────────────────────────────────────────────────────────
 
-export function addRule(rule: Omit<PermissionRule, 'createdAt' | 'hits'>): void {
+export function addRule(rule: Omit<PermissionRule, 'createdAt' | 'hits' | 'id'>): void {
   if (rule.neverPersist) return // 破坏性操作不入库，静默忽略
-  loadRules().push({ ...rule, createdAt: Date.now(), hits: 0 })
+  loadRules().push({ ...rule, id: randomUUID(), createdAt: Date.now(), hits: 0 })
   saveRules()
 }
 

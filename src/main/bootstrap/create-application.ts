@@ -9,13 +9,13 @@ import {
   createSessionCommands,
   createSessionMessageHistory,
   createWorkspaceService,
-  MemoryPermissionRuleRepository,
   recoverInterruptedRuns,
   type AgentRuntime,
   type InterruptedRunRecoveryReport,
 } from '../../runtime/index.ts'
 import {
   AppDatabase,
+  SqlitePermissionRuleRepository,
   SqliteSessionRepository,
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
@@ -59,6 +59,8 @@ export async function createApplication(
   const appDatabase = AppDatabase.open(options.databasePath)
   const sessionRepository = new SqliteSessionRepository(appDatabase)
   const workspaceRepository = new SqliteWorkspaceRepository(appDatabase)
+  // S07：用户「总是允许」规则是资产，落 SQLite 跨重启保留。
+  const permissionRules = new SqlitePermissionRuleRepository(appDatabase)
   const mountResolver = new NodeWorkspaceMountResolver()
   const workspaceService = createWorkspaceService({
     repository: workspaceRepository,
@@ -86,6 +88,24 @@ export async function createApplication(
           channel: 'host',
           event: { type: 'permission_request', request },
         },
+      })
+    },
+    applyGrant(request, grant) {
+      permissionRules.add({
+        id: createId(),
+        tool: request.toolName,
+        match: grant.match,
+        pattern: grant.pattern,
+        scope: grant.scope,
+        neverPersist: false,
+        ownerId:
+          grant.scope === 'session'
+            ? request.sessionId
+            : grant.scope === 'project'
+              ? sessionRepository.get(request.sessionId)?.workspaceId
+              : undefined,
+        reason: '授权卡「总是允许」',
+        source: 'user',
       })
     },
   })
@@ -128,7 +148,7 @@ export async function createApplication(
         envFactory: new PiRunExecutionEnvFactory(),
         tools: (invocation, env) => buildBuiltinTools(invocation.cwd, env),
         toolPolicy: createPolicyEngine({
-          rules: new MemoryPermissionRuleRepository(),
+          rules: permissionRules,
           getMode: (sessionId) => permission.getMode(sessionId),
           getWorkspaceId: (sessionId) =>
             sessionRepository.get(sessionId)?.workspaceId,
@@ -150,6 +170,7 @@ export async function createApplication(
       }),
       workspaces: workspaceService,
       permissions: permissionAskBroker,
+      rules: permissionRules,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)
