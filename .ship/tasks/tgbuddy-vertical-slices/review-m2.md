@@ -78,19 +78,47 @@ P2-2 是独立的只读命令白名单过宽：`find` 的破坏性子命令没�
 2 个 P2、1 个 P3，均为真实缺陷并有运行时复现证据。修复后需 fresh review 复验，
 再进入 M2 Electron E2E 与探索式 QA。
 
+## Fix Round 1（commit 3e373a4）
+
+- P2-1 + P3（沙箱临时文件）：`src/kernel/pi/pi-execution-env.ts` 在沙箱 Proxy 中拦截
+  `createTempDir`/`createTempFile`，重定向到工作区内的 `.tgbuddy-tmp/<env-id>` 隐藏目录，
+  `PATH_METHODS` 与实际 pi `FileSystem` 接口对齐（移除不存在的 `rename`/`copyFile`），
+  `PiRunExecutionEnv.dispose()` 清理本 Run 的临时目录（不删并行 Run）。
+- P2-2（find 只读判定）：`src/shared/contracts/permission.ts` 的 `isReadOnlyCommand`
+  增加 `FIND_DESTRUCTIVE`（`-delete`/`-exec`/`-execdir`/`-ok`/`-okdir`）检测，命中即非只读。
+- 新增回归测试：`pi-execution-env.test.ts` 覆盖 createTempFile 工作区内路径 +
+  append/read + dispose 清理；`policy-engine.test.ts` 覆盖 find 破坏性命令非只读、
+  plan 模式 deny、普通 find 仍放行。
+- 验证：`bun test` 192/192 通过（+3），`check:architecture`、`typecheck` 通过；
+  运行时复现确认 bash 60KB 输出正常（truncated，完整输出路径在工作区内），
+  plan 模式 `find -delete`/`find -exec rm` 均 deny。
+
+## Fresh Review 1（主机复验，独立性弱于独立 reviewer）
+
+重读 `git show 3e373a4` 完整 diff 与三个变更文件的上下文：
+
+- 临时文件协议：路径约束（工作区 `tempRoot` 内）、每个 Run 独立 id 目录、
+  dispose 幂等清理、与 pi `Result` 错误形状一致，未发现新问题。
+- `FIND_DESTRUCTIVE` 判定方向安全（最多把以 `-exec` 命名的罕见参数误判为写操作，
+  不会放行真正的破坏性调用）；plan/auto 模式行为与测试一致。
+- 回归测试断言可复现且未放宽；architecture/typecheck 全过。
+
+结论：3 个 finding 均已修复，未发现新的 P1/P2/P3。M2 集中评审关闭，
+进入 M2 Electron E2E 与探索式 QA。
+
 ## [Review] Report Card
 
 | Field | Value |
 |-------|-------|
-| Status | FINDINGS |
-| Summary | 3 findings（2 P2 + 1 P3），运行时复现 |
+| Status | DONE |
+| Summary | 3 findings 修复完成，fresh review clean |
 
 ### Metrics
 | Metric | Value |
 |--------|-------|
 | P1 | 0 |
-| P2 | 2 |
-| P3 | 1 |
+| P2 | 0（2 个已修复） |
+| P3 | 0（1 个已修复） |
 
 ### Artifacts
 | File | Purpose |
