@@ -560,7 +560,8 @@ D04 -> U01 -> ... -> U09
 ### A04 · 长工具输出 Blob 化
 
 - **依赖**：A01、K11、C11。
-- **行为**：超过 256KB 的工具输出完整落 Blob，模型收到可用内容，UI 只显示 8 行预览和“打开完整结果”。
+- **行为**：超过 256KB 的工具输出完整落 Blob；模型侧只收截断 preview（复用 pi `truncate*`，
+  修正 docs/06 决定 2「完整版仍然送给模型」的表述），UI 只显示 8 行预览和“打开完整结果”。
 - **原型锚点**：`tools`。
 - **文件**：扩充 ToolResult contract/RunCoordinator/BlobStore/ToolCard；新增 threshold test。
 - **RED**：阈值上下、UTF-8 边界、error output、MCP output、replay。
@@ -571,7 +572,8 @@ D04 -> U01 -> ... -> U09
 ### A05 · Artifact 投影
 
 - **依赖**：A01、A04。
-- **行为**：成功的产出型工具从调用参数投影 Artifact；失败或纯读工具不产生 Artifact。
+- **行为**：成功的产出型工具从调用参数投影 Artifact；失败或纯读工具不产生 Artifact；
+  producer 记录 root/child 与来源技能（docs/06 决定 1 的「谁产生的」，D04 折叠组展示时使用）。
 - **原型锚点**：`main` 结果区。
 - **文件**：新建 ArtifactProjector/Repository/SQLite repo；修改 settled；新增 test。
 - **RED**：write/edit/导出类工具、失败、同路径更新、跨 Session、重启。
