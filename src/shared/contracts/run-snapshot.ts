@@ -58,6 +58,11 @@ export type RunRecordStatus =
 export interface RunRecord {
   id: string
   sessionId: string
+  /** D01：lineage（child run 归属的 root / 父工具调用） */
+  workspaceId?: string
+  rootRunId?: string
+  agentRunId?: string
+  parentToolCallId?: string
   createdAt: number
   settledAt?: number
   status: RunRecordStatus

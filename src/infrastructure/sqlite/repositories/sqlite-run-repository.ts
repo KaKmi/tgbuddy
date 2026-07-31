@@ -6,6 +6,10 @@ import type { AppDatabase } from '../app-database.ts'
 interface RunRow {
   id: string
   session_id: string
+  workspace_id: string | null
+  root_run_id: string | null
+  agent_run_id: string | null
+  parent_tool_call_id: string | null
   created_at: number
   settled_at: number | null
   status: RunRecord['status']
@@ -14,7 +18,8 @@ interface RunRow {
 }
 
 const SELECT_COLUMNS = `
-  id, session_id, created_at, settled_at, status, snapshot_json, error
+  id, session_id, workspace_id, root_run_id, agent_run_id, parent_tool_call_id,
+  created_at, settled_at, status, snapshot_json, error
 `
 
 function rowToRecord(row: RunRow): RunRecord {
@@ -27,6 +32,12 @@ function rowToRecord(row: RunRow): RunRecord {
   return {
     id: row.id,
     sessionId: row.session_id,
+    ...(row.workspace_id ? { workspaceId: row.workspace_id } : {}),
+    ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
+    ...(row.agent_run_id ? { agentRunId: row.agent_run_id } : {}),
+    ...(row.parent_tool_call_id
+      ? { parentToolCallId: row.parent_tool_call_id }
+      : {}),
     createdAt: row.created_at,
     ...(row.settled_at !== null ? { settledAt: row.settled_at } : {}),
     status: row.status,
@@ -47,12 +58,17 @@ export class SqliteRunRepository implements RunRepository {
       database
         .prepare(
           `INSERT INTO app_runs (
-             id, session_id, created_at, settled_at, status, snapshot_json, error
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+             id, session_id, workspace_id, root_run_id, agent_run_id, parent_tool_call_id,
+             created_at, settled_at, status, snapshot_json, error
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           record.id,
           record.sessionId,
+          record.workspaceId ?? null,
+          record.rootRunId ?? null,
+          record.agentRunId ?? null,
+          record.parentToolCallId ?? null,
           record.createdAt,
           record.settledAt ?? null,
           record.status,

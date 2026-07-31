@@ -8,6 +8,8 @@ export interface StartRunInput {
   text: string
   /** A02：本次消息携带的附件（发送前已落 BlobStore，消息只存 ref） */
   attachments?: AttachmentRef[]
+  /** D01：child run 的 lineage（rootRunId + parentToolCallId），root run 不传 */
+  lineage?: RunLineage
   /** 显式调用的技能名（用户点了 /skill:xxx） */
   invokeSkill?: string
 }

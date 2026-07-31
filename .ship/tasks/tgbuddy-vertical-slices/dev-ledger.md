@@ -437,3 +437,16 @@ A09 "Blob 引用计数与恢复清理" — complete
   Concerns: referencedHashes 并入 attachments/artifacts 源表（重启重建引用不遗漏）；
     引用登记点在 persistAttachments/storeToolOutput/projectArtifact 三处；
     M4 全 gate 通过，E2E 在里程碑收口统一回归
+
+D01 "Run lineage 与共享预算" — complete
+  Commits: （本 Slice）
+  Files: src/runtime/delegation/delegation-policy.ts、src/shared/contracts/run.ts
+    （StartRunInput.lineage）、run-snapshot.ts（RunRecord lineage 字段）、
+    src/runtime/runs/run-coordinator.ts（lineage 落账本）、
+    src/infrastructure/sqlite/migrations/016_app_runs_lineage.sql、sqlite-run-repository.ts、
+    src/runtime/index.ts、tests/unit/runtime/delegation-policy.test.ts
+  Produces: `canDelegate`（≤2 child/root、token 预算 20M）、StartRunInput.lineage、
+    app_runs lineage 列（workspace/root/agent/parent_tool_call_id）+ 仓库映射
+  RED/GREEN: 3 项（放行/child 上限/token 预算）
+  Concerns: 深度 ≤1 由「child 不加载 delegate 工具」在 D02 注入时保证；
+    两条 RunRecord 类型（run.ts 遗留 / run-snapshot.ts 持久化）——lineage 加在持久化侧

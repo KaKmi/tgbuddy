@@ -173,6 +173,18 @@ class DefaultRunCoordinator implements RunCoordinator {
           id: runRecordId,
           sessionId: run.sessionId,
           createdAt: this.#now(),
+          ...(input.lineage?.workspaceId
+            ? { workspaceId: input.lineage.workspaceId }
+            : {}),
+          ...(input.lineage?.rootRunId
+            ? { rootRunId: input.lineage.rootRunId }
+            : {}),
+          ...(input.lineage?.agentRunId
+            ? { agentRunId: input.lineage.agentRunId }
+            : {}),
+          ...(input.lineage?.parentToolCallId
+            ? { parentToolCallId: input.lineage.parentToolCallId }
+            : {}),
           status: 'running',
           snapshot: {
             ...buildCapabilitySnapshot(invocation),

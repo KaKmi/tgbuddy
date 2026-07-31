@@ -69,6 +69,14 @@ export {
   type CreateBlobCleanupOptions,
 } from './blob/blob-cleanup.ts'
 export {
+  canDelegate,
+  MAX_CHILDREN_PER_ROOT,
+  MAX_DEPTH,
+  ROOT_TOKEN_BUDGET,
+  type DelegationDecision,
+  type DelegationPolicyContext,
+} from './delegation/delegation-policy.ts'
+export {
   MemoryAttachmentRepository,
   type AttachmentRepository,
 } from './attachments/attachment-repository.ts'
