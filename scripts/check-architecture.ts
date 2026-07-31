@@ -293,7 +293,7 @@ function isRuntimePort(target: string): boolean {
   if (!target.startsWith('src/runtime/')) return false
   if (target.includes('/ports/')) return true
   const filename = target.split('/').at(-1) ?? ''
-  return /(?:repository|store|transport|resolver|engine|backend|loader)\.ts$/.test(filename)
+  return /(?:repository|store|transport|resolver|engine|backend|loader|env)\.ts$/.test(filename)
 }
 
 function isFactoryTarget(target: string): boolean {

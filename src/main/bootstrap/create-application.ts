@@ -22,6 +22,7 @@ import {
   createPiAgentEngine,
   createPiContextCompactor,
   createPiSessionStore,
+  PiRunExecutionEnvFactory,
 } from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
 import { buildBuiltinTools } from '../tools/index.ts'
@@ -103,7 +104,8 @@ export async function createApplication(
     agentRuntime = createLegacyRuntime({
       agentEngine: createPiAgentEngine({
         sessions: createdMessageStore,
-        tools: (invocation) => buildBuiltinTools(invocation.cwd),
+        envFactory: new PiRunExecutionEnvFactory(),
+        tools: (invocation, env) => buildBuiltinTools(invocation.cwd, env),
         toolPolicy: createPermissiveToolPolicy(),
       }),
       contextCompactor: createPiContextCompactor(),

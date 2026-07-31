@@ -9,6 +9,11 @@ export {
   type PiAgentSessionProvider,
 } from './pi-agent-engine.ts'
 export {
+  createSandboxedEnv,
+  PiRunExecutionEnv,
+  PiRunExecutionEnvFactory,
+} from './pi-execution-env.ts'
+export {
   createPiSessionStore,
   PiSessionStore,
   type CreatePiSessionStoreOptions,

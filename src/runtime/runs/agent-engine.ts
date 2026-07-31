@@ -9,6 +9,8 @@ import type { AgentEvent } from '../../shared/contracts/events.ts'
 export interface AgentInvocation {
   sessionId: string
   text: string
+  /** 本次 Run 绑定的工作区，S03 起用于创建 per-run ExecutionEnv */
+  workspaceId: string
   /** 本次 Run 绑定的工作目录；工具只能使用这份不可变快照。 */
   cwd: string
   channel: Channel

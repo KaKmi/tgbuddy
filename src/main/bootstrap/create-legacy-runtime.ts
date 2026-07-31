@@ -172,6 +172,7 @@ async function createAgentInvocation(
   return {
     sessionId: input.sessionId,
     text: input.text,
+    workspaceId: meta.workspaceId,
     cwd: workspaceDir,
     channel,
     modelId,

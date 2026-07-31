@@ -13,6 +13,7 @@ function invocation(sessionId: string, text: string): AgentInvocation {
   return {
     sessionId,
     text,
+    workspaceId: 'ws-1',
     cwd: 'C:\\fixture',
     channel: {
       id: 'test',

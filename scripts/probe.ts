@@ -23,6 +23,7 @@ import { Type } from '@earendil-works/pi-ai'
 import {
   createPiAgentEngine,
 } from '../src/kernel/pi/pi-agent-engine.ts'
+import { PiRunExecutionEnvFactory } from '../src/kernel/pi/pi-execution-env.ts'
 import type { AgentInvocation } from '../src/runtime/index.ts'
 import { deepseekChannel } from '../src/shared/channel-presets.ts'
 
@@ -48,6 +49,7 @@ const sessionRepository = new InMemorySessionRepo()
 const harnessSession = await sessionRepository.create({ id: probeSessionId })
 const engineInvocation: Omit<AgentInvocation, 'text'> = {
   sessionId: probeSessionId,
+  workspaceId: 'probe-workspace',
   cwd: process.cwd(),
   channel,
   modelId: MODEL_ID,
@@ -78,6 +80,7 @@ const agentEngine = createPiAgentEngine({
       return sessionId === probeSessionId ? harnessSession : undefined
     },
   },
+  envFactory: new PiRunExecutionEnvFactory(),
   tools: () => [getTimeTool],
   toolPolicy: {
     async evaluate(input, signal) {

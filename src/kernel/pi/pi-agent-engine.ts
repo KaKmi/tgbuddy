@@ -3,6 +3,7 @@ import {
   type AgentHarnessEvent,
   type AgentMessage,
   type AgentTool,
+  type ExecutionEnv,
   type Session,
 } from '@earendil-works/pi-agent-core'
 import type {
@@ -19,6 +20,11 @@ import type {
   AgentInvocation,
   ToolPolicy,
 } from '../../runtime/runs/agent-engine.ts'
+import type {
+  RunExecutionEnv,
+  RunExecutionEnvFactory,
+} from '../../runtime/execution-env/run-execution-env.ts'
+import { PiRunExecutionEnv } from './pi-execution-env.ts'
 import { estimateModelCallContextTokens } from './pi-compaction.ts'
 import {
   estimateTextTokens,
@@ -35,7 +41,9 @@ export interface PiAgentSessionProvider {
 
 export interface CreatePiAgentEngineOptions {
   sessions: PiAgentSessionProvider
-  tools(invocation: AgentInvocation): AgentTool[]
+  /** 每个 Run 创建独立沙箱环境，run settled 后释放 */
+  envFactory: RunExecutionEnvFactory
+  tools(invocation: AgentInvocation, env: ExecutionEnv): AgentTool[]
   toolPolicy: ToolPolicy
 }
 
@@ -105,6 +113,7 @@ class AsyncEventQueue<T> implements AsyncIterableIterator<T> {
 class PiAgentEngine implements AgentEngine {
   readonly #sessions: PiAgentSessionProvider
   readonly #tools: CreatePiAgentEngineOptions['tools']
+  readonly #envFactory: RunExecutionEnvFactory
   readonly #toolPolicy: ToolPolicy
   readonly #active = new Map<string, AgentHarness>()
   #disposed = false
@@ -112,6 +121,7 @@ class PiAgentEngine implements AgentEngine {
   constructor(options: CreatePiAgentEngineOptions) {
     this.#sessions = options.sessions
     this.#tools = options.tools
+    this.#envFactory = options.envFactory
     this.#toolPolicy = options.toolPolicy
   }
 
@@ -143,112 +153,131 @@ class PiAgentEngine implements AgentEngine {
     }
     if (signal.aborted) return
 
-    const tools = this.#tools(invocation)
-    const harness = new AgentHarness({
-      session,
-      models,
-      model,
-      systemPrompt: invocation.systemPrompt,
-      tools,
+    const runEnv = this.#envFactory.create({
+      workspaceId: invocation.workspaceId,
+      mountPath: invocation.cwd,
     })
-    const events = new AsyncEventQueue<AgentEvent>()
-    let promptSettled = false
-    let promptFailed = false
-    let promptError: unknown
-    let sawErrorEvent = false
-    let abortPromise: Promise<void> | undefined
-
-    const unsubscribeToolPolicy = harness.on('tool_call', async (event) => {
-      const decision = await this.#toolPolicy.evaluate({
-        sessionId: invocation.sessionId,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        args: event.input,
-      }, signal)
-      return decision.action === 'deny'
-        ? { block: true, reason: decision.reason }
-        : undefined
-    })
-    const fixedContextTokens =
-      estimateTextTokens(invocation.systemPrompt)
-      + estimateToolTokens(tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      })))
-    let compactedContext: CompactedContextCursor | undefined
-    const unsubscribeContextGuard = harness.on('context', async (event) => {
-      if (!invocation.beforeModelCall) return undefined
-      const current = mergeCompactedContext(event.messages, compactedContext)
-      const compacted = await invocation.beforeModelCall(
-        estimateModelCallContextTokens(current, fixedContextTokens),
-        model.contextWindow,
-      )
-      if (!compacted) {
-        return compactedContext ? { messages: current } : undefined
-      }
-      const base = (await session.buildContext()).messages
-      compactedContext = {
-        base,
-        sourceMessageCount: event.messages.length,
-      }
-      return { messages: base }
-    })
-    const unsubscribe = harness.subscribe(async (event) => {
-      const persisted = event.type === 'message_end'
-        ? await persistedMessage(session, event.message)
-        : undefined
-      const runtimeEvent = piEventToAgentEvent(event, persisted)
-      if (runtimeEvent?.type === 'error') sawErrorEvent = true
-      if (event.type === 'message_end' && !sawErrorEvent) {
-        const failure = piMessageFailureEvent(event.message)
-        if (failure) {
-          sawErrorEvent = true
-          events.push(failure)
-        }
-      }
-      if (runtimeEvent) events.push(runtimeEvent)
-    })
-
-    this.#active.set(invocation.sessionId, harness)
-    const abortHarness = (): void => {
-      abortPromise ??= harness.abort().then(
-        () => undefined,
-        () => undefined,
-      )
-    }
-    signal.addEventListener('abort', abortHarness, { once: true })
-    const prompt = (signal.aborted
-      ? Promise.resolve()
-      : harness.prompt(invocation.text))
-      .then(() => undefined, (error: unknown) => {
-        promptFailed = true
-        promptError = error
-      })
-      .finally(() => {
-        promptSettled = true
-        events.close()
-      })
-    if (signal.aborted) abortHarness()
-
     try {
-      for await (const event of events) yield event
-      await prompt
-      if (promptFailed) throw promptError
-    } finally {
-      signal.removeEventListener('abort', abortHarness)
-      unsubscribeContextGuard()
-      unsubscribeToolPolicy()
-      unsubscribe()
-      if (this.#active.get(invocation.sessionId) === harness) {
-        this.#active.delete(invocation.sessionId)
+      const tools = this.#tools(invocation, this.#piEnv(runEnv))
+      const harness = new AgentHarness({
+        session,
+        models,
+        model,
+        systemPrompt: invocation.systemPrompt,
+        tools,
+      })
+      const events = new AsyncEventQueue<AgentEvent>()
+      let promptSettled = false
+      let promptFailed = false
+      let promptError: unknown
+      let sawErrorEvent = false
+      let abortPromise: Promise<void> | undefined
+
+      const unsubscribeToolPolicy = harness.on('tool_call', async (event) => {
+        const decision = await this.#toolPolicy.evaluate({
+          sessionId: invocation.sessionId,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          args: event.input,
+        }, signal)
+        return decision.action === 'deny'
+          ? { block: true, reason: decision.reason }
+          : undefined
+      })
+      const fixedContextTokens =
+        estimateTextTokens(invocation.systemPrompt)
+        + estimateToolTokens(tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        })))
+      let compactedContext: CompactedContextCursor | undefined
+      const unsubscribeContextGuard = harness.on('context', async (event) => {
+        if (!invocation.beforeModelCall) return undefined
+        const current = mergeCompactedContext(event.messages, compactedContext)
+        const compacted = await invocation.beforeModelCall(
+          estimateModelCallContextTokens(current, fixedContextTokens),
+          model.contextWindow,
+        )
+        if (!compacted) {
+          return compactedContext ? { messages: current } : undefined
+        }
+        const base = (await session.buildContext()).messages
+        compactedContext = {
+          base,
+          sourceMessageCount: event.messages.length,
+        }
+        return { messages: base }
+      })
+      const unsubscribe = harness.subscribe(async (event) => {
+        const persisted = event.type === 'message_end'
+          ? await persistedMessage(session, event.message)
+          : undefined
+        const runtimeEvent = piEventToAgentEvent(event, persisted)
+        if (runtimeEvent?.type === 'error') sawErrorEvent = true
+        if (event.type === 'message_end' && !sawErrorEvent) {
+          const failure = piMessageFailureEvent(event.message)
+          if (failure) {
+            sawErrorEvent = true
+            events.push(failure)
+          }
+        }
+        if (runtimeEvent) events.push(runtimeEvent)
+      })
+
+      this.#active.set(invocation.sessionId, harness)
+      const abortHarness = (): void => {
+        abortPromise ??= harness.abort().then(
+          () => undefined,
+          () => undefined,
+        )
       }
-      if (!promptSettled) {
-        await harness.abort()
+      signal.addEventListener('abort', abortHarness, { once: true })
+      const prompt = (signal.aborted
+        ? Promise.resolve()
+        : harness.prompt(invocation.text))
+        .then(() => undefined, (error: unknown) => {
+          promptFailed = true
+          promptError = error
+        })
+        .finally(() => {
+          promptSettled = true
+          events.close()
+        })
+      if (signal.aborted) abortHarness()
+
+      try {
+        for await (const event of events) yield event
         await prompt
+        if (promptFailed) throw promptError
+      } finally {
+        signal.removeEventListener('abort', abortHarness)
+        unsubscribeContextGuard()
+        unsubscribeToolPolicy()
+        unsubscribe()
+        if (this.#active.get(invocation.sessionId) === harness) {
+          this.#active.delete(invocation.sessionId)
+        }
+        if (!promptSettled) {
+          await harness.abort()
+          await prompt
+        }
+        await abortPromise
       }
-      await abortPromise
+    } finally {
+      await runEnv.dispose()
     }
+  }
+
+  /**
+   * 把 pi-free 端口收窄到 kernel 具体类型：PiRunExecutionEnv 是
+   * RunExecutionEnvFactory 的唯一实现，pi 类型只出现在 kernel 层。
+   */
+  #piEnv(runEnv: RunExecutionEnv): ExecutionEnv {
+    if (!(runEnv instanceof PiRunExecutionEnv)) {
+      throw new Error('不支持的 RunExecutionEnv 实现')
+    }
+    return runEnv.env
   }
 
   async dispose(): Promise<void> {

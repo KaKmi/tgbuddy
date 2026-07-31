@@ -41,7 +41,6 @@ import {
   resolveSafePath,
   SandboxError,
 } from './sandbox.ts'
-import { createSandboxedEnv } from './sandboxed-env.ts'
 
 interface ToolContext {
   env: ExecutionEnv
@@ -61,8 +60,7 @@ function bindContext<T extends object>(tool: AgentHarnessTool<T>, context: T): A
   } as AgentTool
 }
 
-export function buildBuiltinTools(cwd: string): AgentTool[] {
-  const env = createSandboxedEnv(cwd)
+export function buildBuiltinTools(cwd: string, env: ExecutionEnv): AgentTool[] {
   const context: ToolContext = { env }
 
   return [

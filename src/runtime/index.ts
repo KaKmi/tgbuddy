@@ -20,6 +20,10 @@ export type {
 } from './app/agent-runtime-events.ts'
 export type { SessionRepository } from './sessions/session-repository.ts'
 export type { WorkspaceRepository } from './workspaces/workspace-repository.ts'
+export type {
+  RunExecutionEnv,
+  RunExecutionEnvFactory,
+} from './execution-env/run-execution-env.ts'
 export {
   mountFailureMessage,
   type WorkspaceMountResolver,
