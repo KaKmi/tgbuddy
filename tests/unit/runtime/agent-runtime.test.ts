@@ -187,4 +187,23 @@ describe('AgentRuntime 门面', () => {
     await expect(runtime.sessions.delete('session-1')).rejects.toThrow('任务运行中')
     expect(calls).toEqual([])
   })
+
+  test('计划模式切换持久化到 Session 元数据并发布 mode_changed', () => {
+    const calls: string[] = []
+    const runtime = createAgentRuntime(createDependencies(calls))
+    const events: AgentRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
+
+    runtime.plans.setMode('session-1', 'plan')
+
+    expect(calls).toEqual(['plan.setMode', 'session.updateMeta'])
+    expect(events).toContainEqual({
+      sessionId: 'session-1',
+      runId: 0,
+      payload: {
+        channel: 'host',
+        event: { type: 'mode_changed', mode: 'plan', source: 'user' },
+      },
+    })
+  })
 })

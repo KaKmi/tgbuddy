@@ -9,6 +9,10 @@ export {
   type PiAgentSessionProvider,
 } from './pi-agent-engine.ts'
 export {
+  buildPlanModeTools,
+  type PlanModeHooks,
+} from './pi-plan-mode.ts'
+export {
   createSandboxedEnv,
   PiRunExecutionEnv,
   PiRunExecutionEnvFactory,

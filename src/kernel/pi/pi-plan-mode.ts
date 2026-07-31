@@ -1,16 +1,19 @@
 /**
- * 计划模式的两个工具。
+ * 计划模式的两个工具（pi adapter）。
  *
  * pi 明确把 plan mode 列为 non-goal（`docs/usage.md:306`），所以完全自建。
- * 计划模式属于宿主侧能力，由两个工具和权限判定共同实现。
+ * 计划模式属于宿主侧能力，由两个工具和权限判定共同实现：
+ *   - `enter_plan_mode` 进入只读调研；
+ *   - `exit_plan_mode` 提交计划，经 PlanAskBroker 挂起等用户审批，
+ *     批准后退出计划模式开始执行，拒绝时把意见带回给模型继续修改。
  *
- * 判定规则在 `permission-service.ts` 的 `mode === 'plan'` 分支：
+ * 判定规则在 `policy-engine.ts` 的 `mode === 'plan'` 分支：
  *   只读工具放行 / `.md` 写入放行 / 只读 bash 放行 / 其余一律拒绝。
  */
 
 import { Type } from '@earendil-works/pi-ai'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import type { PermissionMode } from '../../shared/types/permission.ts'
+import type { PermissionMode } from '../../shared/contracts/permission.ts'
 
 export interface PlanModeHooks {
   getMode: () => PermissionMode
@@ -18,8 +21,7 @@ export interface PlanModeHooks {
   /** 通知 UI 模式变了。source 区分是用户点的还是模型自己切的 */
   onModeChanged: (mode: PermissionMode, source: 'user' | 'tool') => void
   /**
-   * 提交计划等待用户审批。
-   * 复用权限那套 `Map<requestId, resolve>` 挂起模式 —— 同构的第三份实现。
+   * 提交计划等待用户审批。复用 Runtime 的 PlanAskBroker 挂起机制。
    */
   requestApproval: (
     plan: string,

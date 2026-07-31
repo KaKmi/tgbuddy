@@ -15,6 +15,7 @@ import {
   type AgentInvocation,
   type ContextCompactor,
   type PermissionAskBroker,
+  type PlanAskBroker,
   type PermissionRuleRepository,
   mountFailureMessage,
   type SessionCommands,
@@ -30,7 +31,6 @@ import {
   saveChannels,
 } from '../channel-store.ts'
 import * as permission from '../permission-service.ts'
-import * as plan from '../plan-service.ts'
 
 export interface CreateLegacyRuntimeOptions {
   workspaces: WorkspaceCommands
@@ -40,6 +40,8 @@ export interface CreateLegacyRuntimeOptions {
   contextCompactor: ContextCompactor
   /** S06：授权请求由 Runtime broker 持有；respond/pending/clearSession 都走它 */
   permissions: PermissionAskBroker
+  /** S09：计划审批由 Runtime broker 持有；respond/pending/clearSession 都走它 */
+  plans: PlanAskBroker
   /** S07：规则持久化仓库（SQLite），同时服务策略引擎与规则列表 IPC */
   rules: PermissionRuleRepository
   dispose?(): Promise<void>
@@ -74,7 +76,7 @@ export function createLegacyRuntime(
       },
       async settled(settlement) {
         options.permissions.clearSession(settlement.sessionId)
-        plan.clearSession(settlement.sessionId)
+        options.plans.clearSession(settlement.sessionId)
         askUser.clearSession(settlement.sessionId)
         return requireSessionUpdate(
           settlement.sessionId,
@@ -107,8 +109,8 @@ export function createLegacyRuntime(
       removeRule: (id) => options.rules.remove(id),
     },
     plans: {
-      respond: plan.respond,
-      pending: plan.getPending,
+      respond: (response) => options.plans.respond(response),
+      pending: options.plans.pending,
       setMode: permission.setMode,
     },
     questions: {

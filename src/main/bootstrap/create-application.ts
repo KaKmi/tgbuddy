@@ -4,6 +4,7 @@ import {
   resolve,
 } from 'node:path'
 import {
+  createPlanAskBroker,
   createPermissionAskBroker,
   createPolicyEngine,
   createSessionCommands,
@@ -21,6 +22,7 @@ import {
 } from '../../infrastructure/sqlite/index.ts'
 import { NodeWorkspaceMountResolver } from '../../infrastructure/workspace/index.ts'
 import {
+  buildPlanModeTools,
   createPiAgentEngine,
   createPiContextCompactor,
   createPiSessionStore,
@@ -109,6 +111,22 @@ export async function createApplication(
       })
     },
   })
+  // S09：计划审批请求同样由 Runtime broker 持有（与权限共用 pending registry）。
+  const planAskBroker = createPlanAskBroker({
+    createId,
+    emitRequest(request) {
+      const win = options.getWindow()
+      if (!win || win.isDestroyed()) return
+      win.webContents.send(IPC.AGENT_STREAM, {
+        sessionId: request.sessionId,
+        runId: 0,
+        payload: {
+          channel: 'host',
+          event: { type: 'plan_request', request },
+        },
+      })
+    },
+  })
 
   let messageStore: ReturnType<typeof createPiSessionStore> | undefined
   let agentRuntime: AgentRuntime
@@ -146,7 +164,39 @@ export async function createApplication(
       agentEngine: createPiAgentEngine({
         sessions: createdMessageStore,
         envFactory: new PiRunExecutionEnvFactory(),
-        tools: (invocation, env) => buildBuiltinTools(invocation.cwd, env),
+        tools: (invocation, env) => {
+          const sessionId = invocation.sessionId
+          return [
+            ...buildBuiltinTools(invocation.cwd, env),
+            // S09：计划模式工具由 kernel/pi adapter 提供，模式本身是 Session 元数据。
+            ...buildPlanModeTools({
+              getMode: () => permission.getMode(sessionId),
+              setMode: (mode) => permission.setMode(sessionId, mode),
+              onModeChanged(mode, source) {
+                const session = sessionRepository.get(sessionId)
+                if (session) {
+                  sessionRepository.update({
+                    ...session,
+                    permissionMode: mode,
+                    updatedAt: Date.now(),
+                  })
+                }
+                const win = options.getWindow()
+                if (!win || win.isDestroyed()) return
+                win.webContents.send(IPC.AGENT_STREAM, {
+                  sessionId,
+                  runId: 0,
+                  payload: {
+                    channel: 'host',
+                    event: { type: 'mode_changed', mode, source },
+                  },
+                })
+              },
+              requestApproval: (plan, signal) =>
+                planAskBroker.requestApproval({ sessionId, plan }, signal),
+            }),
+          ]
+        },
         toolPolicy: createPolicyEngine({
           rules: permissionRules,
           getMode: (sessionId) => permission.getMode(sessionId),
@@ -170,6 +220,7 @@ export async function createApplication(
       }),
       workspaces: workspaceService,
       permissions: permissionAskBroker,
+      plans: planAskBroker,
       rules: permissionRules,
       dispose: () => createdMessageStore.dispose(),
     })

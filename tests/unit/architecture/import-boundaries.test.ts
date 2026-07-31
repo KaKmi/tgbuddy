@@ -197,7 +197,6 @@ describe('仓库 import 边界', () => {
       { prefix: 'src/main/tools/sandbox.ts', deleteIn: 'Story 2' },
       { prefix: 'src/main/tools/sandboxed-env.ts', deleteIn: 'Story 2' },
       { prefix: 'src/main/tools/index.ts', deleteIn: 'Story 4' },
-      { prefix: 'src/main/tools/plan-mode.ts', deleteIn: 'Story 4' },
       { prefix: 'src/main/tools/ask-user.ts', deleteIn: 'Story 4' },
     ])
   })
@@ -212,6 +211,16 @@ describe('仓库 import 边界', () => {
     ]
 
     for (const owner of removedOwners) {
+      expect(existsSync(join(projectRoot, owner))).toBe(false)
+    }
+  })
+
+  test('S09 结束后旧 plan owner 已物理删除', () => {
+    const projectRoot = join(import.meta.dir, '../../..')
+    for (const owner of [
+      'src/main/plan-service.ts',
+      'src/main/tools/plan-mode.ts',
+    ]) {
       expect(existsSync(join(projectRoot, owner))).toBe(false)
     }
   })
