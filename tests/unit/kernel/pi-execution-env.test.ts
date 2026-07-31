@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -58,6 +59,37 @@ describe('PiRunExecutionEnv', () => {
       await env.dispose()
       expect(env.disposed).toBe(true)
       await expect(env.dispose()).resolves.toBeUndefined()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('pi 临时文件协议走工作区内目录：createTempFile 可 append/read，dispose 后清理', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tgbuddy-env-temp-'))
+    try {
+      const factory = new PiRunExecutionEnvFactory()
+      const env = factory.create({ workspaceId: 'ws-a', mountPath: root })
+
+      const dirResult = await env.env.createTempDir('prefix-')
+      expect(dirResult.ok).toBe(true)
+      if (dirResult.ok) {
+        expect(dirResult.value.startsWith(join(root, '.tgbuddy-tmp'))).toBe(true)
+      }
+
+      const fileResult = await env.env.createTempFile({ prefix: 'bash-', suffix: '.log' })
+      expect(fileResult.ok).toBe(true)
+      if (!fileResult.ok) throw new Error('createTempFile 失败')
+      expect(fileResult.value.startsWith(join(root, '.tgbuddy-tmp'))).toBe(true)
+
+      // 模拟 pi 内置 bash 工具的长输出协议：createTempFile -> appendFile -> readTextFile
+      expect((await env.env.appendFile(fileResult.value, 'tail-content')).ok).toBe(true)
+      const read = await env.env.readTextFile(fileResult.value)
+      expect(read.ok).toBe(true)
+      if (read.ok) expect(read.value).toBe('tail-content')
+
+      await env.dispose()
+      // 每个 Run 只清理自己的临时目录，避免并行其他 Run 的临时文件被误删
+      expect(existsSync(join(root, '.tgbuddy-tmp', env.id))).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

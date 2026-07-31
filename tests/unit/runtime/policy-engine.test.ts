@@ -5,6 +5,7 @@ import {
 } from '../../../src/runtime/permissions/policy-engine.ts'
 import { MemoryPermissionRuleRepository } from '../../../src/runtime/permissions/permission-rule-repository.ts'
 import type { PermissionRule } from '../../../src/shared/contracts/permission.ts'
+import { isReadOnlyCommand } from '../../../src/shared/contracts/permission.ts'
 import type { ToolPolicy, ToolPolicyInput } from '../../../src/runtime/runs/agent-engine.ts'
 
 interface HarnessOptions {
@@ -95,6 +96,37 @@ describe('PolicyEngine 基础决策', () => {
       .toEqual({ action: 'allow' })
     expect(await policy.evaluate(tool({ toolName: 'write', args: { path: 'C:\\work\\app.ts' } }), new AbortController().signal))
       .toEqual({ action: 'deny', reason: expect.stringContaining('计划模式') })
+    expect(askCalls).toHaveLength(0)
+  })
+
+  test('isReadOnlyCommand：find 的破坏性子命令不算只读', () => {
+    expect(isReadOnlyCommand('find . -delete')).toBe(false)
+    expect(isReadOnlyCommand('find . -name "*.tmp" -exec rm {} +')).toBe(false)
+    expect(isReadOnlyCommand('find . -name "*.tmp" -execdir rm {} +')).toBe(false)
+    expect(isReadOnlyCommand('find . -name "*.ts"')).toBe(true)
+    expect(isReadOnlyCommand('ls -la')).toBe(true)
+  })
+
+  test('plan 模式：find -delete / -exec 不得绕过计划审批，普通 find 仍放行', async () => {
+    const { policy, askCalls } = harness({ mode: () => 'plan' })
+    expect(
+      await policy.evaluate(
+        tool({ toolName: 'bash', args: { command: 'find . -delete' } }),
+        new AbortController().signal,
+      ),
+    ).toEqual({ action: 'deny', reason: expect.stringContaining('计划模式') })
+    expect(
+      await policy.evaluate(
+        tool({ toolName: 'bash', args: { command: 'find . -name "*.tmp" -exec rm {} +' } }),
+        new AbortController().signal,
+      ),
+    ).toEqual({ action: 'deny', reason: expect.stringContaining('计划模式') })
+    expect(
+      await policy.evaluate(
+        tool({ toolName: 'bash', args: { command: 'find . -name "*.ts"' } }),
+        new AbortController().signal,
+      ),
+    ).toEqual({ action: 'allow' })
     expect(askCalls).toHaveLength(0)
   })
 

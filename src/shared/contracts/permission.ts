@@ -121,12 +121,19 @@ export const SYSTEM_TOOL_PATTERNS: RegExp[] = [
 const READONLY_COMMANDS =
   /^\s*(ls|dir|cat|type|head|tail|wc|find|grep|rg|fd|git\s+(status|log|diff|show|branch)|pwd|echo|which|where|stat|du|df)\b/i
 const INTERPRETERS = /\b(node|python[23]?|ruby|perl|php|deno|bun)\s+[^-]/
+/**
+ * find 的破坏性子命令：-delete / -exec / -execdir / -ok / -okdir 都是写操作，
+ * 即使命令里没有管道或重定向，也不能按只读放行（plan 模式会因此绕过审批）。
+ */
+const FIND_DESTRUCTIVE =
+  /(?:^|\s)-(?:delete|exec|execdir|ok|okdir)(?:\s|$)/i
 
 export function isReadOnlyCommand(command: string): boolean {
   if (INTERPRETERS.test(command)) return false
   if (SYSTEM_TOOL_PATTERNS.some((re) => re.test(command))) return false
   // 有管道/重定向/命令串联就不算只读
   if (/[|>;&]|\$\(|`/.test(command)) return false
+  if (FIND_DESTRUCTIVE.test(command)) return false
   return READONLY_COMMANDS.test(command)
 }
 
