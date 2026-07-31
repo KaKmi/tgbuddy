@@ -21,6 +21,11 @@ import type {
 import type { Profile, ProfileSaveInput } from './profile.ts'
 import type { ToolPermission, ToolSettingView } from './tool.ts'
 import type { SkillGroupView } from './skill.ts'
+import type {
+  McpSaveInput,
+  McpServerConfig,
+  McpServerStatus,
+} from './mcp.ts'
 import type { StartRunInput } from './run.ts'
 import type { SessionMeta } from './session.ts'
 import type {
@@ -108,6 +113,14 @@ export const IPC = {
   // 技能
   SKILL_LIST: 'skill:list',
   SKILL_SET_ENABLED: 'skill:set-enabled',
+
+  // MCP
+  MCP_LIST: 'mcp:list',
+  MCP_SAVE: 'mcp:save',
+  MCP_DELETE: 'mcp:delete',
+  MCP_CONNECT: 'mcp:connect',
+  MCP_DISCONNECT: 'mcp:disconnect',
+  MCP_STATUS: 'mcp:status',
 } as const satisfies Record<string, keyof IpcCommandMap | keyof IpcEventMap>
 
 // ── 请求/响应类型 ─────────────────────────────────────────────────
@@ -193,6 +206,12 @@ export interface IpcCommandMap {
   'tool:bulk-ask': IpcCommand<{ toolIds: string[] }, void>
   'skill:list': IpcCommand<{ workspaceId?: string }, SkillGroupView[]>
   'skill:set-enabled': IpcCommand<{ skillId: string; enabled: boolean }, void>
+  'mcp:list': IpcCommand<undefined, McpServerConfig[]>
+  'mcp:save': IpcCommand<McpSaveInput, void>
+  'mcp:delete': IpcCommand<string, void>
+  'mcp:connect': IpcCommand<string, McpServerStatus>
+  'mcp:disconnect': IpcCommand<string, void>
+  'mcp:status': IpcCommand<undefined, McpServerStatus[]>
 }
 
 export type IpcCommandName = keyof IpcCommandMap
@@ -309,6 +328,16 @@ export interface TgBuddyAPI {
       skillId: IpcRequest<'skill:set-enabled'>['skillId'],
       enabled: IpcRequest<'skill:set-enabled'>['enabled'],
     ): Promise<IpcResponse<'skill:set-enabled'>>
+  }
+  mcp: {
+    list(): Promise<IpcResponse<'mcp:list'>>
+    save(config: IpcRequest<'mcp:save'>): Promise<IpcResponse<'mcp:save'>>
+    delete(id: IpcRequest<'mcp:delete'>): Promise<IpcResponse<'mcp:delete'>>
+    connect(id: IpcRequest<'mcp:connect'>): Promise<IpcResponse<'mcp:connect'>>
+    disconnect(
+      id: IpcRequest<'mcp:disconnect'>,
+    ): Promise<IpcResponse<'mcp:disconnect'>>
+    status(): Promise<IpcResponse<'mcp:status'>>
   }
 }
 

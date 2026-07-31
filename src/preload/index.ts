@@ -100,6 +100,14 @@ const api = {
     setEnabled: (skillId, enabled) =>
       ipcRenderer.invoke(IPC.SKILL_SET_ENABLED, { skillId, enabled }),
   },
+  mcp: {
+    list: () => ipcRenderer.invoke(IPC.MCP_LIST),
+    save: (config) => ipcRenderer.invoke(IPC.MCP_SAVE, config),
+    delete: (id) => ipcRenderer.invoke(IPC.MCP_DELETE, id),
+    connect: (id) => ipcRenderer.invoke(IPC.MCP_CONNECT, id),
+    disconnect: (id) => ipcRenderer.invoke(IPC.MCP_DISCONNECT, id),
+    status: () => ipcRenderer.invoke(IPC.MCP_STATUS),
+  },
 } satisfies TgBuddyAPI
 
 contextBridge.exposeInMainWorld('tgbuddy', api)

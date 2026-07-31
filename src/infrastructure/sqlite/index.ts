@@ -3,6 +3,7 @@ export { SqliteChannelRepository } from './repositories/sqlite-channel-repositor
 export { SqliteProfileRepository } from './repositories/sqlite-profile-repository.ts'
 export { SqlitePermissionRuleRepository } from './repositories/sqlite-permission-rule-repository.ts'
 export { SqliteToolSettingsRepository } from './repositories/sqlite-tool-settings-repository.ts'
+export { SqliteMcpConfigRepository } from './repositories/sqlite-mcp-config-repository.ts'
 export { SqliteWorkspaceRepository } from './repositories/sqlite-workspace-repository.ts'
 export {
   canonicalJson,

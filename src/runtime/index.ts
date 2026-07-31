@@ -72,6 +72,20 @@ export type {
   LoadedSkillContent,
   SkillLoader,
 } from './skills/ports/skill-loader.ts'
+export type { McpServerConfig, McpServerStatus } from '../shared/contracts/mcp.ts'
+export {
+  MemoryMcpConfigRepository,
+  type McpConfigRepository,
+} from './mcp/mcp-config-repository.ts'
+export type {
+  McpTransport,
+  McpTransportFactory,
+} from './mcp/ports/mcp-transport.ts'
+export {
+  createMcpManager,
+  type CreateMcpManagerOptions,
+  type McpManager,
+} from './mcp/mcp-manager.ts'
 export type {
   AgentRuntimeEvent,
   AgentRuntimeEventListener,

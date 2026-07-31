@@ -11,6 +11,11 @@ import type {
   ToolSettingView,
 } from '../../shared/contracts/tool.ts'
 import type { SkillGroupView } from '../../shared/contracts/skill.ts'
+import type {
+  McpSaveInput,
+  McpServerConfig,
+  McpServerStatus,
+} from '../../shared/contracts/mcp.ts'
 import type { HostEvent, StreamFrame } from '../../shared/contracts/events.ts'
 import type {
   AskUserRequest,
@@ -125,6 +130,13 @@ export interface SettingsCommands {
   /** C07：技能目录（按来源分组），workspaceId 切换即刷新 */
   listSkills(workspaceId?: string): SkillGroupView[]
   setSkillEnabled(skillId: string, enabled: boolean): void
+  /** C09：MCP 服务配置、连接状态与错误 */
+  listMcpServers(): McpServerConfig[]
+  saveMcpServer(config: McpSaveInput): void
+  deleteMcpServer(serverId: string): void
+  connectMcp(serverId: string): Promise<McpServerStatus>
+  disconnectMcp(serverId: string): Promise<void>
+  mcpStatuses(): McpServerStatus[]
 }
 
 export interface AgentRuntime {

@@ -297,5 +297,40 @@ export function registerIpc(
       agentRuntime.settings.setSkillEnabled(input.skillId, input.enabled),
   )
 
+  ipcMain.handle(
+    IPC.MCP_LIST,
+    (): IpcResponse<'mcp:list'> => agentRuntime.settings.listMcpServers(),
+  )
+  ipcMain.handle(
+    IPC.MCP_SAVE,
+    (_event, config: IpcRequest<'mcp:save'>): IpcResponse<'mcp:save'> =>
+      agentRuntime.settings.saveMcpServer(config),
+  )
+  ipcMain.handle(
+    IPC.MCP_DELETE,
+    (_event, serverId: IpcRequest<'mcp:delete'>): IpcResponse<'mcp:delete'> =>
+      agentRuntime.settings.deleteMcpServer(serverId),
+  )
+  ipcMain.handle(
+    IPC.MCP_CONNECT,
+    (
+      _event,
+      serverId: IpcRequest<'mcp:connect'>,
+    ): Promise<IpcResponse<'mcp:connect'>> =>
+      agentRuntime.settings.connectMcp(serverId),
+  )
+  ipcMain.handle(
+    IPC.MCP_DISCONNECT,
+    (
+      _event,
+      serverId: IpcRequest<'mcp:disconnect'>,
+    ): Promise<IpcResponse<'mcp:disconnect'>> =>
+      agentRuntime.settings.disconnectMcp(serverId),
+  )
+  ipcMain.handle(
+    IPC.MCP_STATUS,
+    (): IpcResponse<'mcp:status'> => agentRuntime.settings.mcpStatuses(),
+  )
+
   return unsubscribe
 }

@@ -10,6 +10,7 @@ import {
   createAskUserBroker,
   createBuiltinToolRegistry,
   createChannelService,
+  createMcpManager,
   createPlanAskBroker,
   createPermissionAskBroker,
   createPolicyEngine,
@@ -25,6 +26,7 @@ import {
 import {
   AppDatabase,
   SqliteChannelRepository,
+  SqliteMcpConfigRepository,
   SqlitePermissionRuleRepository,
   SqliteProfileRepository,
   SqliteSessionRepository,
@@ -32,6 +34,7 @@ import {
   SqliteWorkspaceRepository,
 } from '../../infrastructure/sqlite/index.ts'
 import { EncryptedFileSecretStore } from '../../infrastructure/secrets/index.ts'
+import { SdkMcpTransportFactory } from '../../infrastructure/mcp/index.ts'
 import {
   createFsSkillCatalog,
   createFsSkillLoader,
@@ -117,6 +120,15 @@ export async function createApplication(
     },
   })
   const skillLoader = createFsSkillLoader()
+  // C09：MCP 服务配置落 SQLite，连接状态由 Runtime 持有；
+  // stdio/http 传输由 SDK adapter（Main 侧能力）实现。
+  const mcp = createMcpManager({
+    repository: new SqliteMcpConfigRepository(appDatabase),
+    factory: new SdkMcpTransportFactory(),
+    secrets: secretStore,
+    createId,
+    now: Date.now,
+  })
   // C05：内置工具统一注册，Run 启动按 snapshot 冻结启用集合。
   const toolRegistry = createBuiltinToolRegistry()
   // C06：工具三档权限覆盖持久化，PolicyEngine 在规则之下读取。
@@ -338,6 +350,7 @@ export async function createApplication(
       profiles,
       toolSettings,
       skills,
+      mcp,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)

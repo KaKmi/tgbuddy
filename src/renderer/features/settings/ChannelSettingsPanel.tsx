@@ -12,6 +12,11 @@ import type {
   ToolSettingView,
 } from '../../../shared/contracts/tool.ts'
 import type { SkillGroupView } from '../../../shared/contracts/skill.ts'
+import type {
+  McpSaveInput,
+  McpServerConfig,
+  McpServerStatus,
+} from '../../../shared/contracts/mcp.ts'
 
 export interface ChannelSettingsPanelProps {
   workspaceId?: string | null
@@ -35,6 +40,17 @@ interface ProfileFormState {
   systemPrompt: string
 }
 
+interface McpFormState {
+  id?: string
+  name: string
+  transport: 'stdio' | 'http'
+  command: string
+  args: string
+  url: string
+  env: string
+  enabled: boolean
+}
+
 const EMPTY_FORM: ChannelFormState = {
   name: '',
   protocol: 'openai',
@@ -50,6 +66,16 @@ const EMPTY_PROFILE_FORM: ProfileFormState = {
   systemPrompt: '',
 }
 
+const EMPTY_MCP_FORM: McpFormState = {
+  name: '',
+  transport: 'stdio',
+  command: '',
+  args: '',
+  url: '',
+  env: '',
+  enabled: true,
+}
+
 /**
  * 设置页「模型与密钥」的最小 feature（C02）：渠道 CRUD。
  * 密钥输入只在本组件内存里存在，保存后主进程写入 SecretStore；
@@ -60,6 +86,10 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [tools, setTools] = useState<ToolSettingView[]>([])
   const [skillGroups, setSkillGroups] = useState<SkillGroupView[]>([])
+  const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([])
+  const [mcpStatuses, setMcpStatuses] = useState<Record<string, McpServerStatus>>({})
+  const [mcpForm, setMcpForm] = useState<McpFormState>(EMPTY_MCP_FORM)
+  const [editingMcpId, setEditingMcpId] = useState<string | null>(null)
   const [form, setForm] = useState<ChannelFormState>(EMPTY_FORM)
   const [profileForm, setProfileForm] = useState<ProfileFormState>(EMPTY_PROFILE_FORM)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -71,16 +101,23 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   >({})
 
   const refresh = async (): Promise<void> => {
-    const [channelList, profileList, toolList, skillList] = await Promise.all([
+    const [channelList, profileList, toolList, skillList, mcpList, statusList] =
+      await Promise.all([
       window.tgbuddy.channel.list(),
       window.tgbuddy.profile.list(),
       window.tgbuddy.tool.list(),
       window.tgbuddy.skill.list(props.workspaceId ?? undefined),
-    ])
+      window.tgbuddy.mcp.list(),
+      window.tgbuddy.mcp.status(),
+      ])
     setChannels(channelList)
     setProfiles(profileList)
     setTools(toolList)
     setSkillGroups(skillList)
+    setMcpServers(mcpList)
+    setMcpStatuses(
+      Object.fromEntries(statusList.map((status) => [status.serverId, status])),
+    )
   }
 
   useEffect(() => {
@@ -205,6 +242,97 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   async function resetAllTools() {
     await window.tgbuddy.tool.resetAll()
     await refresh()
+  }
+
+  function startEditMcp(server?: McpServerConfig) {
+    setEditingMcpId(server?.id ?? null)
+    setMcpForm(
+      server
+        ? {
+            id: server.id,
+            name: server.name,
+            transport: server.transport,
+            command: server.command ?? '',
+            args: (server.args ?? []).join(' '),
+            url: server.url ?? '',
+            env: Object.entries(server.env ?? {})
+              .map(([key, value]) => `${key}=${value}`)
+              .join('\n'),
+            enabled: server.enabled,
+          }
+        : EMPTY_MCP_FORM,
+    )
+    setError(undefined)
+  }
+
+  async function saveMcp() {
+    const name = mcpForm.name.trim()
+    if (!name) {
+      setError('MCP 服务名称不能为空')
+      return
+    }
+    const env: Record<string, string> = {}
+    for (const line of mcpForm.env.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const eq = trimmed.indexOf('=')
+      if (eq === -1) continue
+      env[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim()
+    }
+    const input: McpSaveInput = {
+      ...(mcpForm.id ? { id: mcpForm.id } : {}),
+      name,
+      transport: mcpForm.transport,
+      enabled: mcpForm.enabled,
+      ...(mcpForm.transport === 'stdio'
+        ? {
+            command: mcpForm.command.trim(),
+            args: mcpForm.args.trim() ? mcpForm.args.trim().split(/\s+/) : undefined,
+          }
+        : {
+            url: mcpForm.url.trim(),
+          }),
+      ...(Object.keys(env).length > 0 ? { env } : {}),
+    }
+    setBusy(true)
+    setError(undefined)
+    try {
+      await window.tgbuddy.mcp.save(input)
+      setEditingMcpId(null)
+      setMcpForm(EMPTY_MCP_FORM)
+      await refresh()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function connectMcp(serverId: string) {
+    const status = await window.tgbuddy.mcp.connect(serverId)
+    setMcpStatuses((current) => ({ ...current, [serverId]: status }))
+  }
+
+  async function disconnectMcp(serverId: string) {
+    await window.tgbuddy.mcp.disconnect(serverId)
+    setMcpStatuses((current) => ({
+      ...current,
+      [serverId]: { serverId, state: 'off' },
+    }))
+  }
+
+  async function removeMcp(serverId: string) {
+    if (!window.confirm('删除该 MCP 服务并断开连接？')) return
+    setBusy(true)
+    setError(undefined)
+    try {
+      await window.tgbuddy.mcp.delete(serverId)
+      await refresh()
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : String(deleteError))
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function remove(channelId: string) {
@@ -772,6 +900,246 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
               </div>
             ))}
           </div>
+
+          <div className="mb-2 mt-5 flex items-center gap-2 px-0.5">
+            <span className="text-[11px] tracking-wide text-[#6d6d75]">
+              连接器（MCP）
+            </span>
+            <div className="h-px flex-1 bg-white/5" />
+            <button
+              type="button"
+              data-testid="mcp-add"
+              onClick={() => startEditMcp()}
+              className="rounded-md px-2 py-1 text-[11px] text-sky-300 hover:bg-accent/60"
+            >
+              + 添加连接器
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {mcpServers.map((server) => {
+              const status = mcpStatuses[server.id] ?? {
+                serverId: server.id,
+                state: 'off',
+              }
+              const meta = MCP_STATUS_META[status.state]
+              return (
+                <div
+                  key={server.id}
+                  data-testid="mcp-row"
+                  className="flex flex-col gap-2 rounded-[10px] bg-[#17171a] px-3 py-2.5"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="h-[7px] w-[7px] flex-none rounded-full"
+                      style={{ background: meta.dot }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[12.5px] text-[#e4e4e9]">
+                        {server.name}
+                        {!server.enabled && (
+                          <span className="ml-1.5 text-[10.5px] text-[#63636b]">
+                            （已禁用）
+                          </span>
+                        )}
+                      </div>
+                      <div className="truncate font-mono text-[11px] text-[#8a8a92]">
+                        {server.transport === 'stdio'
+                          ? server.command
+                          : server.url}
+                      </div>
+                    </div>
+                    <span
+                      className="flex-none text-[11px]"
+                      style={{ color: meta.fg }}
+                    >
+                      {meta.label}
+                    </span>
+                  </div>
+                  {status.state === 'connected' ? (
+                    <button
+                      type="button"
+                      data-testid="mcp-disconnect"
+                      onClick={() => void disconnectMcp(server.id)}
+                      className="self-start rounded-md bg-white/5 px-2 py-1 text-[11px] text-[#b6b6be] hover:bg-white/10"
+                    >
+                      断开
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="mcp-connect"
+                      disabled={!server.enabled || status.state === 'connecting'}
+                      onClick={() => void connectMcp(server.id)}
+                      className="self-start rounded-md bg-white/5 px-2 py-1 text-[11px] text-[#b6b6be] hover:bg-white/10 disabled:opacity-40"
+                    >
+                      {status.state === 'error'
+                        ? '重新连接'
+                        : status.state === 'connecting'
+                          ? '连接中…'
+                          : '连接'}
+                    </button>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid="mcp-edit"
+                      onClick={() => startEditMcp(server)}
+                      className="rounded-md px-2 py-1 text-[11px] text-[#b6b6be] hover:bg-white/10"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="mcp-delete"
+                      onClick={() => void removeMcp(server.id)}
+                      className="rounded-md px-2 py-1 text-[11px] text-[#c9635b] hover:bg-white/10"
+                    >
+                      删除
+                    </button>
+                  </div>
+                  {status.state === 'error' && status.error && (
+                    <div
+                      data-testid="mcp-error"
+                      className="text-[11px] text-[#c9635b]"
+                    >
+                      {status.error}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            {mcpServers.length === 0 && !editingMcpId && (
+              <div className="rounded-[10px] bg-[#17171a] px-3 py-4 text-center text-[11.5px] text-[#63636b]">
+                还没有 MCP 连接器。添加 stdio 或 http 服务后即可连接。
+              </div>
+            )}
+          </div>
+
+          {editingMcpId !== null && (
+            <div className="mt-4 flex flex-col gap-2.5 rounded-[10px] bg-[#17171a] p-3">
+              <div className="text-[12.5px] text-[#e4e4e9]">
+                {mcpForm.id ? '编辑连接器' : '新连接器'}
+              </div>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-[#6d6d75]">名称</span>
+                <input
+                  data-testid="mcp-name-input"
+                  value={mcpForm.name}
+                  onChange={(event) =>
+                    setMcpForm({ ...mcpForm, name: event.target.value })
+                  }
+                  placeholder="postgres · prod-read"
+                  className="rounded-md border border-white/5 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-white/15"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-[#6d6d75]">传输</span>
+                <select
+                  data-testid="mcp-transport-input"
+                  value={mcpForm.transport}
+                  onChange={(event) =>
+                    setMcpForm({
+                      ...mcpForm,
+                      transport: event.target.value as 'stdio' | 'http',
+                    })
+                  }
+                  className="rounded-md border border-white/5 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-white/15"
+                >
+                  <option value="stdio">stdio（本地进程）</option>
+                  <option value="http">http（SSE）</option>
+                </select>
+              </label>
+              {mcpForm.transport === 'stdio' ? (
+                <>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-[#6d6d75]">启动命令</span>
+                    <input
+                      data-testid="mcp-command-input"
+                      value={mcpForm.command}
+                      onChange={(event) =>
+                        setMcpForm({ ...mcpForm, command: event.target.value })
+                      }
+                      placeholder="node scripts/mcp-fixture-server.mjs"
+                      className="rounded-md border border-white/5 bg-background px-2 py-1.5 font-mono text-[12px] text-foreground outline-none focus:border-white/15"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-[#6d6d75]">参数（空格分隔，可选）</span>
+                    <input
+                      data-testid="mcp-args-input"
+                      value={mcpForm.args}
+                      onChange={(event) =>
+                        setMcpForm({ ...mcpForm, args: event.target.value })
+                      }
+                      className="rounded-md border border-white/5 bg-background px-2 py-1.5 font-mono text-[12px] text-foreground outline-none focus:border-white/15"
+                    />
+                  </label>
+                </>
+              ) : (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-[#6d6d75]">SSE URL</span>
+                  <input
+                    data-testid="mcp-url-input"
+                    value={mcpForm.url}
+                    onChange={(event) =>
+                      setMcpForm({ ...mcpForm, url: event.target.value })
+                    }
+                    placeholder="https://mcp.example.com/sse"
+                    className="rounded-md border border-white/5 bg-background px-2 py-1.5 font-mono text-[12px] text-foreground outline-none focus:border-white/15"
+                  />
+                </label>
+              )}
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-[#6d6d75]">
+                  环境变量（KEY=VALUE，每行一个；可用 secret:&lt;ref&gt; 引用密钥）
+                </span>
+                <textarea
+                  data-testid="mcp-env-input"
+                  value={mcpForm.env}
+                  onChange={(event) =>
+                    setMcpForm({ ...mcpForm, env: event.target.value })
+                  }
+                  rows={3}
+                  className="resize-none rounded-md border border-white/5 bg-background px-2 py-1.5 font-mono text-[12px] text-foreground outline-none focus:border-white/15"
+                />
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  data-testid="mcp-enabled-input"
+                  type="checkbox"
+                  checked={mcpForm.enabled}
+                  onChange={(event) =>
+                    setMcpForm({ ...mcpForm, enabled: event.target.checked })
+                  }
+                  className="h-3.5 w-3.5"
+                />
+                <span className="text-[11px] text-[#6d6d75]">启用该服务</span>
+              </label>
+              <div className="mt-1 flex gap-2">
+                <button
+                  type="button"
+                  data-testid="mcp-save"
+                  disabled={busy}
+                  onClick={() => void saveMcp()}
+                  className="flex-1 rounded-md bg-sky-500/80 px-2 py-1.5 text-[12px] text-white hover:bg-sky-500 disabled:opacity-50"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingMcpId(null)
+                    setMcpForm(EMPTY_MCP_FORM)
+                    setError(undefined)
+                  }}
+                  className="rounded-md bg-white/5 px-3 py-1.5 text-[12px] text-[#b6b6be] hover:bg-white/10"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -788,6 +1156,16 @@ const PERMISSION_OPTIONS: Array<{
   { id: 'ask', label: '询问', bg: 'rgba(224,163,62,.18)', fg: '#e0c39e' },
   { id: 'deny', label: '禁止', bg: 'rgba(201,99,91,.18)', fg: '#e5a49d' },
 ]
+
+const MCP_STATUS_META: Record<
+  McpServerStatus['state'],
+  { label: string; dot: string; fg: string }
+> = {
+  connected: { label: '已连接', dot: '#8fc6a5', fg: '#8fc6a5' },
+  error: { label: '连接失败', dot: '#c9635b', fg: '#dfa39d' },
+  off: { label: '未连接', dot: '#55555c', fg: '#8a8a92' },
+  connecting: { label: '连接中…', dot: '#e0a33e', fg: '#e0c39e' },
+}
 
 function channelConfigured(
   editingId: string | undefined,

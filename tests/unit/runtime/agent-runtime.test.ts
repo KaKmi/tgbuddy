@@ -95,6 +95,16 @@ function createDependencies(calls: string[]): AgentRuntimeDependencies {
       bulkSetAskTools: () => calls.push('settings.tools-bulk-ask'),
       listSkills: () => [],
       setSkillEnabled: () => calls.push('settings.skill-set'),
+      listMcpServers: () => [],
+      saveMcpServer: () => calls.push('settings.mcp-save'),
+      deleteMcpServer: () => calls.push('settings.mcp-delete'),
+      async connectMcp() {
+        return { serverId: 'mcp-1', state: 'off' }
+      },
+      async disconnectMcp() {
+        calls.push('settings.mcp-disconnect')
+      },
+      mcpStatuses: () => [],
     },
   }
 }

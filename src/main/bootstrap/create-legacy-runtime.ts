@@ -27,6 +27,7 @@ import {
   type SessionMessageHistory,
   type SecretStore,
   type SkillCatalog,
+  type McpManager,
   type ToolSettingsService,
   type WorkspaceCommands,
 } from '../../runtime/index.ts'
@@ -63,6 +64,8 @@ export interface CreateLegacyRuntimeOptions {
   toolSettings: ToolSettingsService
   /** C07：技能目录发现（内置/用户级/工作区） */
   skills: SkillCatalog
+  /** C09：MCP 服务配置与连接状态（传输实现由 Composition Root 注入） */
+  mcp: McpManager
   dispose?(): Promise<void>
 }
 
@@ -229,6 +232,16 @@ export function createLegacyRuntime(
       setSkillEnabled: (skillId, enabled) => {
         options.skills.setEnabled(skillId, enabled)
       },
+      listMcpServers: () => options.mcp.list(),
+      saveMcpServer: (config) => {
+        options.mcp.save(config)
+      },
+      deleteMcpServer: (serverId) => {
+        options.mcp.delete(serverId)
+      },
+      connectMcp: (serverId) => options.mcp.connect(serverId),
+      disconnectMcp: (serverId) => options.mcp.disconnect(serverId),
+      mcpStatuses: () => options.mcp.statuses(),
     },
     async dispose() {
       context.dispose()
