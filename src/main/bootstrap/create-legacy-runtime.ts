@@ -14,6 +14,7 @@ import {
   type AgentEngine,
   type AgentInvocation,
   type AskUserBroker,
+  type ChannelService,
   type ContextCompactor,
   type PermissionAskBroker,
   type PlanAskBroker,
@@ -26,11 +27,7 @@ import {
 } from '../../runtime/index.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
-import {
-  ensureDataDir,
-  listChannels,
-  saveChannels,
-} from '../channel-store.ts'
+import { ensureDataDir } from '../channel-store.ts'
 
 export interface CreateLegacyRuntimeOptions {
   workspaces: WorkspaceCommands
@@ -47,10 +44,12 @@ export interface CreateLegacyRuntimeOptions {
   /** S07：规则持久化仓库（SQLite），同时服务策略引擎与规则列表 IPC */
   rules: PermissionRuleRepository
   /**
-   * C01：密钥存储。当前只建立注入点；C02 把渠道密钥改走该 store 后，
-   * 这里不再出现任何明文写入 SQLite/JSON 的路径。
+   * C01：密钥存储。C02 起渠道密钥经 ChannelService 写入该 store，
+   * 明文不再进入 SQLite/JSON。
    */
   secretStore: SecretStore
+  /** C02：渠道 CRUD 与运行期解析（密钥只存 ref） */
+  channels: ChannelService
   dispose?(): Promise<void>
 }
 
@@ -61,14 +60,20 @@ export function createLegacyRuntime(
   const context = createContextService({
     sessions: options.sessions,
     history: options.history,
-    channels: { list: listChannels },
+    // 压缩摘要需要真实 apiKey 构建 pi Provider，因此这里用运行期解析结果。
+    channels: { list: () => options.channels.resolveAll() },
     compactor: options.contextCompactor,
   })
   const runs = createRunCoordinator({
     now: Date.now,
     engine: options.agentEngine,
     createInvocation: (input) =>
-      createAgentInvocation(input, options.sessions, options.workspaces),
+      createAgentInvocation(
+        input,
+        options.sessions,
+        options.workspaces,
+        options.channels,
+      ),
     context,
     lifecycle: {
       async started(sessionId) {
@@ -139,13 +144,12 @@ export function createLegacyRuntime(
       list: () => [],
     },
     settings: {
-      listChannels,
-      saveChannel(channel) {
-        const channels = listChannels().filter((item) => item.id !== channel.id)
-        saveChannels([...channels, channel])
+      listChannels: () => options.channels.list(),
+      saveChannel: (channel) => {
+        options.channels.save(channel)
       },
-      deleteChannel(channelId) {
-        saveChannels(listChannels().filter((item) => item.id !== channelId))
+      deleteChannel: (channelId) => {
+        options.channels.delete(channelId)
       },
       async testChannel(_channelId) {
         return { success: false, message: '未实现' }
@@ -163,19 +167,18 @@ async function createAgentInvocation(
   input: StartRunInput,
   sessions: SessionCommands,
   workspaces: WorkspaceCommands,
+  channels: ChannelService,
 ): Promise<AgentInvocation> {
   const meta = sessions.list().find((session) => session.id === input.sessionId)
   if (!meta) throw new Error(`会话不存在：${input.sessionId}`)
 
-  const channels = listChannels()
-  if (channels.length === 0) {
+  // 运行期解析会带回明文 apiKey（只在内核调用前存在内存里）。
+  const channel = channels.resolve(meta.channelId)
+  if (!channel) {
     throw new Error(
       '还没有配置任何渠道。请先在设置中配置模型渠道',
     )
   }
-  const channel = channels.find((item) => item.id === meta.channelId)
-    ?? channels[0]
-  if (!channel) throw new Error('没有可用渠道')
 
   const modelId = meta.modelId ?? channel.models[0]?.id
   if (!modelId) throw new Error(`渠道「${channel.name}」下没有可用模型`)

@@ -1,12 +1,12 @@
 /**
- * 渠道存储。
+ * 渠道 legacy 读取（一次性迁移入口）。
  *
- * 阶段 2 先做最小可用：从 `~/.tgbuddy/channels.json` 读，
- * 文件不存在时用环境变量 `DEEPSEEK_API_KEY` 兜底建一个默认渠道，
- * 这样 probe 能跑通的配置，界面上也能直接跑。
+ * C02 起渠道 canonical 存储改为 SQLite `app_channels`，密钥只存
+ * SecretStore 的 ref。本文件只负责把旧 `channels.json`（或环境变量
+ * 兜底渠道）迁移到 SQLite，之后不再写入任何渠道数据。
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Channel } from '../shared/types/channel.ts'
@@ -55,7 +55,12 @@ function loadDotEnv(): void {
   }
 }
 
-export function listChannels(): Channel[] {
+/**
+ * 读取 legacy 渠道：优先 channels.json；不存在时用
+ * `DEEPSEEK_API_KEY` 环境变量兜底建一个默认渠道（开发兼容）。
+ * 迁移完成后调用方应改读 SQLite，不再依赖本函数。
+ */
+export function readLegacyChannels(): Channel[] {
   ensureDataDir()
 
   if (existsSync(CHANNELS_FILE)) {
@@ -74,9 +79,15 @@ export function listChannels(): Channel[] {
   return key ? [deepseekChannel(key)] : []
 }
 
-export function saveChannels(channels: Channel[]): void {
-  ensureDataDir()
-  // TODO(阶段 4): apiKey 必须经 Electron safeStorage 加密后再落盘。
-  //   现在是明文，只在本地开发期可接受；正式版本要用 Electron safeStorage 加密。
-  writeFileSync(CHANNELS_FILE, JSON.stringify({ channels }, null, 2), 'utf-8')
+/**
+ * 标记 legacy 文件已迁移：改名后下次启动不会重复导入。
+ * 改名失败只记日志，不阻塞启动（SQLite 导入本身幂等）。
+ */
+export function markLegacyChannelsMigrated(): void {
+  if (!existsSync(CHANNELS_FILE)) return
+  try {
+    renameSync(CHANNELS_FILE, `${CHANNELS_FILE}.migrated`)
+  } catch (error) {
+    console.error('[channel] channels.json 迁移标记失败（可重试）：', error)
+  }
 }

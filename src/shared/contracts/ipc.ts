@@ -13,7 +13,7 @@
 
 import type { StreamFrame } from './events.ts'
 import type { SessionMessage } from './message.ts'
-import type { Channel } from './channel.ts'
+import type { Channel, ChannelSaveInput } from './channel.ts'
 import type { StartRunInput } from './run.ts'
 import type { SessionMeta } from './session.ts'
 import type {
@@ -154,7 +154,7 @@ export interface IpcCommandMap {
   'ask-user:respond': IpcCommand<AskUserResponse, void>
   'ask-user:pending': IpcCommand<undefined, AskUserRequest[]>
   'channel:list': IpcCommand<undefined, Channel[]>
-  'channel:save': IpcCommand<Channel, void>
+  'channel:save': IpcCommand<ChannelSaveInput, void>
   'channel:delete': IpcCommand<string, void>
   'channel:test': IpcCommand<string, { success: boolean; message: string }>
 }

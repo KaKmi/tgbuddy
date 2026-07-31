@@ -37,6 +37,7 @@ import { AskUserCard } from './components/AskUserCard.tsx'
 import { ContextUsagePanel } from './components/ContextUsagePanel.tsx'
 import { CompactionDivider } from './components/CompactionDivider.tsx'
 import { CompactionStatus } from './components/CompactionStatus.tsx'
+import { ChannelSettingsPanel } from './features/settings/ChannelSettingsPanel.tsx'
 import { MARKER_STYLE, SystemMarker } from './components/SystemMarker.tsx'
 import type { PermissionMode } from '../shared/types/permission.ts'
 import {
@@ -76,6 +77,7 @@ export function App() {
   const mode: PermissionMode = currentSession?.permissionMode ?? 'auto'
   const [input, setInput] = useState('')
   const [wsOpen, setWsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [mountStatus, setMountStatus] = useState<WorkspaceMountResolution>()
   const queuedPrompt = currentId ? queuedPrompts.get(currentId) : undefined
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId)
@@ -217,6 +219,9 @@ export function App() {
           request={activeModal}
           onClose={() => setDismissedModalId(activeModal.requestId)}
         />
+      )}
+      {settingsOpen && (
+        <ChannelSettingsPanel onClose={() => setSettingsOpen(false)} />
       )}
 
       {/* 底部常驻授权队列提示：解决 inline 卡片被划过去的问题 */}
@@ -410,6 +415,16 @@ export function App() {
               ))}
             </div>
           )}
+        </div>
+        <div className="border-t px-2 py-2">
+          <button
+            type="button"
+            data-testid="settings-open"
+            onClick={() => setSettingsOpen(true)}
+            className="w-full rounded-md px-2 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          >
+            ⚙ 设置
+          </button>
         </div>
       </aside>
 

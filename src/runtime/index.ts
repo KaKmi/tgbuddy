@@ -19,6 +19,12 @@ export {
   type SecretStore,
 } from './secrets/secret-store.ts'
 export type { SecretRef } from '../shared/contracts/secret.ts'
+export type { ChannelRepository } from './channels/channel-repository.ts'
+export {
+  createChannelService,
+  type ChannelService,
+  type CreateChannelServiceOptions,
+} from './channels/channel-service.ts'
 export type {
   AgentRuntimeEvent,
   AgentRuntimeEventListener,

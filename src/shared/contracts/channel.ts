@@ -5,6 +5,8 @@
  * 这一层是我们自己的类型，不是 pi 的——kernel/pi/pi-models.ts 负责翻译成 pi 的 Provider/Model。
  */
 
+import type { SecretRef } from './secret.ts'
+
 /** 端点协议。pi 支持 9 种，我们精简版只接这两种，覆盖国内绝大多数网关。 */
 export type ChannelProtocol = 'openai' | 'anthropic'
 
@@ -54,9 +56,13 @@ export interface Channel {
   protocol: ChannelProtocol
   baseUrl: string
   /**
-   * ⚠️ 落盘时必须使用 Electron safeStorage 加密。
-   * 内存里是明文，只在 kernel 调用时传入。
+   * 保存时可选传入明文（设置页输入框）；任何 list 结果都不会携带明文。
    */
-  apiKey: string
+  apiKey?: string
+  /** 已保存密钥的引用；有值表示该渠道已配置密钥 */
+  secretRef?: SecretRef
   models: ChannelModel[]
 }
+
+/** 保存渠道的输入：新渠道可不带 id（由 Runtime 生成）。 */
+export type ChannelSaveInput = Omit<Channel, 'id'> & { id?: string }

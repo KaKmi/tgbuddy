@@ -77,7 +77,12 @@ export function buildModels(channels: Channel[]): MutableModels {
             // 也不依赖环境变量——GUI 启动的 Electron 拿不到 shell 的环境变量。
             // 压缩摘要直接调用 Models.completeSimple，不经过 Agent.getApiKey，
             // 所以 provider 自身也必须能解析到同一个 key。
-            resolve: async () => ({ auth: { apiKey: channel.apiKey }, source: 'TgBuddy 渠道配置' }),
+            resolve: async () => ({
+              // C02 起列表结果不含明文，运行期解析（resolveAll）才会补上；
+              // 兜底空串避免 pi 类型在未解析场景下拿到 undefined。
+              auth: { apiKey: channel.apiKey ?? '' },
+              source: 'TgBuddy 渠道配置',
+            }),
           },
         },
         models: channel.models.map((m) => toPiModel(channel, m)),

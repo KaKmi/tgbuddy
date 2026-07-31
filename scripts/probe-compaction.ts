@@ -2,9 +2,9 @@
 
 import { generateSummaryWithUsage } from '@earendil-works/pi-agent-core'
 import { buildModels } from '../src/kernel/pi/pi-models.ts'
-import { listChannels } from '../src/main/channel-store.ts'
+import { readLegacyChannels } from '../src/main/channel-store.ts'
 
-const channels = listChannels()
+const channels = readLegacyChannels()
 const channel = channels[0]
 const modelId = channel?.models[0]?.id
 if (!channel || !modelId) throw new Error('没有可用渠道或模型')

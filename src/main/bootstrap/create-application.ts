@@ -7,6 +7,7 @@ import {
 } from 'node:path'
 import {
   createAskUserBroker,
+  createChannelService,
   createPlanAskBroker,
   createPermissionAskBroker,
   createPolicyEngine,
@@ -19,6 +20,7 @@ import {
 } from '../../runtime/index.ts'
 import {
   AppDatabase,
+  SqliteChannelRepository,
   SqlitePermissionRuleRepository,
   SqliteSessionRepository,
   SqliteWorkspaceRepository,
@@ -35,6 +37,10 @@ import {
 } from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
 import { buildBuiltinTools } from '../tools/index.ts'
+import {
+  markLegacyChannelsMigrated,
+  readLegacyChannels,
+} from '../channel-store.ts'
 import { createId } from './create-id.ts'
 import { createLegacyRuntime } from './create-legacy-runtime.ts'
 import {
@@ -67,6 +73,7 @@ export async function createApplication(
   const workspaceRepository = new SqliteWorkspaceRepository(appDatabase)
   // S07：用户「总是允许」规则是资产，落 SQLite 跨重启保留。
   const permissionRules = new SqlitePermissionRuleRepository(appDatabase)
+  const channelRepository = new SqliteChannelRepository(appDatabase)
   // C01：渠道密钥只经 SecretStore 保存；SQLite 只存 secret ref。
   // 加密原语用 Electron safeStorage（Windows DPAPI / macOS Keychain），
   // 磁盘上只有加密 blob，测试不触碰真实系统凭据。
@@ -74,6 +81,13 @@ export async function createApplication(
     cipher: safeStorage,
     filePath: join(dirname(options.databasePath), 'secrets.json'),
   })
+  const channels = createChannelService({
+    repository: channelRepository,
+    secrets: secretStore,
+    sessions: sessionRepository,
+    createId,
+  })
+  migrateLegacyChannels(channels, channelRepository)
   const mountResolver = new NodeWorkspaceMountResolver()
   const workspaceService = createWorkspaceService({
     repository: workspaceRepository,
@@ -262,6 +276,7 @@ export async function createApplication(
       questions: askUserBroker,
       rules: permissionRules,
       secretStore,
+      channels,
       dispose: () => createdMessageStore.dispose(),
     })
     unsubscribe = registerIpc(agentRuntime, options.getWindow)
@@ -289,6 +304,24 @@ export async function createApplication(
       }
     },
   }
+}
+
+/**
+ * 把旧 `channels.json`（或环境变量兜底渠道）一次性迁入 SQLite：
+ * apiKey 经 SecretStore 落成 ref，SQLite 只存引用；迁移后改名旧文件，
+ * 避免下次启动重复导入（导入本身也按 id 幂等）。
+ */
+function migrateLegacyChannels(
+  channels: ReturnType<typeof createChannelService>,
+  channelRepository: SqliteChannelRepository,
+): void {
+  const legacy = readLegacyChannels()
+  if (legacy.length === 0) return
+  for (const channel of legacy) {
+    if (channelRepository.get(channel.id)) continue
+    channels.save(channel)
+  }
+  markLegacyChannelsMigrated()
 }
 
 function reportInterruptedRunRecovery(
