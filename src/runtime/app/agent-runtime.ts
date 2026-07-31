@@ -16,9 +16,9 @@ import type { SessionMessage } from '../../shared/contracts/message.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
 import type { Workspace } from '../../shared/contracts/workspace.ts'
 import {
-  createRuntimeEventPublisher,
-  type RuntimeEventListener,
-} from './runtime-events.ts'
+  createAgentRuntimeEventPublisher,
+  type AgentRuntimeEventListener,
+} from './agent-runtime-events.ts'
 
 export interface WorkspaceCommands {
   list(): Workspace[]
@@ -94,7 +94,7 @@ export interface SettingsCommands {
   testChannel(channelId: string): Promise<{ success: boolean; message: string }>
 }
 
-export interface TgBuddyRuntime {
+export interface AgentRuntime {
   workspaces: WorkspaceCommands
   sessions: SessionCommands
   runs: RunCommands
@@ -105,11 +105,11 @@ export interface TgBuddyRuntime {
   artifacts: ArtifactQueries
   capabilities: CapabilityCommands
   settings: SettingsCommands
-  subscribe(listener: RuntimeEventListener): () => void
+  subscribe(listener: AgentRuntimeEventListener): () => void
   dispose(): Promise<void>
 }
 
-export interface RuntimeDependencies {
+export interface AgentRuntimeDependencies {
   workspaces: WorkspaceCommands
   sessions: SessionCommands
   runs: {
@@ -141,8 +141,10 @@ export interface RuntimeDependencies {
 /**
  * Runtime 只组合显式依赖，不读取全局状态，也不知道 Electron、pi 或存储实现。
  */
-export function createTgBuddyRuntime(dependencies: RuntimeDependencies): TgBuddyRuntime {
-  const events = createRuntimeEventPublisher()
+export function createAgentRuntime(
+  dependencies: AgentRuntimeDependencies,
+): AgentRuntime {
+  const events = createAgentRuntimeEventPublisher()
   let disposed = false
 
   const emitHost = (

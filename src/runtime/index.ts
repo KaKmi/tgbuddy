@@ -1,5 +1,7 @@
 export {
-  createTgBuddyRuntime,
+  createAgentRuntime,
+  type AgentRuntime,
+  type AgentRuntimeDependencies,
   type ArtifactQueries,
   type AskUserCommands,
   type CapabilityCommands,
@@ -7,16 +9,15 @@ export {
   type PermissionCommands,
   type PlanCommands,
   type RunCommands,
-  type RuntimeDependencies,
   type SessionCommands,
   type SettingsCommands,
-  type TgBuddyRuntime,
   type WorkspaceCommands,
-} from './app/tgbuddy-runtime.ts'
+} from './app/agent-runtime.ts'
 export type {
-  RuntimeEvent,
-  RuntimeEventListener,
-} from './app/runtime-events.ts'
+  AgentRuntimeEvent,
+  AgentRuntimeEventListener,
+  AgentRuntimeEventPublisher,
+} from './app/agent-runtime-events.ts'
 export type { SessionRepository } from './sessions/session-repository.ts'
 export {
   createSessionCommands,

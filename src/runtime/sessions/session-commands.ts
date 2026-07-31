@@ -1,4 +1,4 @@
-import type { SessionCommands } from '../app/tgbuddy-runtime.ts'
+import type { SessionCommands } from '../app/agent-runtime.ts'
 import type { SessionMessage } from '../../shared/contracts/message.ts'
 import type { SessionRepository } from './session-repository.ts'
 

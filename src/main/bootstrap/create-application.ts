@@ -4,8 +4,8 @@ import {
   createSessionCommands,
   createSessionMessageHistory,
   recoverInterruptedRuns,
+  type AgentRuntime,
   type InterruptedRunRecoveryReport,
-  type TgBuddyRuntime,
 } from '../../runtime/index.ts'
 import {
   AppDatabase,
@@ -32,7 +32,7 @@ export interface CreateApplicationOptions {
 }
 
 export interface TgBuddyApplication {
-  runtime: TgBuddyRuntime
+  agentRuntime: AgentRuntime
   migration: LegacyMigrationReport
   recovery: InterruptedRunRecoveryReport
   dispose(): Promise<void>
@@ -48,7 +48,7 @@ export async function createApplication(
   const sessionRepository = new SqliteSessionRepository(appDatabase)
 
   let messageStore: ReturnType<typeof createPiSessionStore> | undefined
-  let runtime: TgBuddyRuntime
+  let agentRuntime: AgentRuntime
   let unsubscribe: () => void
   let migration: LegacyMigrationReport
   let recovery: InterruptedRunRecoveryReport
@@ -76,7 +76,7 @@ export async function createApplication(
       now: Date.now,
     })
     reportInterruptedRunRecovery(recovery)
-    runtime = createLegacyRuntime({
+    agentRuntime = createLegacyRuntime({
       agentEngine: createPiAgentEngine({
         sessions: createdMessageStore,
         tools: (invocation) => buildBuiltinTools(invocation.cwd),
@@ -96,7 +96,7 @@ export async function createApplication(
       }),
       dispose: () => createdMessageStore.dispose(),
     })
-    unsubscribe = registerIpc(runtime, options.getWindow)
+    unsubscribe = registerIpc(agentRuntime, options.getWindow)
   } catch (error) {
     void messageStore?.dispose().catch((disposeError: unknown) => {
       console.error('[application] PiSessionStore 初始化回滚失败', disposeError)
@@ -107,7 +107,7 @@ export async function createApplication(
   let disposed = false
 
   return {
-    runtime,
+    agentRuntime,
     migration,
     recovery,
     async dispose() {
@@ -115,7 +115,7 @@ export async function createApplication(
       disposed = true
       unsubscribe()
       try {
-        await runtime.dispose()
+        await agentRuntime.dispose()
       } finally {
         appDatabase.close()
       }

@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  createTgBuddyRuntime,
-  type RuntimeDependencies,
+  createAgentRuntime,
+  type AgentRuntimeDependencies,
+  type AgentRuntimeEvent,
 } from '../../../src/runtime/index.ts'
-import type { RuntimeEvent } from '../../../src/runtime/index.ts'
 
-function createDependencies(calls: string[]): RuntimeDependencies {
+function createDependencies(calls: string[]): AgentRuntimeDependencies {
   return {
     workspaces: {
       list: () => [],
@@ -89,7 +89,7 @@ function createDependencies(calls: string[]): RuntimeDependencies {
   }
 }
 
-describe('TgBuddyRuntime 门面', () => {
+describe('AgentRuntime 门面', () => {
   test('Run 方法通过原 owner 调用，保留 Coordinator 的实例接收者', () => {
     const calls: string[] = []
     const dependencies = createDependencies(calls)
@@ -105,7 +105,7 @@ describe('TgBuddyRuntime 门面', () => {
       },
     }
     dependencies.runs = owner
-    const runtime = createTgBuddyRuntime(dependencies)
+    const runtime = createAgentRuntime(dependencies)
 
     runtime.runs.stop('session-1')
 
@@ -118,7 +118,7 @@ describe('TgBuddyRuntime 门面', () => {
 
   test('删除会话保持旧实现的清理顺序', async () => {
     const calls: string[] = []
-    const runtime = createTgBuddyRuntime(createDependencies(calls))
+    const runtime = createAgentRuntime(createDependencies(calls))
 
     await runtime.sessions.delete('session-1')
 
@@ -127,8 +127,8 @@ describe('TgBuddyRuntime 门面', () => {
 
   test('运行事件和宿主响应只通过统一订阅契约发布', async () => {
     const calls: string[] = []
-    const events: RuntimeEvent[] = []
-    const runtime = createTgBuddyRuntime(createDependencies(calls))
+    const events: AgentRuntimeEvent[] = []
+    const runtime = createAgentRuntime(createDependencies(calls))
     runtime.subscribe((event) => events.push(event))
 
     runtime.runs.send({ sessionId: 'session-1', text: '你好' })
@@ -163,7 +163,7 @@ describe('TgBuddyRuntime 门面', () => {
   test('编辑历史前取消压缩状态，并拒绝在 active Run 中截断', async () => {
     const calls: string[] = []
     const dependencies = createDependencies(calls)
-    const runtime = createTgBuddyRuntime(dependencies)
+    const runtime = createAgentRuntime(dependencies)
 
     expect(await runtime.sessions.truncate('session-1', 'message-1')).toEqual([])
     expect(calls).toEqual(['context.clear', 'session.truncate'])

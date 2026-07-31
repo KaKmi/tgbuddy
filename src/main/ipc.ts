@@ -6,7 +6,7 @@
  */
 
 import { ipcMain, type BrowserWindow } from 'electron'
-import type { TgBuddyRuntime } from '../runtime/index.ts'
+import type { AgentRuntime } from '../runtime/index.ts'
 import {
   IPC,
   type IpcRequest,
@@ -14,10 +14,10 @@ import {
 } from '../shared/contracts/ipc.ts'
 
 export function registerIpc(
-  runtime: TgBuddyRuntime,
+  agentRuntime: AgentRuntime,
   getWindow: () => BrowserWindow | null,
 ): () => void {
-  const unsubscribe = runtime.subscribe((frame) => {
+  const unsubscribe = agentRuntime.subscribe((frame) => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return
     win.webContents.send(IPC.AGENT_STREAM, frame)
@@ -25,24 +25,24 @@ export function registerIpc(
 
   ipcMain.handle(
     IPC.SESSION_LIST,
-    (): IpcResponse<'session:list'> => runtime.sessions.list(),
+    (): IpcResponse<'session:list'> => agentRuntime.sessions.list(),
   )
   ipcMain.handle(
     IPC.SESSION_CREATE,
     (
       _event,
       input: IpcRequest<'session:create'>,
-    ): Promise<IpcResponse<'session:create'>> => runtime.sessions.create(input ?? {}),
+    ): Promise<IpcResponse<'session:create'>> => agentRuntime.sessions.create(input ?? {}),
   )
   ipcMain.handle(
     IPC.SESSION_DELETE,
     (_event, sessionId: IpcRequest<'session:delete'>): Promise<IpcResponse<'session:delete'>> =>
-      runtime.sessions.delete(sessionId),
+      agentRuntime.sessions.delete(sessionId),
   )
   ipcMain.handle(
     IPC.SESSION_MESSAGES,
     (_event, sessionId: IpcRequest<'session:messages'>): Promise<IpcResponse<'session:messages'>> =>
-      runtime.sessions.messages(sessionId),
+      agentRuntime.sessions.messages(sessionId),
   )
   ipcMain.handle(
     IPC.SESSION_COMPACTED_MESSAGES,
@@ -50,7 +50,7 @@ export function registerIpc(
       _event,
       input: IpcRequest<'session:compacted-messages'>,
     ): Promise<IpcResponse<'session:compacted-messages'>> =>
-      runtime.sessions.compactedMessages(input.sessionId, input.compactionId),
+      agentRuntime.sessions.compactedMessages(input.sessionId, input.compactionId),
   )
   ipcMain.handle(
     IPC.SESSION_TRUNCATE,
@@ -58,7 +58,7 @@ export function registerIpc(
       _event,
       input: IpcRequest<'session:truncate'>,
     ): Promise<IpcResponse<'session:truncate'>> =>
-      runtime.sessions.truncate(input.sessionId, input.fromMessageId),
+      agentRuntime.sessions.truncate(input.sessionId, input.fromMessageId),
   )
   ipcMain.handle(
     IPC.SESSION_CLONE_PREFIX,
@@ -66,7 +66,7 @@ export function registerIpc(
       _event,
       input: IpcRequest<'session:clone-prefix'>,
     ): Promise<IpcResponse<'session:clone-prefix'>> =>
-      runtime.sessions.clonePrefix(input),
+      agentRuntime.sessions.clonePrefix(input),
   )
   ipcMain.handle(
     IPC.SESSION_UPDATE_META,
@@ -74,19 +74,19 @@ export function registerIpc(
       _event,
       input: IpcRequest<'session:update-meta'>,
     ): IpcResponse<'session:update-meta'> => {
-      runtime.sessions.updateMeta(input.sessionId, input.patch)
+      agentRuntime.sessions.updateMeta(input.sessionId, input.patch)
     },
   )
 
   ipcMain.handle(
     IPC.AGENT_SEND,
     (_event, input: IpcRequest<'agent:send'>): IpcResponse<'agent:send'> =>
-      runtime.runs.send(input),
+      agentRuntime.runs.send(input),
   )
   ipcMain.handle(
     IPC.AGENT_STOP,
     (_event, sessionId: IpcRequest<'agent:stop'>): IpcResponse<'agent:stop'> =>
-      runtime.runs.stop(sessionId),
+      agentRuntime.runs.stop(sessionId),
   )
 
   ipcMain.handle(
@@ -94,28 +94,28 @@ export function registerIpc(
     (
       _event,
       response: IpcRequest<'permission:respond'>,
-    ): IpcResponse<'permission:respond'> => runtime.permissions.respond(response),
+    ): IpcResponse<'permission:respond'> => agentRuntime.permissions.respond(response),
   )
   ipcMain.handle(
     IPC.PERMISSION_PENDING,
-    (): IpcResponse<'permission:pending'> => runtime.permissions.pending(),
+    (): IpcResponse<'permission:pending'> => agentRuntime.permissions.pending(),
   )
 
   ipcMain.handle(
     IPC.PLAN_RESPOND,
     (_event, response: IpcRequest<'plan:respond'>): IpcResponse<'plan:respond'> =>
-      runtime.plans.respond(response),
+      agentRuntime.plans.respond(response),
   )
   ipcMain.handle(
     IPC.PLAN_PENDING,
-    (): IpcResponse<'plan:pending'> => runtime.plans.pending(),
+    (): IpcResponse<'plan:pending'> => agentRuntime.plans.pending(),
   )
   ipcMain.handle(
     IPC.MODE_SET,
     (
       _event,
       input: IpcRequest<'mode:set'>,
-    ): IpcResponse<'mode:set'> => runtime.plans.setMode(input.sessionId, input.mode),
+    ): IpcResponse<'mode:set'> => agentRuntime.plans.setMode(input.sessionId, input.mode),
   )
 
   ipcMain.handle(
@@ -123,11 +123,11 @@ export function registerIpc(
     (
       _event,
       response: IpcRequest<'ask-user:respond'>,
-    ): IpcResponse<'ask-user:respond'> => runtime.questions.respond(response),
+    ): IpcResponse<'ask-user:respond'> => agentRuntime.questions.respond(response),
   )
   ipcMain.handle(
     IPC.ASK_USER_PENDING,
-    (): IpcResponse<'ask-user:pending'> => runtime.questions.pending(),
+    (): IpcResponse<'ask-user:pending'> => agentRuntime.questions.pending(),
   )
 
   ipcMain.handle(
@@ -135,43 +135,43 @@ export function registerIpc(
     (
       _event,
       sessionId: IpcRequest<'compaction:start'>,
-    ): IpcResponse<'compaction:start'> => runtime.context.start(sessionId),
+    ): IpcResponse<'compaction:start'> => agentRuntime.context.start(sessionId),
   )
   ipcMain.handle(
     IPC.COMPACTION_DEFER,
     (
       _event,
       sessionId: IpcRequest<'compaction:defer'>,
-    ): IpcResponse<'compaction:defer'> => runtime.context.defer(sessionId),
+    ): IpcResponse<'compaction:defer'> => agentRuntime.context.defer(sessionId),
   )
   ipcMain.handle(
     IPC.COMPACTION_CANCEL,
     (
       _event,
       sessionId: IpcRequest<'compaction:cancel'>,
-    ): IpcResponse<'compaction:cancel'> => runtime.context.cancel(sessionId),
+    ): IpcResponse<'compaction:cancel'> => agentRuntime.context.cancel(sessionId),
   )
 
   ipcMain.handle(
     IPC.CHANNEL_LIST,
-    (): IpcResponse<'channel:list'> => runtime.settings.listChannels(),
+    (): IpcResponse<'channel:list'> => agentRuntime.settings.listChannels(),
   )
   ipcMain.handle(
     IPC.CHANNEL_SAVE,
     (_event, channel: IpcRequest<'channel:save'>): IpcResponse<'channel:save'> =>
-      runtime.settings.saveChannel(channel),
+      agentRuntime.settings.saveChannel(channel),
   )
   ipcMain.handle(
     IPC.CHANNEL_DELETE,
     (_event, channelId: IpcRequest<'channel:delete'>): IpcResponse<'channel:delete'> =>
-      runtime.settings.deleteChannel(channelId),
+      agentRuntime.settings.deleteChannel(channelId),
   )
   ipcMain.handle(
     IPC.CHANNEL_TEST,
     (
       _event,
       channelId: IpcRequest<'channel:test'>,
-    ): Promise<IpcResponse<'channel:test'>> => runtime.settings.testChannel(channelId),
+    ): Promise<IpcResponse<'channel:test'>> => agentRuntime.settings.testChannel(channelId),
   )
 
   return unsubscribe

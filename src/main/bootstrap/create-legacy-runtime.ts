@@ -11,13 +11,13 @@ import { join } from 'node:path'
 import {
   createRunCoordinator,
   createContextService,
-  createTgBuddyRuntime,
+  createAgentRuntime,
+  type AgentRuntime,
   type AgentEngine,
   type AgentInvocation,
   type ContextCompactor,
   type SessionCommands,
   type SessionMessageHistory,
-  type TgBuddyRuntime,
 } from '../../runtime/index.ts'
 import type { SendInput } from '../../shared/contracts/ipc.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
@@ -41,7 +41,7 @@ export interface CreateLegacyRuntimeOptions {
 
 export function createLegacyRuntime(
   options: CreateLegacyRuntimeOptions,
-): TgBuddyRuntime {
+): AgentRuntime {
   ensureDataDir()
   const context = createContextService({
     sessions: options.sessions,
@@ -82,7 +82,7 @@ export function createLegacyRuntime(
       },
     },
   })
-  return createTgBuddyRuntime({
+  return createAgentRuntime({
     workspaces: {
       list: () => [],
     },

@@ -67,7 +67,7 @@ describe('仓库 import 边界', () => {
       'src/runtime/ports/index.ts': 'export interface AgentEngine {}',
       'src/runtime/index.ts': `
         export type { AgentEngine } from './ports/index.ts'
-        export interface TgBuddyRuntime {}
+        export interface AgentRuntime {}
       `,
       'src/kernel/pi/pi-agent-engine.ts':
         "import type { AgentEngine } from '@runtime/ports'\nimport './pi-message-adapter.ts'\nimport type { Agent } from '@earendil-works/pi-agent-core'",
@@ -76,11 +76,11 @@ describe('仓库 import 边界', () => {
         "import type { AgentEngine } from '../../runtime/ports/index.ts'\nimport migration from './migrations/001.sql'\nimport { readFileSync } from 'node:fs'\nexport { migration }",
       'src/infrastructure/sqlite/migrations/001.sql': 'SELECT 1;',
       'src/main/bootstrap/create-application.ts':
-        "import type { TgBuddyRuntime } from '../../runtime/index.ts'\nimport { app } from 'electron'",
+        "import type { AgentRuntime } from '../../runtime/index.ts'\nimport { app } from 'electron'",
       'src/main/ipc/register-ipc.ts':
-        "import type { TgBuddyRuntime } from '../../runtime/index.ts'\nimport { ipcMain } from 'electron'",
+        "import type { AgentRuntime } from '../../runtime/index.ts'\nimport { ipcMain } from 'electron'",
       'src/main/window.ts':
-        "import type { TgBuddyRuntime } from '../runtime/index.ts'\nimport { BrowserWindow } from 'electron'",
+        "import type { AgentRuntime } from '../runtime/index.ts'\nimport { BrowserWindow } from 'electron'",
       'src/preload/index.ts':
         "import type { SessionId } from '../shared/contracts/ids.ts'\nimport { contextBridge } from 'electron'",
       'src/renderer/app/App.tsx':
