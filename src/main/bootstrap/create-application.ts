@@ -427,7 +427,13 @@ function migrateLegacyChannels(
   if (legacy.length === 0) return
   for (const channel of legacy) {
     if (channelRepository.get(channel.id)) continue
-    channels.save(channel)
+    try {
+      channels.save(channel)
+    } catch (error) {
+      // 单条渠道迁移失败（如密钥解密/加密不可用）不阻塞应用启动，
+      // 该渠道可后续在设置页重新配置。
+      console.error(`[channel] legacy 渠道迁移失败，跳过：${channel.id}`, error)
+    }
   }
   markLegacyChannelsMigrated()
 }

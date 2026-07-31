@@ -276,8 +276,7 @@ class DefaultRunCoordinator implements RunCoordinator {
         )
       }
       this.#registry.settle(run)
-      if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
-      this.#context?.runSettled(run.sessionId)
+      // C12：账本先落盘再发 run_end，UI 收到终态时 runs:list 已是 settled。
       if (runRecordId && this.#runs) {
         const record = this.#runs.get(runRecordId)
         if (record) {
@@ -292,6 +291,8 @@ class DefaultRunCoordinator implements RunCoordinator {
           })
         }
       }
+      if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
+      this.#context?.runSettled(run.sessionId)
     }
   }
 

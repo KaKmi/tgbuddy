@@ -45,6 +45,22 @@ class FakeCipher implements SecretCipher {
   }
 }
 
+/** 只对指定前缀明文解密失败，模拟单条凭据损坏。 */
+class SelectiveFakeCipher extends FakeCipher {
+  override encryptString(plainText: string): Buffer {
+    return Buffer.from(
+      plainText.startsWith('broken') ? `v1:broken:${plainText}` : `v1:${plainText}`,
+      'utf8',
+    )
+  }
+
+  override decryptString(encrypted: Buffer): string {
+    const text = encrypted.toString('utf8')
+    if (text.startsWith('v1:broken:')) throw new Error('模拟解密失败')
+    return super.decryptString(encrypted)
+  }
+}
+
 function tempSecretFile(): string {
   const dir = mkdtempSync(join(tmpdir(), 'tgbuddy-secret-test-'))
   return join(dir, 'secrets.json')
@@ -167,5 +183,30 @@ describe('EncryptedFileSecretStore（OS adapter）', () => {
         expect(() => store.get(createSecretRef(() => 'r'))).toThrow(/格式不合法/)
       })
     }
+  })
+
+  test('单条密钥解密失败不拖垮其它密钥，且可重新保存恢复', () => {
+    withTempFile((filePath) => {
+      const broken = createSecretRef(() => 'broken')
+      const healthy = createSecretRef(() => 'healthy')
+      const writer = new EncryptedFileSecretStore({
+        cipher: new SelectiveFakeCipher(),
+        filePath,
+      })
+      writer.set(broken, 'broken-secret')
+      writer.set(healthy, 'sk-healthy')
+
+      // 新实例（重启）读取：坏密钥只影响自身
+      const reader = new EncryptedFileSecretStore({
+        cipher: new SelectiveFakeCipher(),
+        filePath,
+      })
+      expect(() => reader.get(broken)).toThrow(/解密失败/)
+      expect(reader.get(healthy)).toBe('sk-healthy')
+
+      // 重新保存坏密钥后恢复
+      reader.set(broken, 'sk-replaced')
+      expect(reader.get(broken)).toBe('sk-replaced')
+    })
   })
 })

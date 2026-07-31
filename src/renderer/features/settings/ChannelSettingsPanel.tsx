@@ -127,7 +127,8 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   }, [props.workspaceId])
 
   function startEdit(channel?: Channel) {
-    setEditingId(channel?.id ?? null)
+    // 空串表示「新建」：与 null（未在编辑）区分，否则新建表单永不显示。
+    setEditingId(channel?.id ?? '')
     setForm(
       channel
         ? {
@@ -173,7 +174,7 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   }
 
   function startEditProfile(profile?: Profile) {
-    setEditingProfileId(profile?.id ?? null)
+    setEditingProfileId(profile?.id ?? '')
     setProfileForm(
       profile
         ? {
@@ -247,7 +248,7 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   }
 
   function startEditMcp(server?: McpServerConfig) {
-    setEditingMcpId(server?.id ?? null)
+    setEditingMcpId(server?.id ?? '')
     setMcpForm(
       server
         ? {
@@ -315,6 +316,8 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
   async function connectMcp(serverId: string) {
     const status = await window.tgbuddy.mcp.connect(serverId)
     setMcpStatuses((current) => ({ ...current, [serverId]: status }))
+    // 连接成功后发现的工具已进注册表，刷新设置页工具列表。
+    await refresh()
   }
 
   async function disconnectMcp(serverId: string) {
@@ -517,20 +520,6 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
                   value={form.name}
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
                   className="rounded-md border border-white/5 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-white/15"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] text-[#6d6d75]">
-                  服务标识（工具名前缀，如 postgres）
-                </span>
-                <input
-                  data-testid="mcp-key-input"
-                  value={mcpForm.key}
-                  onChange={(event) =>
-                    setMcpForm({ ...mcpForm, key: event.target.value })
-                  }
-                  placeholder="postgres"
-                  className="rounded-md border border-white/5 bg-background px-2 py-1.5 font-mono text-[12px] text-foreground outline-none focus:border-white/15"
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -1054,6 +1043,20 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
                   }
                   placeholder="postgres · prod-read"
                   className="rounded-md border border-white/5 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-white/15"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-[#6d6d75]">
+                  服务标识（工具名前缀，如 postgres）
+                </span>
+                <input
+                  data-testid="mcp-key-input"
+                  value={mcpForm.key}
+                  onChange={(event) =>
+                    setMcpForm({ ...mcpForm, key: event.target.value })
+                  }
+                  placeholder="postgres"
+                  className="rounded-md border border-white/5 bg-background px-2 py-1.5 font-mono text-[12px] text-foreground outline-none focus:border-white/15"
                 />
               </label>
               <label className="flex flex-col gap-1">

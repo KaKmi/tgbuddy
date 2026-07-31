@@ -42,6 +42,7 @@ export class EncryptedFileSecretStore implements SecretStore {
   readonly #cipher: SecretCipher
   readonly #filePath: string
   #cache: Map<SecretRef, string> | undefined
+  #failed = new Set<SecretRef>()
 
   constructor(options: { cipher: SecretCipher; filePath: string }) {
     this.#cipher = options.cipher
@@ -54,6 +55,7 @@ export class EncryptedFileSecretStore implements SecretStore {
     }
     const cache = this.#load()
     cache.set(ref, value)
+    this.#failed.delete(ref)
     try {
       this.#persist(cache)
     } catch (error) {
@@ -68,13 +70,18 @@ export class EncryptedFileSecretStore implements SecretStore {
       console.error('[secret-store] 系统加密不可用，无法读取密钥')
       return undefined
     }
-    return this.#load().get(ref)
+    const cache = this.#load()
+    if (this.#failed.has(ref)) {
+      throw new Error(`密钥 ${ref} 解密失败（系统凭据可能已变更），请重新保存该密钥`)
+    }
+    return cache.get(ref)
   }
 
   delete(ref: SecretRef): void {
     if (!this.#cipher.isEncryptionAvailable()) return
     const cache = this.#load()
-    if (!cache.delete(ref)) return
+    cache.delete(ref)
+    this.#failed.delete(ref)
     try {
       this.#persist(cache)
     } catch (error) {
@@ -90,6 +97,7 @@ export class EncryptedFileSecretStore implements SecretStore {
   #load(): Map<SecretRef, string> {
     if (this.#cache) return this.#cache
     const cache = new Map<SecretRef, string>()
+    const failed = new Set<SecretRef>()
     if (existsSync(this.#filePath)) {
       let parsed: unknown
       try {
@@ -109,13 +117,15 @@ export class EncryptedFileSecretStore implements SecretStore {
             this.#cipher.decryptString(Buffer.from(entry.payload, 'base64')),
           )
         } catch (error) {
-          throw new Error(`密钥 ${ref} 解密失败（系统凭据可能已变更）`, {
-            cause: error,
-          })
+          // 单条密钥解密失败只标记该 ref，不拖垮其它密钥与应用启动；
+          // 访问该 ref 时给出可操作错误，配置仍可重新保存。
+          console.error(`[secret-store] 密钥 ${ref} 解密失败（跳过，等待重新保存）`, error)
+          failed.add(ref)
         }
       }
     }
     this.#cache = cache
+    this.#failed = failed
     return cache
   }
 
