@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PiRunExecutionEnvFactory } from '../../../src/kernel/pi/pi-execution-env.ts'
@@ -58,6 +58,34 @@ describe('PiRunExecutionEnv', () => {
       await env.dispose()
       expect(env.disposed).toBe(true)
       await expect(env.dispose()).resolves.toBeUndefined()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('通过 junction/symlink 逃逸的写入在 env 层被拒绝', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tgbuddy-env-link-'))
+    const outside = join(root, 'outside-secret')
+    try {
+      await mkdir(outside)
+      await mkdir(join(root, 'work'), { recursive: true })
+      await symlink(
+        outside,
+        join(root, 'work', 'escape'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      )
+      const factory = new PiRunExecutionEnvFactory()
+      const env = factory.create({
+        workspaceId: 'ws-a',
+        mountPath: join(root, 'work'),
+      })
+
+      const result = await env.env.writeFile('escape/stolen.txt', 'x')
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.kind).toBe('PermissionDenied')
+      }
     } finally {
       await rm(root, { recursive: true, force: true })
     }

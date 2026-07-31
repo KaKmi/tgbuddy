@@ -12,7 +12,11 @@ import type {
   RunExecutionEnv,
   RunExecutionEnvFactory,
 } from '../../runtime/execution-env/run-execution-env.ts'
-import { resolveSandboxedPath, SandboxPathError } from './pi-sandbox.ts'
+import {
+  createSandboxPathContext,
+  resolveSandboxedPath,
+  SandboxPathError,
+} from './pi-sandbox.ts'
 
 /** pi 的 Result 约定：不抛异常，错误进返回值 */
 type Res<T> = {
@@ -40,6 +44,8 @@ function deny(path: string, reason: string): Res<never> {
  */
 export function createSandboxedEnv(cwd: string): ExecutionEnv {
   const inner = new NodeExecutionEnv({ cwd })
+  // canonical 根只算一次：真实文件系统路径在 Run 内不漂移
+  const pathContext = createSandboxPathContext(cwd)
 
   /** 第一个参数是路径的方法，全部要校验 */
   const PATH_METHODS = new Set([
@@ -69,7 +75,7 @@ export function createSandboxedEnv(cwd: string): ExecutionEnv {
         const path = args[0]
         if (typeof path !== 'string') return value.apply(target, args)
         try {
-          resolveSandboxedPath(path, cwd)
+          resolveSandboxedPath(path, pathContext)
         } catch (error) {
           if (error instanceof SandboxPathError) {
             return deny(path, error.message.split('：')[0] ?? '拒绝访问')
@@ -83,7 +89,7 @@ export function createSandboxedEnv(cwd: string): ExecutionEnv {
           && typeof args[1] === 'string'
         ) {
           try {
-            resolveSandboxedPath(args[1], cwd)
+            resolveSandboxedPath(args[1], pathContext)
           } catch (error) {
             if (error instanceof SandboxPathError) {
               return deny(args[1], '目标路径越界')

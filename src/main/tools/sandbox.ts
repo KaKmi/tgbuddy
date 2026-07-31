@@ -6,9 +6,18 @@
  * 权限服务管「要不要问用户」，沙箱管「就算用户点了同意，也不能越界」。
  */
 
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { isAbsolute, normalize, relative, resolve, sep } from 'node:path'
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  normalize,
+  relative,
+  resolve,
+  sep,
+} from 'node:path'
 
 export interface SandboxConfig {
   /** 允许读写的根目录。空数组 = 只允许工作区 */
@@ -57,6 +66,9 @@ export class SandboxError extends Error {
  * ⚠️ **必须先 resolve 再比较**，不能用字符串前缀判断 ——
  * `~/project/../../etc/passwd` 这种路径字符串上以 `~/project` 开头，
  * 解析之后完全在别处。这是路径沙箱最经典的绕过方式。
+ *
+ * S04 起做 canonical containment：从最近已存在祖先 realpath，
+ * symlink/junction 逃逸在存在的那一段就被解析到真实位置。
  */
 export function resolveSafePath(inputPath: string, cwd: string): string {
   const expanded = inputPath.startsWith('~')
@@ -64,7 +76,10 @@ export function resolveSafePath(inputPath: string, cwd: string): string {
     : inputPath
 
   const abs = normalize(isAbsolute(expanded) ? expanded : resolve(cwd, expanded))
-  const roots = config.allowedRoots.length > 0 ? config.allowedRoots : [cwd]
+  const canonical = canonicalizePath(abs)
+  const roots = (config.allowedRoots.length > 0 ? config.allowedRoots : [cwd])
+    .map((root) => canonicalizePath(root))
+  const denied = config.deniedPaths.map((path) => canonicalizePath(path))
 
   /**
    * **最具体的规则优先。**
@@ -75,17 +90,36 @@ export function resolveSafePath(inputPath: string, cwd: string): string {
    *
    * 所以比较匹配深度：更深（更具体）的那条规则说了算。
    */
-  const deepestAllow = deepestMatch(roots, abs)
-  const deepestDeny = deepestMatch(config.deniedPaths, abs)
+  const deepestAllow = deepestMatch(roots, canonical)
+  const deepestDeny = deepestMatch(denied, canonical)
 
-  if (deepestDeny !== null && (deepestAllow === null || deepestDeny.length > deepestAllow.length)) {
-    throw new SandboxError(`路径在黑名单内，拒绝访问：${abs}`)
+  if (
+    deepestDeny !== null
+    && (deepestAllow === null || deepestDeny.length > deepestAllow.length)
+  ) {
+    throw new SandboxError(`路径在黑名单内，拒绝访问：${canonical}`)
   }
   if (deepestAllow === null) {
-    throw new SandboxError(`路径超出工作区范围：${abs}\n允许的范围：${roots.join('、')}`)
+    throw new SandboxError(
+      `路径超出工作区范围：${canonical}\n允许的范围：${roots.join('、')}`,
+    )
   }
 
-  return abs
+  return canonical
+}
+
+function canonicalizePath(inputPath: string): string {
+  let probe = normalize(inputPath)
+  const tail: string[] = []
+  while (!existsSync(probe)) {
+    const parent = dirname(probe)
+    if (parent === probe) {
+      throw new SandboxError(`路径无法解析：${inputPath}`)
+    }
+    tail.unshift(basename(probe))
+    probe = parent
+  }
+  return join(realpathSync(probe), ...tail)
 }
 
 /** 返回命中的最长（最具体）规则，没命中返回 null */
