@@ -174,3 +174,11 @@ C02: "Channel CRUD 与设置页" — complete
   验证: `bun test tests/unit/runtime/channel-service.test.ts`（9/9）、全量 `bun test` 211/211、check:architecture、typecheck、build 全过
   删除项: 旧 channel-store 停止写入（`saveChannels` 删除，`listChannels` 收窄为一次性迁移读取）；`.env` 仅保留开发兼容兜底
   Concerns: 生产文件 10 个超过 6 个护栏（纵向切片：契约→Runtime 端口/服务→SQLite→迁移→IPC→Renderer，每文件单一职责）；SQLite 渠道仓库未加 packaged spike 场景（C02 计划验证仅 test/build/dev，C12 全 gate 补 spike 回归）；新渠道 models 为空需 C03 模型发现填充。
+
+C03: "Channel 连通性与模型发现" — complete
+  Commits: f1007a2
+  Files: src/runtime/channels/ports/provider-catalog.ts, src/kernel/pi/pi-provider-catalog.ts, src/kernel/pi/index.ts, src/shared/contracts/channel.ts, src/runtime/app/agent-runtime.ts, src/runtime/channels/channel-service.ts, src/runtime/index.ts, src/shared/contracts/ipc.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/renderer/features/settings/ChannelSettingsPanel.tsx, tests/unit/kernel/pi-provider-catalog.test.ts, tests/unit/runtime/provider-catalog.test.ts, tests/unit/runtime/channel-service.test.ts
+  Produces: `ProviderDiagnosticCode` + `ChannelTestResult`（shared 契约）；`ProviderCatalog` 端口（`discover(input, signal)`）+ `createPiProviderCatalog({ fetchImpl?, timeoutMs? })`（OpenAI 兼容 `/models` 直连，401→auth_failed、超时→timeout、空列表→empty_models、取消→canceled、网络→network、Anthropic→bad_config）；`ChannelService.applyDiscoveredModels()`（保留已有模型精确规格、追加新 id）；SettingsCommands.testChannel 真实实现（resolve→discover→合并保存，测试调用不创建 Session/Run）；设置页「测试连接/取消」按钮 + 结果状态展示
+  验证: `bun test tests/unit/kernel/pi-provider-catalog.test.ts`（7/7）、`tests/unit/runtime/provider-catalog.test.ts`（2/2）、channel-service（10/10）、全量 `bun test` 221/221、check:architecture、typecheck、build 全过
+  删除项: 无（Renderer 仍只经 IPC 调 test，不直接请求 provider）
+  Concerns: 发现模型的 contextWindow/maxTokens 用保守默认 128k/64k（预设渠道的精确规格在合并时保留）；Anthropic 端点暂不支持自动发现（返回 bad_config 说明，可后续补）；UI「取消」只放弃等待展示，主进程请求继续到超时。
