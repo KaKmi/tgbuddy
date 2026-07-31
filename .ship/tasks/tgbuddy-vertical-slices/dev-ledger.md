@@ -166,3 +166,11 @@ C01: "SecretStore" — complete
   验证: `bun test tests/unit/infrastructure/secret-store.test.ts`（7/7）、全量 `bun test` 202/202、check:architecture、typecheck、build 全过
   删除项: 无（`.env` 保留开发兼容，不成为设置存储的承诺由 C02 关闭渠道 JSON 明文路径兑现）
   Concerns: createLegacyRuntime 的 `secretStore` 选项本 Slice 只建立注入点、尚无消费方（计划 C01 GREEN 明确要求 Composition Root 注入；C02 立即消费）；加密文件与 tgbuddy.db 同目录，blob 绑定本机用户（DPAPI/Keychain），换机迁移不在本 Slice。
+
+C02: "Channel CRUD 与设置页" — complete
+  Commits: 3b7ef92
+  Files: src/shared/contracts/channel.ts, src/shared/contracts/ipc.ts, src/runtime/channels/channel-repository.ts, src/runtime/channels/channel-service.ts, src/runtime/app/agent-runtime.ts, src/runtime/index.ts, src/infrastructure/sqlite/migrations/006_app_channels.sql, src/infrastructure/sqlite/repositories/sqlite-channel-repository.ts, src/infrastructure/sqlite/app-database.ts, src/infrastructure/sqlite/index.ts, src/main/channel-store.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/kernel/pi/pi-models.ts, scripts/probe-compaction.ts, src/renderer/App.tsx, src/renderer/features/settings/ChannelSettingsPanel.tsx, tests/unit/runtime/channel-service.test.ts
+  Produces: `Channel` 契约 apiKey 改可选 + `secretRef?` + `ChannelSaveInput`（新渠道可不带 id）；`ChannelRepository` 端口 + `SqliteChannelRepository` + `006_app_channels.sql`（密钥只存 ref，模型 JSON 列）；`createChannelService()`（save 写 SecretStore、delete 拒绝被 Session 引用、resolve/resolveAll 运行期补明文）；Composition Root 一次性迁移 legacy channels.json/env 兜底渠道（`readLegacyChannels`/`markLegacyChannelsMigrated`）；createAgentInvocation/ContextService 改走 ChannelService；IPC `channel:save` 请求类型更新；renderer `ChannelSettingsPanel`（settings/model 最小 feature，密钥不回传明文，即时刷新）
+  验证: `bun test tests/unit/runtime/channel-service.test.ts`（9/9）、全量 `bun test` 211/211、check:architecture、typecheck、build 全过
+  删除项: 旧 channel-store 停止写入（`saveChannels` 删除，`listChannels` 收窄为一次性迁移读取）；`.env` 仅保留开发兼容兜底
+  Concerns: 生产文件 10 个超过 6 个护栏（纵向切片：契约→Runtime 端口/服务→SQLite→迁移→IPC→Renderer，每文件单一职责）；SQLite 渠道仓库未加 packaged spike 场景（C02 计划验证仅 test/build/dev，C12 全 gate 补 spike 回归）；新渠道 models 为空需 C03 模型发现填充。
