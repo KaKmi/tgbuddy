@@ -17,8 +17,9 @@
  *
  * ## 沙箱在哪
  *
- * **在 `ExecutionEnv` 层**，见 `sandboxed-env.ts`。pi 的工具只能通过 env 碰磁盘，
- * 所以包一层就覆盖全部工具，不用每个工具里记得调校验。
+ * **在 kernel/pi 的 ExecutionEnv 层**（S03/S04 迁入）：pi 的工具只能通过 env
+ * 碰磁盘，包一层就覆盖全部工具。delete/glob 也走同一个 env 的 canonicalPath，
+ * 路径规则不会因工具实现而出现第二套。
  */
 
 import { existsSync, readdirSync, statSync } from 'node:fs'
@@ -34,13 +35,9 @@ import {
 } from '@earendil-works/pi-agent-core'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 import { SYSTEM_TOOL_PATTERNS } from '../../shared/types/permission.ts'
-import {
-  deleteWithProtection,
-  getSandbox,
-  needsBulkApproval,
-  resolveSafePath,
-  SandboxError,
-} from './sandbox.ts'
+
+/** 一次删除超过这个数量就拒绝，防止"一次请求删 500 个"这类事故 */
+const BULK_DELETE_THRESHOLD = 50
 
 interface ToolContext {
   env: ExecutionEnv
@@ -74,14 +71,14 @@ export function buildBuiltinTools(cwd: string, env: ExecutionEnv): AgentTool[] {
       }),
       context,
     ),
-    globTool(cwd),
-    deleteTool(cwd),
+    globTool(cwd, env),
+    deleteTool(cwd, env),
   ]
 }
 
 // ── delete（自己实现：pi 没有，且要接回收站）────────────────────
 
-function deleteTool(cwd: string): AgentTool {
+function deleteTool(cwd: string, env: ExecutionEnv): AgentTool {
   return {
     name: 'delete',
     label: '删除文件',
@@ -91,12 +88,18 @@ function deleteTool(cwd: string): AgentTool {
     }),
     execute: async (_id, params) => {
       const { paths } = params as { paths: string[] }
-      const abs = paths.map((p) => resolveSafePath(p, cwd))
+      // 路径先经 env 沙箱 canonicalPath：越界/symlink 逃逸在工具执行前被拒。
+      const abs: string[] = []
+      for (const path of paths) {
+        const resolved = await env.canonicalPath(path)
+        if (!resolved.ok) throw new Error(resolved.error.message)
+        abs.push(resolved.value)
+      }
 
       // 批量闸门。权限层已经问过一次，这里防的是"一次请求删 500 个"
-      if (needsBulkApproval(abs.length)) {
+      if (abs.length >= BULK_DELETE_THRESHOLD) {
         throw new Error(
-          `一次删除 ${abs.length} 个文件超过了批量阈值（${getSandbox().bulkDeleteThreshold}），` +
+          `一次删除 ${abs.length} 个文件超过了批量阈值（${BULK_DELETE_THRESHOLD}），` +
             `请拆成多次，或让用户在设置里调高阈值。`,
         )
       }
@@ -117,7 +120,7 @@ function deleteTool(cwd: string): AgentTool {
 
 // ── glob（自己实现：agent-core 里没有）──────────────────────────
 
-function globTool(cwd: string): AgentTool {
+function globTool(cwd: string, env: ExecutionEnv): AgentTool {
   return {
     name: 'glob',
     label: '查找文件',
@@ -128,7 +131,9 @@ function globTool(cwd: string): AgentTool {
     }),
     execute: async (_id, params) => {
       const { pattern, dir } = params as { pattern: string; dir?: string }
-      const root = resolveSafePath(dir ?? '.', cwd)
+      const rootResult = await env.canonicalPath(dir ?? '.')
+      if (!rootResult.ok) throw new Error(rootResult.error.message)
+      const root = rootResult.value
       const re = new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`)
 
       const found: string[] = []
@@ -145,6 +150,19 @@ function globTool(cwd: string): AgentTool {
       }
     },
   }
+}
+
+/**
+ * 删除保护 —— 走系统回收站而不是真删。
+ *
+ * Electron 的 `shell.trashItem` 在三个平台都能用；动态 import 让本文件
+ * 在无 Electron 环境（测试脚本）里也能加载。删除保护失败时不退化为直接删除。
+ */
+async function deleteWithProtection(absPath: string): Promise<'trashed' | 'deleted'> {
+  if (!existsSync(absPath)) throw new Error(`文件不存在：${absPath}`)
+  const { shell } = await import('electron')
+  await shell.trashItem(absPath)
+  return 'trashed'
 }
 
 function walk(dir: string, out: string[], re: RegExp, depth: number): void {
@@ -176,7 +194,7 @@ function walk(dir: string, out: string[], re: RegExp, depth: number): void {
  * 任意 shell 命令无法静态解析出会碰哪些文件。
  * 所以这里只挡掉能绕过一切限制的系统级工具，其余靠权限提示把关。
  *
- * 由 permission-service 在授权前调用。
+ * 由授权前的策略层与 bash prepare 共同调用。
  */
 export function rejectSystemTools(command: string): void {
   for (const re of SYSTEM_TOOL_PATTERNS) {
@@ -187,5 +205,3 @@ export function rejectSystemTools(command: string): void {
     }
   }
 }
-
-export { SandboxError, existsSync }

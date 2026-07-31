@@ -194,8 +194,6 @@ describe('仓库 import 边界', () => {
 
   test('每个 legacy 豁免都绑定实际删除 Story', () => {
     expect(LEGACY_COMPATIBILITY).toEqual([
-      { prefix: 'src/main/tools/sandbox.ts', deleteIn: 'Story 2' },
-      { prefix: 'src/main/tools/sandboxed-env.ts', deleteIn: 'Story 2' },
       { prefix: 'src/main/tools/index.ts', deleteIn: 'Story 4' },
     ])
   })
@@ -229,6 +227,17 @@ describe('仓库 import 边界', () => {
     for (const owner of [
       'src/main/ask-user-service.ts',
       'src/main/tools/ask-user.ts',
+    ]) {
+      expect(existsSync(join(projectRoot, owner))).toBe(false)
+    }
+  })
+
+  test('S11 结束后安全 legacy owner 已物理删除', () => {
+    const projectRoot = join(import.meta.dir, '../../..')
+    for (const owner of [
+      'src/main/permission-service.ts',
+      'src/main/tools/sandbox.ts',
+      'src/main/tools/sandboxed-env.ts',
     ]) {
       expect(existsSync(join(projectRoot, owner))).toBe(false)
     }

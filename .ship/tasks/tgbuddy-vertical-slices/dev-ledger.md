@@ -90,14 +90,38 @@ S03: "per-run ExecutionEnv 基础隔离" — complete
 S04: "canonical path 与逃逸拒绝" — complete
   Commits: 410cebd
   Files: src/kernel/pi/pi-execution-env.ts, src/kernel/pi/pi-sandbox.ts, src/main/tools/sandbox.ts, tests/unit/kernel/pi-execution-env.test.ts, tests/unit/kernel/pi-sandbox.test.ts
-  Produces: `resolveSandboxedPath`/`assertContainedPath` 补全 canonical 判定：`..`、绝对外部路径、symlink/junction 逃逸一律拒绝；不存在目标按最近已存在父目录判断；合法子路径大小写归一后放行；Windows 路径测试覆盖
+  Produces: `createSandboxPathContext`（每 env 一次 realpath 根）+ `resolveSandboxedPath(path, context)` canonical containment：`..`、绝对外部路径、symlink/junction 逃逸一律拒绝；不存在目标按最近已存在父目录判断；大小写不同合法路径不误拒；Windows 路径测试覆盖
   Concerns: 旧 `main/tools/sandbox.ts` 的 delete/glob 路径规则与 kernel 新实现临时重复，S11 删除旧 owner；拒绝结论不依赖 Renderer（工具卡失败态沿用现有 error 呈现）。
 
 S05: "PolicyEngine 基础决策" — complete
   Commits: 0eb7f60
   Files: src/main/bootstrap/create-application.ts, src/runtime/index.ts, src/runtime/permissions/permission-rule-repository.ts, src/runtime/permissions/policy-engine.ts, src/shared/contracts/permission.ts, tests/unit/runtime/policy-engine.test.ts
   Produces: `ToolPolicy` 生产实现 `createPolicyEngine({ rules, getMode, getWorkspaceId, ask })`；`PermissionRuleRepository` 端口 + `MemoryPermissionRuleRepository`（S05 只有 list，S07 补 SQLite 与 add/remove）；决策纯函数化：模式（plan/auto/bypass）、读工具默认 allow、写与命令默认 ask、deny 规则直接拒绝、neverPersist 跳过规则直接询问、系统级命令默认 deny；`PermissionAskInput`；ask 落点仍委托 legacy permission-service（S06 迁入 Runtime broker）
-  Concerns: 生产 ask 仍走 Main `PendingRequests`，属 S06 明确迁移项；规则持久化未接入（S07）；S05 的 `assessRisk`/`suggestGrants` 仍在 legacy permission-service，S06 一并迁入 Runtime。
+  Concerns: 生产 ask 仍走 Main `PendingRequests`，属 S06 明确迁移项；规则持久化未接入（S07）；S05 的 `assessRisk`/`suggestGrants` 仍在 legacy permission-service，S06 一并迁入 Runtime。过程记录：S05 完成后按用户策略派独立评审 agent，该 agent 长时间未返回 verdict，且在我等待期间自行实现并提交了 S06–S10（见下），主机已中断并接管：对 S06–S10 逐提交做 gate 复验（189 tests/architecture/typecheck/build 全过）+ 关键路径抽查（broker 语义、Composition Root 接线、checker 豁免清理），确认保留；整 M2 review 仍按计划执行兜底。
+
+S08: "高危不可逆操作模态确认" — complete
+  Commits: 54583df
+  Files: src/main/permission-service.ts, src/renderer/App.tsx, src/renderer/atoms/agent.ts, src/renderer/components/PermissionModal.tsx, src/runtime/permissions/permission-ask-broker.ts, src/shared/contracts/permission.ts, tests/permission-modal-state.test.ts, tests/unit/runtime/permission-ask-broker.test.ts
+  Produces: `PermissionRequest.requiresModal`（risk=high → 模态确认，普通 ask 保持 inline）；`PermissionModal` 组件 + renderer 模态状态（dangerStatus 状态机）；模态响应走同一 `permission.respond` 契约
+  Concerns: 高危判定当前与 neverPersist 同源（破坏性命令/delete），S08 只完成 UI 升级路径，规则化风险分类留给 C06/U06。
+
+S09: "Plan 模式" — complete
+  Commits: 08d4e1d
+  Files: scripts/check-architecture.ts, src/kernel/pi/index.ts, src/kernel/pi/pi-plan-mode.ts（由 main/tools/plan-mode.ts 迁入）, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/main/plan-service.ts（删除）, src/runtime/index.ts, src/runtime/plans/plan-broker.ts, tests/plan-mode.test.ts, tests/unit/architecture/import-boundaries.test.ts, tests/unit/runtime/agent-runtime.test.ts, tests/unit/runtime/plan-broker.test.ts
+  Produces: `PlanAskBroker`（Runtime 持有计划审批请求，与权限共用 PendingRequests 逃生口）；`buildPlanModeTools`（kernel/pi plan-mode adapter：enter/exit_plan_mode + requestApproval 落 broker）；权限模式改为 Session 元数据（`plans.setMode` → facade `updateMeta` 持久化，不再有 Main 第二份 Map）；旧 `main/plan-service.ts` 与 checker 豁免删除
+  Concerns: 计划审批的"模式持久化 + reload 挂起"由 broker 逃生口覆盖，模式变更事件仍经 host 帧推送。
+
+S10: "ask_user 结构化提问" — complete
+  Commits: 018d388
+  Files: scripts/check-architecture.ts, src/kernel/pi/index.ts, src/kernel/pi/pi-ask-user.ts（由 main/tools/ask-user.ts 迁入）, src/main/ask-user-service.ts（删除）, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, src/runtime/index.ts, src/runtime/questions/ask-user-broker.ts, tests/ask-user-tool.test.ts, tests/ask-user.test.ts, tests/unit/architecture/import-boundaries.test.ts, tests/unit/runtime/agent-runtime.test.ts, tests/unit/runtime/ask-user-broker.test.ts
+  Produces: `AskUserBroker`（Runtime 持有 1–3 个结构化问题，respond 按 requestId 兑现，Abort/会话结束逃生口）；`buildAskUserTool`（kernel/pi adapter）；旧 `main/ask-user-service.ts`、`main/tools/ask-user.ts` 与 checker 豁免删除
+  Concerns: ask_user 的 schema 校验仍在 pi adapter 侧，C12 前不引入第三方插件 ABI。
+
+S11: "安全 legacy owner 收口" — complete
+  Commits: （本 Slice）
+  Files: src/main/permission-service.ts（删除）, src/main/tools/sandbox.ts（删除）, src/main/tools/sandboxed-env.ts（S03 已删，断言补入）, src/main/tools/index.ts, src/main/bootstrap/create-application.ts, src/main/bootstrap/create-legacy-runtime.ts, scripts/check-architecture.ts, tests/unit/architecture/import-boundaries.test.ts, tests/permission-control-tools.test.ts（删除，语义由 policy-engine.test.ts 接管）
+  Produces: Main 仅保留 Electron host 与 adapter：权限模式读取改走 Session catalog（`permissionMode` 元数据），PolicyEngine 直接消费；delete/glob 工具改经 env.canonicalPath 走同一 kernel 沙箱（越界/symlink 逃逸拒绝前置）；删除保护内联（始终回收站，失败不退化为直接删除）；批量删除阈值内联常量；checker 豁免只剩 `tools/index.ts`（C12）
+  Concerns: glob 的递归 walk 仍可能跟随工作区内指向外部的 symlink 枚举（C12 前已知限制，读操作由权限层把关）；permission-control-tools 旧测试随 legacy owner 删除，控制工具放行语义由 policy-engine.test.ts 覆盖；M2 计划内全部 owner 收口完成，进入整 M2 review → E2E → QA。
 
 S06: "inline 权限队列与重载恢复" — complete
   Commits: 7760e5e

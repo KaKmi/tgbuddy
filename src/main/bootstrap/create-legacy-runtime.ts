@@ -30,7 +30,6 @@ import {
   listChannels,
   saveChannels,
 } from '../channel-store.ts'
-import * as permission from '../permission-service.ts'
 
 export interface CreateLegacyRuntimeOptions {
   workspaces: WorkspaceCommands
@@ -113,7 +112,9 @@ export function createLegacyRuntime(
     plans: {
       respond: (response) => options.plans.respond(response),
       pending: options.plans.pending,
-      setMode: permission.setMode,
+      // 模式是 Session 元数据：AgentRuntime 门面在调用后经 updateMeta 持久化，
+      // 策略引擎直接读 catalog，这里不再维护第二份 Map。
+      setMode: () => {},
     },
     questions: {
       respond: (response) => options.questions.respond(response),
@@ -177,7 +178,6 @@ async function createAgentInvocation(
   }
 
   const mode = meta.permissionMode ?? 'auto'
-  permission.setMode(input.sessionId, mode)
   if (!meta.workspaceId) {
     throw new Error('会话没有关联工作区，请先选择工作区')
   }

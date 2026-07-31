@@ -31,7 +31,6 @@ import {
   PiRunExecutionEnvFactory,
 } from '../../kernel/pi/index.ts'
 import { registerIpc } from '../ipc.ts'
-import * as permission from '../permission-service.ts'
 import { buildBuiltinTools } from '../tools/index.ts'
 import { createId } from './create-id.ts'
 import { createLegacyRuntime } from './create-legacy-runtime.ts'
@@ -188,9 +187,10 @@ export async function createApplication(
             ...buildBuiltinTools(invocation.cwd, env),
             // S09：计划模式工具由 kernel/pi adapter 提供，模式本身是 Session 元数据。
             ...buildPlanModeTools({
-              getMode: () => permission.getMode(sessionId),
-              setMode: (mode) => permission.setMode(sessionId, mode),
-              onModeChanged(mode, source) {
+              // 模式是 Session 元数据：读取与写入都直连 catalog，不再有第二份 Map。
+              getMode: () =>
+                sessionRepository.get(sessionId)?.permissionMode ?? 'auto',
+              setMode(mode) {
                 const session = sessionRepository.get(sessionId)
                 if (session) {
                   sessionRepository.update({
@@ -199,6 +199,8 @@ export async function createApplication(
                     updatedAt: Date.now(),
                   })
                 }
+              },
+              onModeChanged(mode, source) {
                 const win = options.getWindow()
                 if (!win || win.isDestroyed()) return
                 win.webContents.send(IPC.AGENT_STREAM, {
@@ -221,7 +223,8 @@ export async function createApplication(
         },
         toolPolicy: createPolicyEngine({
           rules: permissionRules,
-          getMode: (sessionId) => permission.getMode(sessionId),
+          getMode: (sessionId) =>
+            sessionRepository.get(sessionId)?.permissionMode ?? 'auto',
           getWorkspaceId: (sessionId) =>
             sessionRepository.get(sessionId)?.workspaceId,
           ask: (input, signal) => permissionAskBroker.ask(input, signal),
