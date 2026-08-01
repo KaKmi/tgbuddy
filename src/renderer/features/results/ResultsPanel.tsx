@@ -87,7 +87,7 @@ export function ResultsPanel({
   return (
     <aside
       data-testid="results-panel"
-      className="flex w-[356px] shrink-0 flex-col border-l bg-background"
+      className="flex w-[356px] shrink-0 flex-col border-l bg-background max-[1180px]:fixed max-[1180px]:inset-y-0 max-[1180px]:right-0 max-[1180px]:z-40 max-[1180px]:shadow-[-20px_0_60px_rgba(0,0,0,.16)] max-[640px]:w-[92vw]"
     >
       <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
         <div className="flex min-w-0 items-center gap-2">

@@ -1,10 +1,12 @@
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import type { Ref } from 'react'
 
 interface ConversationHeaderProps {
   title: string
   running: boolean
   resultsOpen: boolean
   onToggleResults(): void
+  resultsToggleRef?: Ref<HTMLButtonElement>
 }
 
 /** 会话级状态只在 Header 汇总，避免把运行提示散落到对话正文。 */
@@ -13,6 +15,7 @@ export function ConversationHeader({
   running,
   resultsOpen,
   onToggleResults,
+  resultsToggleRef,
 }: ConversationHeaderProps) {
   const ResultsIcon = resultsOpen ? PanelRightClose : PanelRightOpen
 
@@ -39,6 +42,7 @@ export function ConversationHeader({
         )}
       </div>
       <button
+        ref={resultsToggleRef}
         type="button"
         data-testid="results-toggle"
         aria-label={resultsOpen ? '收起结果区' : '展开结果区'}

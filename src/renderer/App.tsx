@@ -105,6 +105,7 @@ export function App() {
   const attachmentInputRef = useRef<HTMLInputElement>(null)
   // A08：输入区已注入的「让 Agent 改这份」引用（切换会话时清理错误引用）
   const [editRef, setEditRef] = useState<{ sessionId: string; path: string }>()
+  const resultsToggleRef = useRef<HTMLButtonElement>(null)
   const queuedPrompt = currentId ? queuedPrompts.get(currentId) : undefined
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId)
 
@@ -311,8 +312,13 @@ export function App() {
     setCurrentId(created.id)
   }
 
+  function closeResults() {
+    setResultsOpen(false)
+    requestAnimationFrame(() => resultsToggleRef.current?.focus())
+  }
+
   return (
-    <AppShell>
+    <AppShell resultsOpen={resultsOpen} onCloseResults={closeResults}>
       {activeModal && (
         <PermissionModal
           request={activeModal}
@@ -357,7 +363,7 @@ export function App() {
       {/* ── 侧边栏 ────────────────────────────────────────── */}
       <aside
         data-testid="app-sidebar"
-        className="flex w-[252px] shrink-0 flex-col border-r bg-background"
+        className="flex w-[252px] shrink-0 flex-col border-r bg-background max-[820px]:w-[218px] max-[640px]:hidden"
       >
         <div className="border-b p-3">
           <div className="relative">
@@ -524,12 +530,13 @@ export function App() {
       </aside>
 
       {/* ── 对话区 ────────────────────────────────────────── */}
-      <main className="flex min-w-0 flex-1 flex-col bg-content-area">
+      <main className="flex min-w-[430px] flex-1 flex-col bg-content-area max-[640px]:min-w-0">
         <ConversationHeader
           title={currentSession?.title?.trim() || '新任务'}
           running={stream.running}
           resultsOpen={resultsOpen}
           onToggleResults={() => setResultsOpen((open) => !open)}
+          resultsToggleRef={resultsToggleRef}
         />
         <Conversation className="flex-1">
           {!currentId ? (
@@ -710,7 +717,7 @@ export function App() {
         onEditRequest={requestArtifactEdit}
         active={stream.running}
         open={resultsOpen}
-        onClose={() => setResultsOpen(false)}
+        onClose={closeResults}
       />
     </AppShell>
   )
