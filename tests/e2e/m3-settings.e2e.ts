@@ -6,6 +6,14 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.getByTestId('channel-settings-panel')).toBeVisible()
 }
 
+async function openSettingsTab(
+  page: Page,
+  tab: 'models' | 'permissions' | 'capabilities' | 'appearance',
+): Promise<void> {
+  await openSettings(page)
+  await page.getByTestId(`settings-tab-${tab}`).click()
+}
+
 async function closeSettings(page: Page): Promise<void> {
   await page.getByTestId('channel-settings-close').click()
   await expect(page.getByTestId('channel-settings-panel')).toHaveCount(0)
@@ -29,7 +37,7 @@ async function switchMode(page: Page, from: string, to: string): Promise<void> {
 
 test('C02：设置页渠道 CRUD，密钥只存 ref 不回传明文', async ({ tgbuddy }) => {
   const page = tgbuddy.page
-  await openSettings(page)
+  await openSettingsTab(page, 'models')
 
   await page.getByTestId('channel-add').click()
   await page.getByTestId('channel-name-input').fill('测试中转')
@@ -54,7 +62,7 @@ test('C02：设置页渠道 CRUD，密钥只存 ref 不回传明文', async ({ t
 
 test('C03：测试连接成功并应用发现的模型', async ({ tgbuddy }) => {
   const page = tgbuddy.page
-  await openSettings(page)
+  await openSettingsTab(page, 'models')
 
   const row = page.getByTestId('channel-row').filter({ hasText: 'E2E 本地模型' })
   await expect(row).toBeVisible()
@@ -98,7 +106,8 @@ test('工具区已从设置页移除；完全访问放行写操作、默认权�
 
 test('C07：内置技能出现在设置列表并可切换开关', async ({ tgbuddy }) => {
   const page = tgbuddy.page
-  await openSettings(page)
+  await openSettingsTab(page, 'capabilities')
+  await page.getByTestId('capability-skill').getByRole('button', { name: '管理' }).click()
 
   const skillRow = page.getByTestId('skill-row').filter({ hasText: '监管口径核对' })
   await expect(skillRow).toBeVisible()
@@ -115,7 +124,8 @@ test('C07：内置技能出现在设置列表并可切换开关', async ({ tgbud
 
 test('C09/C10/C11：MCP 连接、工具发现与真实调用闭环', async ({ tgbuddy }) => {
   const page = tgbuddy.page
-  await openSettings(page)
+  await openSettingsTab(page, 'capabilities')
+  await page.getByTestId('capability-mcp').getByRole('button', { name: '管理' }).click()
 
   await page.getByTestId('mcp-add').click()
   await page.getByTestId('mcp-name-input').fill('echo')

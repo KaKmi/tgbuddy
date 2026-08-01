@@ -55,3 +55,11 @@ Story FR05B: “Provider 品牌图标预置” — complete
   Verification: unit 2/2；architecture；typecheck；build；Settings Electron E2E 7/7
   Review: 按用户快速路径跳过；纯 Renderer 小 UI
   Concerns: FR14 设置 Models 重构必须复用本组件，不再创建第二套 Provider 标识
+
+Story SC01: “按 V3 原型还原设置中心” — complete（按用户反馈提前实施）
+  Commits: pending
+  Files: `src/renderer/App.tsx`, `src/renderer/features/settings/ChannelSettingsPanel.tsx`, `src/renderer/features/settings/settings-preferences.ts`, `src/renderer/styles.css`, `tests/settings-preferences.test.ts`, `tests/e2e/m3-settings.e2e.ts`, `tests/e2e/settings-center.e2e.ts`
+  Produces: 900×650 设置 Dialog；通用/模型/工具与权限/能力/外观导航；应用级 Skill/MCP 管理；Provider/Profile 编辑；权限规则撤销；主题和本地偏好交互
+  Verification: `bun test` 374/374；architecture；typecheck；build；Settings Electron E2E 7/7 + shell/visual E2E 1/1；明亮主题截图 2 张
+  Review: 按用户快速路径跳过独立 peer review；完成视觉 QA 与轻量 refactor
+  Concerns: 原计划 FR12–FR16 的 focus trap、dirty-close 与按 feature 文件物理拆分仍由对应 Slice 收口；SC01 不把这些计划项伪标完成

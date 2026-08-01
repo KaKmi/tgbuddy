@@ -51,6 +51,10 @@ import { ContextUsagePanel } from './components/ContextUsagePanel.tsx'
 import { CompactionDivider } from './components/CompactionDivider.tsx'
 import { CompactionStatus } from './components/CompactionStatus.tsx'
 import { ChannelSettingsPanel } from './features/settings/ChannelSettingsPanel.tsx'
+import {
+  parseModelPreference,
+  readSettingsPreferences,
+} from './features/settings/settings-preferences.ts'
 import { MARKER_STYLE, SystemMarker } from './components/SystemMarker.tsx'
 import type { PermissionMode } from '../shared/types/permission.ts'
 import {
@@ -125,8 +129,24 @@ export function App() {
   )
 
   useEffect(() => {
-    void window.tgbuddy.session.list().then(setSessions)
-  }, [setSessions])
+    void window.tgbuddy.session.list().then(async (sessionList) => {
+      setSessions(sessionList)
+      const preferences = readSettingsPreferences(window.localStorage)
+      const lastSessionId = window.localStorage.getItem('tgbuddy-last-session')
+      if (
+        !preferences.restoreOnLaunch
+        || !lastSessionId
+        || !sessionList.some((session) => session.id === lastSessionId)
+      ) return
+      setCurrentId(lastSessionId)
+      const restoredMessages = await window.tgbuddy.session.messages(lastSessionId)
+      setMessagesMap((current) => new Map(current).set(lastSessionId, restoredMessages))
+    })
+  }, [setCurrentId, setMessagesMap, setSessions])
+
+  useEffect(() => {
+    if (currentId) window.localStorage.setItem('tgbuddy-last-session', currentId)
+  }, [currentId])
 
   // C12：会话最近一次 Run 的 token/cost 账本（Run 结束后刷新）。
   useEffect(() => {
@@ -180,7 +200,12 @@ export function App() {
   }, [stream.running, stream.toolActivities.length, setSessions])
 
   async function newSession() {
-    const meta = await window.tgbuddy.session.create({})
+    const preferences = readSettingsPreferences(window.localStorage)
+    const primaryModel = parseModelPreference(preferences.primaryModel)
+    const meta = await window.tgbuddy.session.create(primaryModel ?? {})
+    if (preferences.defaultPermissionMode !== 'auto') {
+      await window.tgbuddy.plan.setMode(meta.id, preferences.defaultPermissionMode)
+    }
     setSessions(await window.tgbuddy.session.list())
     setCurrentId(meta.id)
   }
@@ -378,7 +403,8 @@ export function App() {
       )}
       {settingsOpen && (
         <ChannelSettingsPanel
-          workspaceId={currentWorkspaceId}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onClose={() => setSettingsOpen(false)}
         />
       )}
