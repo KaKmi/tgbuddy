@@ -68,10 +68,10 @@ UI Slice 复用现有 `window.tgbuddy` 和 Runtime 行为，不得为了对齐�
 
 **Files:** Create `src/renderer/features/session/SessionSidebar.tsx`; Modify `src/renderer/App.tsx`; Test `tests/e2e/ui-workspace-sidebar.e2e.ts`。
 
-- [ ] RED：品牌、theme/settings、真实 workspace path、add/mount 错误与“本地模式”底栏。
-- [ ] GREEN：移动而不复制 App 侧栏结构和 action，恢复 252px 视觉。
-- [ ] Run: `bun run typecheck && bun run build && bunx playwright test tests/e2e/ui-workspace-sidebar.e2e.ts tests/e2e/m2-workspace.e2e.ts`。
-- [ ] Commit: `feat(ui): restore workspace sidebar`。
+- [x] RED：品牌、theme/settings、真实 workspace path、add/mount 错误与“本地模式”底栏。
+- [x] GREEN：移动而不复制 App 侧栏结构和 action，恢复 252px 视觉。
+- [x] Run: `bun run typecheck && bun run build && bunx playwright test tests/e2e/ui-workspace-sidebar.e2e.ts tests/e2e/m2-workspace.e2e.ts`。
+- [x] Commit: `0846a13 feat(ui): restore workspace sidebar`。
 
 ### FR05：Session 搜索、菜单与草稿保护
 

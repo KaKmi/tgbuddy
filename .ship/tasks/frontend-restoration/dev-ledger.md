@@ -23,3 +23,11 @@ Story FR03: “结果区响应式覆盖层” — complete
   Verification: RED 缺少 layout-state 与遮罩；`bun test tests/layout-state.test.ts` 2/2；`bun run check:architecture`；`bun run typecheck`；`bun run build`；FR02/FR03 Electron E2E 2/2
   Review: 按用户快速路径跳过；纯 Renderer 布局与无障碍交互
   Concerns: 640px 下能力入口收口留给 FR07；Vite 主 chunk 749.36KB 警告为既有基线
+
+Story FR04: “Sidebar 品牌与 Workspace 收口” — complete
+  Commits: 0846a13
+  Files: `src/renderer/App.tsx`, `src/renderer/features/session/SessionSidebar.tsx`, `tests/e2e/ui-workspace-sidebar.e2e.ts`
+  Produces: `SessionSidebar` 成为 Workspace/Session 目录唯一展示 owner；TgBuddy 品牌、本地模式、真实 mount path 与丢失恢复提示
+  Verification: RED 缺品牌和 mount-error 节点；`bun run check:architecture`；`bun run typecheck`；`bun run build`；Workspace 新旧 Electron E2E 4/4
+  Review: 按用户快速路径跳过；只移动 Renderer owner，复用既有 Workspace IPC
+  Concerns: 搜索、菜单、草稿保护在 FR05；Vite 主 chunk 752.09KB 警告为既有基线
