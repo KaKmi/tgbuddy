@@ -516,3 +516,14 @@ U09 "端到端验收与第一版收口" — complete
   QA 发现的真实缺陷（已修复）：message_end 事件未携带 attachments（实时消息缺 chip）、
     ResultsPanel 只在挂载时取数（run 结束后不刷新）、xl 断点下 1280 窗口结果区不可见、
     A03 文本附件块泄漏到用户气泡显示（改为 chips 展示并剥离气泡正文）
+
+M4–M6 探索式 QA（ship:qa）— complete
+  Commits: （本 Slice）
+  Results: `.ship/tasks/tgbuddy-vertical-slices/qa/m4m6-qa-driver.mjs` 11/11 通过
+    （空状态样例/样例预填/冒烟回复/附件闭环/结果区产物+预览+让 Agent 改这份/
+    会话搜索/菜单置顶/计划模式闭环/完全访问/设置页技能与工具区/布局截图），
+    截图 7 张存 `qa/m4m6-qa/screenshots/`
+  Findings: 无功能性缺陷（两处初跑 FAIL 均为驱动检查方式问题：预览 DOM 探针取错节点、
+    改标题后未刷新会话列表）；视觉细节留原型截图人工比对
+  Concerns: 视觉比对清单（主窗口/结果区/设置页/计划审批卡 ↔ 原型场景）已写入报告，
+    需人工对照截图逐项确认灰阶/角标/边框透明度；原型截图脚本因原型 JS 较重超时，未产出
