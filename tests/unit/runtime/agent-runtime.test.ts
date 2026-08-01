@@ -106,6 +106,49 @@ function createDependencies(calls: string[]): AgentRuntimeDependencies {
 }
 
 describe('AgentRuntime 门面', () => {
+  test('只为 root Run 请求标题，child Run 不触发', async () => {
+    const calls: string[] = []
+    const dependencies = createDependencies(calls)
+    dependencies.sessionTitles = {
+      async request(input) {
+        calls.push(`title:${input.sessionId}:${input.userMessage}`)
+      },
+    }
+    const runtime = createAgentRuntime(dependencies)
+
+    runtime.runs.start({ sessionId: 'session-1', text: '第一条' })
+    runtime.runs.start({
+      sessionId: 'session-child',
+      text: '子任务',
+      lineage: {
+        workspaceId: 'workspace-1',
+        sessionId: 'session-child',
+        rootRunId: 'root-1',
+        agentRunId: 'agent-1',
+      },
+    })
+    await Promise.resolve()
+
+    expect(calls.filter((call) => call.startsWith('title:'))).toEqual([
+      'title:session-1:第一条',
+    ])
+  })
+
+  test('手动更新标题时自动标记 titleSource=user', () => {
+    const calls: string[] = []
+    const dependencies = createDependencies(calls)
+    let received: Parameters<AgentRuntimeDependencies['sessions']['updateMeta']>[1] | undefined
+    dependencies.sessions.updateMeta = (_sessionId, patch) => {
+      received = patch
+      return undefined
+    }
+    const runtime = createAgentRuntime(dependencies)
+
+    runtime.sessions.updateMeta('session-1', { title: '用户标题' })
+
+    expect(received).toEqual({ title: '用户标题', titleSource: 'user' })
+  })
+
   test('Run 方法通过原 owner 调用，保留 Coordinator 的实例接收者', () => {
     const calls: string[] = []
     const dependencies = createDependencies(calls)

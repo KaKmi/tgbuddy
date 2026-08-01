@@ -124,6 +124,15 @@ export type {
   AgentRuntimeEventPublisher,
 } from './app/agent-runtime-events.ts'
 export type { SessionRepository } from './sessions/session-repository.ts'
+export {
+  createSessionTitleService,
+  type SessionTitleRequest,
+  type SessionTitleService,
+} from './sessions/session-title-service.ts'
+export type {
+  GenerateTitleInput,
+  TitleGenerator,
+} from './sessions/ports/title-generator.ts'
 export type { WorkspaceRepository } from './workspaces/workspace-repository.ts'
 export type {
   RunExecutionEnv,

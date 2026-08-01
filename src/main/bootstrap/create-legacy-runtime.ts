@@ -29,6 +29,7 @@ import {
   resolveModelSelection,
   type SessionCommands,
   type SessionMessageHistory,
+  type SessionTitleService,
   type SecretStore,
   type SkillCatalog,
   type McpManager,
@@ -43,6 +44,8 @@ import type { StartRunInput } from '../../shared/contracts/run.ts'
 export interface CreateLegacyRuntimeOptions {
   workspaces: WorkspaceCommands
   sessions: SessionCommands
+  /** FR05A：首条 root 消息标题生成，失败不得阻塞 Run。 */
+  sessionTitles?: SessionTitleService
   history: SessionMessageHistory
   agentEngine: AgentEngine
   contextCompactor: ContextCompactor
@@ -161,6 +164,7 @@ export function createLegacyRuntime(
           },
         }
       : options.sessions,
+    sessionTitles: options.sessionTitles,
     runs,
     permissions: {
       respond: (response) => options.permissions.respond(response),

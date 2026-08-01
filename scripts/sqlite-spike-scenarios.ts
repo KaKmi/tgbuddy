@@ -163,13 +163,17 @@ export async function runAppDatabaseScenario(
           '005_app_permission_rules.sql',
           '006_app_channels.sql',
           '007_app_profiles.sql',
-          '008_app_tool_settings.sql',
           '009_app_mcp_servers.sql',
           '010_app_mcp_servers_key.sql',
           '011_app_runs.sql',
           '012_app_sessions_profile_id.sql',
+          '013_app_attachments.sql',
+          '014_app_artifacts.sql',
+          '015_app_blob_refs.sql',
+          '016_app_runs_lineage.sql',
+          '017_app_sessions_title_source.sql',
         ]),
-      'app migration 必须按顺序包含 001–012',
+      'app migration 必须按顺序包含当前 001–017（已删除的 008 除外）',
     )
     assertions++
 
@@ -179,6 +183,9 @@ export async function runAppDatabaseScenario(
     assertCondition(
       JSON.stringify(tables.map((row) => row.name)) ===
         JSON.stringify([
+          'app_artifacts',
+          'app_attachments',
+          'app_blob_refs',
           'app_channels',
           'app_mcp_servers',
           'app_permission_rules',
@@ -186,7 +193,6 @@ export async function runAppDatabaseScenario(
           'app_runs',
           'app_schema_migrations',
           'app_sessions',
-          'app_tool_settings',
           'app_workspaces',
         ]),
       `AppDatabase 不得创建未登记的表或 pi 私有表: ${tables.map((row) => row.name).join(',')}`,
@@ -221,6 +227,7 @@ export async function runSessionCatalogScenario(
   const sessionAOld: SessionMeta = {
     id: 'workspace-a-old',
     title: 'Workspace A 旧会话',
+    titleSource: 'user',
     workspaceId: 'workspace-a',
     pinned: false,
     archived: false,
@@ -230,6 +237,7 @@ export async function runSessionCatalogScenario(
   const sessionANew: SessionMeta = {
     id: 'workspace-a-new',
     title: 'Workspace A 新会话',
+    titleSource: 'user',
     workspaceId: 'workspace-a',
     channelId: 'channel-a',
     modelId: 'model-a',
@@ -263,6 +271,7 @@ export async function runSessionCatalogScenario(
   const sessionB: SessionMeta = {
     id: 'workspace-b',
     title: 'Workspace B 会话',
+    titleSource: 'user',
     workspaceId: 'workspace-b',
     createdAt: 150,
     updatedAt: 150,
@@ -314,6 +323,7 @@ export async function runSessionCatalogScenario(
     isDeepStrictEqual(await firstCommands.create({ title: 'Runtime 新会话' }), {
       id: 'runtime-created',
       title: 'Runtime 新会话',
+      titleSource: 'user',
       createdAt: 250,
       updatedAt: 250,
     }),

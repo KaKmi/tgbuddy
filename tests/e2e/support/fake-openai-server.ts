@@ -92,6 +92,10 @@ async function handleRequest(
     const lastMessage = messages.at(-1)
 
     beginEventStream(response)
+    if (prompt.includes('[TGBUDDY_SESSION_TITLE]')) {
+      await streamText(response, 'Q2 交易异常分析')
+      return
+    }
     if (isSummary) {
       await streamText(response, 'E2E 压缩摘要：保留已完成任务、关键决定和后续上下文。')
       return

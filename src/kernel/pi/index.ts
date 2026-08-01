@@ -8,6 +8,7 @@ export {
   type PersistedPiMessage,
   type PiAgentSessionProvider,
 } from './pi-agent-engine.ts'
+export { createPiTitleGenerator } from './pi-title-generator.ts'
 export {
   buildPlanModeTools,
   type PlanModeHooks,

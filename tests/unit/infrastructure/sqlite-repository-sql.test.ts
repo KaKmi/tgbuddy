@@ -27,7 +27,7 @@ describe('SqliteSessionRepository SQL 一致性', () => {
     const columns = countItems(insert[1]!)
     const placeholders = countItems(insert[2]!)
     expect(columns).toBe(placeholders)
-    expect(columns).toBe(19)
+    expect(columns).toBe(20)
   })
 
   test('UPDATE SET 列数加 WHERE id 与参数数量一致', () => {
@@ -37,7 +37,7 @@ describe('SqliteSessionRepository SQL 一致性', () => {
     if (!update) return
     const setColumns = countItems(update[1]!)
     // run(...sessionValues(session).slice(1), session.id)
-    expect(setColumns + 1).toBe(19)
+    expect(setColumns + 1).toBe(20)
   })
 
   test('sessionValues 与 SELECT 列一一对应', () => {

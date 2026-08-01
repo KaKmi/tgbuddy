@@ -34,6 +34,8 @@ import type { PermissionMode } from './permission.ts'
 export interface SessionMeta {
   id: string
   title: string
+  /** default 可被首次 root Run 异步生成覆盖；user 永远优先于迟到结果。 */
+  titleSource?: 'default' | 'generated' | 'user'
   workspaceId?: string
   channelId?: string
   modelId?: string

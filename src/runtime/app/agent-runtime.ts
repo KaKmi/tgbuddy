@@ -28,6 +28,7 @@ import type {
 import type { SessionMessage } from '../../shared/contracts/message.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
+import type { SessionTitleService } from '../sessions/session-title-service.ts'
 import type {
   Workspace,
   WorkspaceMountResolution,
@@ -153,6 +154,7 @@ export interface AgentRuntime {
 export interface AgentRuntimeDependencies {
   workspaces: WorkspaceCommands
   sessions: SessionCommands
+  sessionTitles?: SessionTitleService
   runs: {
     start(input: StartRunInput, emit: (frame: StreamFrame) => void): Promise<void>
     stop(sessionId: string): void
@@ -201,6 +203,14 @@ export function createAgentRuntime(
     workspaces: dependencies.workspaces,
     sessions: {
       ...dependencies.sessions,
+      updateMeta(sessionId, patch) {
+        return dependencies.sessions.updateMeta(
+          sessionId,
+          patch.title !== undefined && patch.titleSource === undefined
+            ? { ...patch, titleSource: 'user' }
+            : patch,
+        )
+      },
       async delete(sessionId) {
         if (dependencies.runs.isRunning(sessionId)) {
           throw new Error('任务运行中，暂时不能删除会话')
@@ -225,7 +235,22 @@ export function createAgentRuntime(
     },
     runs: {
       start(input) {
-        void dependencies.runs.start(input, events.emit)
+        let titleRequested = false
+        void dependencies.runs.start(input, (frame) => {
+          events.emit(frame)
+          if (
+            !titleRequested
+            && !input.lineage
+            && frame.payload.channel === 'agent'
+            && frame.payload.event.type === 'run_start'
+          ) {
+            titleRequested = true
+            void dependencies.sessionTitles?.request({
+              sessionId: input.sessionId,
+              userMessage: input.text,
+            })
+          }
+        })
       },
       // Coordinator 使用私有字段维护运行注册表，不能把实例方法裸转交后再换接收者调用。
       stop: (sessionId) => dependencies.runs.stop(sessionId),

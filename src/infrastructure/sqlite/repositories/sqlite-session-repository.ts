@@ -8,6 +8,7 @@ import type { AppDatabase } from '../app-database.ts'
 interface SessionRow {
   id: string
   title: string
+  title_source: string
   workspace_id: string | null
   channel_id: string | null
   model_id: string | null
@@ -30,6 +31,7 @@ interface SessionRow {
 const SELECT_COLUMNS = `
   id,
   title,
+  title_source,
   workspace_id,
   channel_id,
   model_id,
@@ -107,6 +109,11 @@ function parseStatus(value: string | null, sessionId: string): SessionMeta['stat
   throw new Error(`Session ${sessionId} 的 status 无效: ${value}`)
 }
 
+function parseTitleSource(value: string, sessionId: string): NonNullable<SessionMeta['titleSource']> {
+  if (value === 'default' || value === 'generated' || value === 'user') return value
+  throw new Error(`Session ${sessionId} 的 titleSource 无效: ${value}`)
+}
+
 function rowToSession(row: SessionRow): SessionMeta {
   const contextUsage = parseContextUsage(row.context_usage_json, row.id)
   const permissionMode = parsePermissionMode(row.permission_mode, row.id)
@@ -119,6 +126,7 @@ function rowToSession(row: SessionRow): SessionMeta {
   return {
     id: row.id,
     title: row.title,
+    titleSource: parseTitleSource(row.title_source, row.id),
     ...(row.workspace_id !== null ? { workspaceId: row.workspace_id } : {}),
     ...(row.channel_id !== null ? { channelId: row.channel_id } : {}),
     ...(row.model_id !== null ? { modelId: row.model_id } : {}),
@@ -142,6 +150,7 @@ function sessionValues(session: SessionMeta): Array<string | number | null> {
   return [
     session.id,
     session.title,
+    session.titleSource ?? (session.title === '新会话' ? 'default' : 'user'),
     session.workspaceId ?? null,
     session.channelId ?? null,
     session.modelId ?? null,
@@ -210,11 +219,11 @@ export class SqliteSessionRepository implements SessionRepository {
       database
         .prepare(
           `INSERT INTO app_sessions (
-             id, title, workspace_id, channel_id, model_id, profile_id, expert_id,
+             id, title, title_source, workspace_id, channel_id, model_id, profile_id, expert_id,
              pinned, archived, permission_mode, status, status_detail,
              last_activity, artifact_count, context_usage_json,
              origin_session_id, origin_message_id, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(...sessionValues(session))
     })
@@ -228,6 +237,7 @@ export class SqliteSessionRepository implements SessionRepository {
           .prepare(
             `UPDATE app_sessions
              SET title = ?,
+                 title_source = ?,
                  workspace_id = ?,
                  channel_id = ?,
                  model_id = ?,

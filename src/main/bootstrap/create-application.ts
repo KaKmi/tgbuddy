@@ -18,12 +18,15 @@ import {
   createPolicyEngine,
   createProfileService,
   createSessionCommands,
+  createSessionTitleService,
   createSessionMessageHistory,
   createWorkspaceService,
   projectArtifact as projectArtifactSummary,
   recoverInterruptedRuns,
+  resolveModelSelection,
   type AgentRuntime,
   type InterruptedRunRecoveryReport,
+  type SessionTitleService,
 } from '../../runtime/index.ts'
 import {
   AppDatabase,
@@ -58,6 +61,7 @@ import {
   createPiContextCompactor,
   createPiProviderCatalog,
   createPiSessionStore,
+  createPiTitleGenerator,
   PiRunExecutionEnvFactory,
 } from '../../kernel/pi/index.ts'
 import { registerIpc, type ArtifactIo, type AttachmentIo } from '../ipc.ts'
@@ -154,6 +158,32 @@ export async function createApplication(
     createId,
   })
   migrateLegacyChannels(channels, channelRepository)
+  const generatedTitles = createSessionTitleService({
+    sessions: sessionRepository,
+    generator: createPiTitleGenerator({
+      resolveChannel(channelId) {
+        try {
+          return channels.resolve(channelId) ?? channels.resolve()
+        } catch {
+          return undefined
+        }
+      },
+    }),
+    now: Date.now,
+  })
+  const sessionTitles: SessionTitleService = {
+    request(input) {
+      const session = sessionRepository.get(input.sessionId)
+      const selection = session
+        ? resolveModelSelection(session, profiles)
+        : undefined
+      return generatedTitles.request({
+        ...input,
+        ...(selection?.channelId ? { channelId: selection.channelId } : {}),
+        ...(selection?.modelId ? { modelId: selection.modelId } : {}),
+      })
+    },
+  }
   // C07：技能目录。内置技能先 seed 到用户级全局目录（幂等、不覆盖用户修改），
   // 设置页「内置技能」组读全局副本；用户级技能同目录；工作区级随 mount。
   const userSkillsDir = join(options.legacyDataDir, 'skills')
@@ -476,6 +506,7 @@ export async function createApplication(
           console.error(`[application] Session ${sessionId} 消息清理失败`, error)
         },
       }),
+      sessionTitles,
       workspaces: workspaceService,
       permissions: permissionAskBroker,
       plans: planAskBroker,

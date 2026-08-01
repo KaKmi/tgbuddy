@@ -51,6 +51,7 @@ export function createSessionCommands(
       const meta = options.repository.create({
         id: options.createId(),
         title: input.title ?? '新会话',
+        titleSource: input.title ? 'user' : 'default',
         ...(workspaceId ? { workspaceId } : {}),
         ...(input.channelId ? { channelId: input.channelId } : {}),
         ...(input.modelId ? { modelId: input.modelId } : {}),
@@ -88,6 +89,7 @@ export function createSessionCommands(
       const target = options.repository.create({
         id: options.createId(),
         title: source.title,
+        titleSource: source.titleSource === 'user' ? 'user' : 'generated',
         ...(source.workspaceId ? { workspaceId: source.workspaceId } : {}),
         ...(source.channelId ? { channelId: source.channelId } : {}),
         ...(source.modelId ? { modelId: source.modelId } : {}),

@@ -76,6 +76,7 @@ describe('SessionCommands', () => {
     })).toEqual({
       id: 'session-1',
       title: '第一条',
+      titleSource: 'user',
       channelId: 'channel-1',
       modelId: 'model-1',
       createdAt: 100,
@@ -102,6 +103,7 @@ describe('SessionCommands', () => {
     expect(repository.get('session-1')).toEqual({
       id: 'session-1',
       title: '已更新',
+      titleSource: 'user',
       channelId: 'channel-1',
       modelId: 'model-1',
       createdAt: 999,
