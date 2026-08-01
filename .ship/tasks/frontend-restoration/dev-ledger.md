@@ -63,3 +63,11 @@ Story SC01: “按 V3 原型还原设置中心” — complete（按用户反馈
   Verification: `bun test` 374/374；architecture；typecheck；build；Settings Electron E2E 7/7 + shell/visual E2E 1/1；明亮主题截图 2 张
   Review: 按用户快速路径跳过独立 peer review；完成视觉 QA 与轻量 refactor
   Concerns: 原计划 FR12–FR16 的 focus trap、dirty-close 与按 feature 文件物理拆分仍由对应 Slice 收口；SC01 不把这些计划项伪标完成
+
+Story VP01: “浅色界面与结果区视觉收口” — complete（用户反馈驱动）
+  Commits: 6772ead
+  Files: 自绘窗口 Toolbar 与 IPC、Session hover preview、ContextUsagePanel、ToolCard/Response 主题样式、ResultsPanel、相关 E2E、`design-qa.md`
+  Produces: 无原生黑色标题栏的主题化窗口；Codex 式会话悬停摘要；不展示 cost 的上下文面板；按原型组织的产物/工作区双视图、筛选、预览卡和分组列表
+  Verification: `bun test` 377/377；architecture；typecheck；build；Renderer/Electron targeted E2E 15/15；结果区追加复验 2/2；参考图与实现截图同批视觉对照通过
+  Review: 按用户快速开发要求跳过独立 peer review；未改 Runtime/存储业务契约，仅增加窗口控制 IPC
+  Concerns: 权限 UI、空 Workspace 首条发送自动建会话、child Agent 进度展示按用户要求不在本 Slice 实施
