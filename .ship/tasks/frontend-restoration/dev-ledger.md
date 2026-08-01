@@ -39,3 +39,11 @@ Story FR05: “Session 搜索、菜单与草稿保护” — complete
   Verification: RED 缺 view 模块、原生弹窗和无草稿门卫；unit 3/3；`bun run check:architecture`；`bun run typecheck`；`bun run build`；Electron E2E 2/2
   Review: 按用户快速路径跳过；Renderer 内状态与交互，无 IPC contract 变化
   Concerns: 自动标题进入 FR05A；Vite 主 chunk 756.59KB 警告为既有基线
+
+Story FR05A: “LLM Session Title 生成” — complete
+  Commits: de6fa19
+  Files: Session contract/commands、Runtime title service + port、pi title generator、Composition Root、SQLite 017 migration/repository、targeted tests/E2E/spike evidence
+  Produces: `titleSource:'default'|'generated'|'user'`；`TitleGenerator` port；`SessionTitleService`；首次 root `run_start` 后旁路生成、8s 超时回退、手动改名竞争守卫
+  Verification: RED 缺 title service；unit/targeted 24/24；architecture；typecheck；build；Electron E2E 1/1；真实 DeepSeek `probe`；packaged SQLite 13 scenarios 全过
+  Review: 契约级 Slice 按用户规则做轻量 arch-design + 短静态自检；修正触发点为真实 `run_start`，无 unresolved finding
+  Concerns: 跨 shared/Runtime/Kernel/SQLite/Composition Root 的原子纵向能力无法压到 6 个生产文件；拆开会产生不可运行的半契约，因此本 Slice 例外超过尺寸护栏

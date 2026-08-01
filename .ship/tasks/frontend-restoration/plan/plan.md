@@ -86,14 +86,14 @@ UI Slice 复用现有 `window.tgbuddy` 和 Runtime 行为，不得为了对齐�
 
 ### FR05A：LLM Session Title 生成
 
-**Files:** Create `src/runtime/sessions/session-title-service.ts`, `src/kernel/pi/pi-title-generator.ts`; Modify `src/shared/contracts/session.ts`, `src/runtime/app/agent-runtime.ts`, `src/main/bootstrap/create-application.ts`, `src/renderer/App.tsx`; Test `tests/session-title-service.test.ts`, `tests/e2e/ui-session-title.e2e.ts`。
+**Files:** Create `src/runtime/sessions/session-title-service.ts`, `src/runtime/sessions/ports/title-generator.ts`, `src/kernel/pi/pi-title-generator.ts`, `src/infrastructure/sqlite/migrations/017_app_sessions_title_source.sql`; Modify Session contract、commands、SQLite repository、Runtime/Composition Root；Test `tests/session-title-service.test.ts`, `tests/e2e/ui-session-title.e2e.ts` 及 SQLite/Runtime targeted tests。
 
 **Interfaces:** `TitleGenerator.generate({userMessage,channelId,modelId,signal}):Promise<string|null>`；Session 增加可持久化 `titleSource:'default'|'generated'|'user'`。首次 root Run 初始化完成后异步请求一次，只有 `titleSource==='default'` 才写回；Renderer 通过现有 Session catalog 刷新/host event 更新 Header 与 Sidebar。
 
-- [ ] RED：只触发首次 root 消息；清洗引号/换行并限制 24 个中文字符或 60 个 ASCII 字符；Provider 失败、空标题或超时使用首条用户文本安全截断；手动改名先到和生成结果迟到两种竞争都由 `user` 标题获胜；重启恢复。
-- [ ] GREEN：参考 Prom 的“默认标题守卫 + 后台生成 + title updated 通知”，但调用必须经过 TgBuddy Runtime/Kernel 边界，不把 Provider 逻辑放 Renderer/Main IPC。
-- [ ] Run: `bun test tests/session-title-service.test.ts && bun run check:architecture && bun run typecheck && bun run build && bunx playwright test tests/e2e/ui-session-title.e2e.ts`。
-- [ ] Commit: `feat(session): generate title after first message`。
+- [x] RED：只触发首次 root 消息；清洗引号/换行并限制 24 个中文字符或 60 个 ASCII 字符；Provider 失败、空标题或超时使用首条用户文本安全截断；手动改名先到和生成结果迟到两种竞争都由 `user` 标题获胜；重启恢复。
+- [x] GREEN：参考 Prom 的“默认标题守卫 + 后台生成 + title updated 通知”，但调用必须经过 TgBuddy Runtime/Kernel 边界，不把 Provider 逻辑放 Renderer/Main IPC。
+- [x] Run: targeted 24/24、architecture、typecheck、build、Electron E2E 1/1、`probe`、packaged SQLite 13 scenarios。
+- [x] Commit: `de6fa19 feat(session): generate title after first message`。
 
 ### FR06：Composer 容器与发送闭环
 
