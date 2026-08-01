@@ -225,7 +225,8 @@ class PiAgentEngine implements AgentEngine {
 
       const unsubscribeToolPolicy = harness.on('tool_call', async (event) => {
         const decision = await this.#toolPolicy.evaluate({
-          sessionId: invocation.sessionId,
+          // D03：child run 的授权/模式归属父会话（权限请求进父队列，策略继承父模式）
+          sessionId: invocation.policySessionId ?? invocation.sessionId,
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           args: event.input,

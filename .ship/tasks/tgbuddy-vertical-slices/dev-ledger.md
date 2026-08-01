@@ -464,3 +464,16 @@ D02 "同步 child run 与结果回传" — complete
   Concerns: child 会话用 `sessions.create({title:'子任务'})`（当前工作区）；
     child 事件走 child sessionId 的帧（D04 归组展示）；进程内计数 childrenByRoot，
     重启后运行中的 child 本来就随父中止
+
+D03 "child 取消与权限继承" — complete
+  Commits: （本 Slice）
+  Files: src/shared/contracts/run.ts（RunLineage.parentSessionId）、
+    src/runtime/runs/agent-engine.ts（policySessionId）、pi-agent-engine.ts（策略归属父会话）、
+    run-coordinator.ts（onStop 钩子）、delegation-service.ts（权限模式继承 + stopCascade）、
+    src/main/bootstrap/create-legacy-runtime.ts（onStop 级联接线）、
+    tests/unit/runtime/delegation-service.test.ts（+2 项）
+  Produces: child 权限/授权请求归属父会话队列（policySessionId）、child 继承父权限模式、
+    `stopCascade`（父 stop → 全部 child stop）、RunCoordinator.onStop 钩子
+  RED/GREEN: 6 项（原 4 + 权限继承 + 级联停止）
+  Concerns: 权限请求「标明来源」由 child sessionId 在 pending 队列中区分；
+    child 事件流仍走 child sessionId（D04 归组）

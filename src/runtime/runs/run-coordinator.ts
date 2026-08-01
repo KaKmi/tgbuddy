@@ -32,6 +32,8 @@ export interface CreateRunCoordinatorOptions {
   >
   /** C12：Run 记录持久化（能力快照 + token 账本），缺省不落盘 */
   runs?: RunRepository
+  /** D03：stop 时级联回调（root stop → child runs 一并停） */
+  onStop?(sessionId: string): void
   createRunId?(): string
 }
 
@@ -66,6 +68,7 @@ class DefaultRunCoordinator implements RunCoordinator {
   readonly #runs: CreateRunCoordinatorOptions['runs']
   readonly #createRunId: (() => string) | undefined
   readonly #now: () => number
+  readonly #onStop: CreateRunCoordinatorOptions['onStop']
   readonly #inFlight = new Set<Promise<void>>()
   #disposePromise: Promise<void> | undefined
 
@@ -78,6 +81,7 @@ class DefaultRunCoordinator implements RunCoordinator {
     this.#runs = options.runs
     this.#createRunId = options.createRunId
     this.#now = options.now
+    this.#onStop = options.onStop
   }
 
   start(
@@ -112,6 +116,7 @@ class DefaultRunCoordinator implements RunCoordinator {
 
   stop(sessionId: string): void {
     this.#registry.cancel(sessionId)
+    this.#onStop?.(sessionId)
   }
 
   isRunning(sessionId: string): boolean {

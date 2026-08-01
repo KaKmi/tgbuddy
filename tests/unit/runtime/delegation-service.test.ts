@@ -33,9 +33,22 @@ function harness(options: {
   failCreate?: boolean
   frames?: StreamFrame[]
   runningRootRunId?: string
+  parentPermissionMode?: string
 }) {
   const created: string[] = []
   const started: Array<{ sessionId: string; text: string; lineage?: unknown }> = []
+  const stopped: string[] = []
+  const modeUpdates: Array<{ sessionId: string; mode?: string }> = []
+  const parents = [
+    {
+      id: 'parent-1',
+      workspaceId: 'ws-1',
+      title: '父任务',
+      permissionMode: options.parentPermissionMode ?? 'auto',
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ]
   const sessions = {
     create: async () => {
       if (options.failCreate) throw new Error('创建失败')
@@ -43,8 +56,11 @@ function harness(options: {
       created.push(id)
       return { id }
     },
-    list: () => [],
-    updateMeta: () => undefined,
+    list: () => parents,
+    updateMeta: (sessionId: string, patch: { permissionMode?: string }) => {
+      if (patch.permissionMode) modeUpdates.push({ sessionId, mode: patch.permissionMode })
+      return { id: sessionId }
+    },
     delete: async () => {},
   }
   const runs = new MemoryRunRepository()
@@ -62,7 +78,7 @@ function harness(options: {
       started.push({ sessionId: input.sessionId, text: input.text, lineage: input.lineage })
       for (const frame of options.frames ?? []) emit(frame)
     },
-    stop: () => {},
+    stop: (sessionId) => stopped.push(sessionId),
     isRunning: () => false,
     list: () => [],
     dispose: async () => {},
@@ -74,7 +90,7 @@ function harness(options: {
     createId: () => 'child-0',
     now: () => 1,
   })
-  return { service, created, started }
+  return { service, created, started, stopped, modeUpdates }
 }
 
 describe('DelegationService（D02）', () => {
@@ -158,5 +174,46 @@ describe('DelegationService（D02）', () => {
       parentToolCallId: 't1',
     })
     expect(result).toEqual({ ok: false, text: '子智能体没有返回结果' })
+  })
+
+  test('D03：child 继承父权限模式，lineage 带 parentSessionId', async () => {
+    const { service, modeUpdates, started } = harness({
+      runningRootRunId: 'root-1',
+      frames: [assistantFrame('child-0', '完成')],
+      parentPermissionMode: 'plan',
+    })
+
+    await service.delegate({
+      parentSessionId: 'parent-1',
+      workspaceId: 'ws-1',
+      task: 'x',
+      parentToolCallId: 't1',
+    })
+
+    expect(modeUpdates).toEqual([{ sessionId: 'child-0', mode: 'plan' }])
+    expect(started[0]?.lineage).toMatchObject({ parentSessionId: 'parent-1' })
+  })
+
+  test('D03：停止父会话级联停止全部 child run', async () => {
+    const { service, stopped } = harness({
+      runningRootRunId: 'root-1',
+      frames: [assistantFrame('child-0', '完成')],
+    })
+    await service.delegate({
+      parentSessionId: 'parent-1',
+      workspaceId: 'ws-1',
+      task: 'a',
+      parentToolCallId: 't1',
+    })
+    await service.delegate({
+      parentSessionId: 'parent-1',
+      workspaceId: 'ws-1',
+      task: 'b',
+      parentToolCallId: 't2',
+    })
+
+    service.stopCascade('parent-1')
+
+    expect(stopped).toEqual(['child-0', 'child-1'])
   })
 })

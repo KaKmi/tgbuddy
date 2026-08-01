@@ -16,6 +16,8 @@ export interface DelegationService {
     parentToolCallId: string
     signal?: AbortSignal
   }): Promise<{ ok: boolean; text: string }>
+  /** D03：父会话停止时级联停止其全部 child run。 */
+  stopCascade(parentSessionId: string): void
 }
 
 export interface CreateDelegationServiceOptions {
@@ -31,6 +33,8 @@ export function createDelegationService(
 ): DelegationService {
   // rootRunId → 已创建 child 会话列表（进程内计数；重启后运行中的 child 本来就中止）
   const childrenByRoot = new Map<string, string[]>()
+  // 父会话 → rootRunId（停止父会话时找 child）
+  const rootByParentSession = new Map<string, string>()
 
   return {
     async delegate(input) {
@@ -39,6 +43,7 @@ export function createDelegationService(
         ?.listBySession(input.parentSessionId)
         .find((record) => record.status === 'running')
       const rootRunId = running?.rootRunId ?? running?.id ?? input.parentToolCallId
+      rootByParentSession.set(input.parentSessionId, rootRunId)
       const children = childrenByRoot.get(rootRunId) ?? []
       const decision = canDelegate({
         childCount: children.length,
@@ -50,12 +55,25 @@ export function createDelegationService(
 
       let childSessionId: string
       try {
-        const meta = await options.sessions.create({ title: '子任务' })
-        childSessionId = meta.id
+      const meta = await options.sessions.create({ title: '子任务' })
+      childSessionId = meta.id
       } catch (error) {
         return {
           ok: false,
           text: `子智能体会话创建失败：${error instanceof Error ? error.message : String(error)}`,
+        }
+      }
+      // D03：child 继承父会话权限模式（策略引擎对 child 也读父模式）
+      const parent = options.sessions.list().find(
+        (session) => session.id === input.parentSessionId,
+      )
+      if (parent?.permissionMode) {
+        try {
+          options.sessions.updateMeta(childSessionId, {
+            permissionMode: parent.permissionMode,
+          })
+        } catch (error) {
+          console.error('[Delegation] child 权限模式继承失败：', error)
         }
       }
       childrenByRoot.set(rootRunId, [...children, childSessionId])
@@ -84,6 +102,7 @@ export function createDelegationService(
               rootRunId,
               agentRunId: options.createId(),
               parentToolCallId: input.parentToolCallId,
+              parentSessionId: input.parentSessionId,
             },
           },
           childEmit,
@@ -98,6 +117,13 @@ export function createDelegationService(
       return last
         ? { ok: true, text: `子智能体结果：\n${last}` }
         : { ok: false, text: '子智能体没有返回结果' }
+    },
+    stopCascade(parentSessionId) {
+      const rootRunId = rootByParentSession.get(parentSessionId)
+      if (!rootRunId) return
+      for (const childSessionId of childrenByRoot.get(rootRunId) ?? []) {
+        options.coordinator.stop(childSessionId)
+      }
     },
   }
 }

@@ -20,6 +20,8 @@ export interface RunLineage {
   rootRunId: RootRunId
   agentRunId: AgentRunId
   parentToolCallId?: string
+  /** D03：child 归属的 root 会话（权限/取消级联用） */
+  parentSessionId?: string
 }
 
 export interface RunRecord extends RunLineage {

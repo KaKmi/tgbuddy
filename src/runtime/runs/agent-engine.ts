@@ -22,6 +22,8 @@ export interface AgentInvocation {
   attachments?: AttachmentRef[]
   /** D02：child run 的 lineage（父工具调用链接，用于区分 child 与工具注入门控） */
   lineage?: RunLineage
+  /** D03：child run 的策略/授权归属会话（父会话）；root run 不设 */
+  policySessionId?: string
   channel: Channel
   modelId: string
   systemPrompt: string

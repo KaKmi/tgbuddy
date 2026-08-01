@@ -96,6 +96,10 @@ export function createLegacyRuntime(
   const runs = createRunCoordinator({
     now: Date.now,
     engine: options.agentEngine,
+    // D03：父会话停止 → 级联停止其 child run（服务在下方装配，闭包运行期读取）
+    onStop: (sessionId) => {
+      options.delegationRef?.service?.stopCascade(sessionId)
+    },
     createInvocation: (input) =>
       createAgentInvocation(
         input,
@@ -356,6 +360,9 @@ async function createAgentInvocation(
     skills: enabledSkills,
     tools: frozenTools,
     ...(input.lineage ? { lineage: input.lineage } : {}),
+    ...(input.lineage?.parentSessionId
+      ? { policySessionId: input.lineage.parentSessionId }
+      : {}),
     ...(profileSnapshot ? { profile: profileSnapshot } : {}),
     systemPrompt:
       selection?.systemPrompt
