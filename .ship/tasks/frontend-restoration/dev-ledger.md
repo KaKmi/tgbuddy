@@ -71,3 +71,11 @@ Story VP01: “浅色界面与结果区视觉收口” — complete（用户反�
   Verification: `bun test` 377/377；architecture；typecheck；build；Renderer/Electron targeted E2E 15/15；结果区追加复验 2/2；参考图与实现截图同批视觉对照通过
   Review: 按用户快速开发要求跳过独立 peer review；未改 Runtime/存储业务契约，仅增加窗口控制 IPC
   Concerns: 权限 UI、空 Workspace 首条发送自动建会话、child Agent 进度展示按用户要求不在本 Slice 实施
+
+Story VP02: “V3 全界面逐区还原” — complete（用户反馈驱动）
+  Commits: dbfd3af
+  Files: `src/renderer/App.tsx`、聊天/工具/压缩控件、Composer、SessionSidebar/SessionActions、ResultsPanel、全局样式、相关 E2E、`design-qa.md`
+  Produces: V3 原型尺寸与 token 的窗口骨架、Sidebar、消息流、工具卡和 Composer；Session hover 置顶/删除/归档；无会话首发自动建会话；356px 产物区；工作区搜索/刷新/只读文件查看器
+  Verification: `bun test` 377/377；architecture；typecheck；build；Electron E2E 16/16；参考图与实现截图同批视觉核对通过；`design-qa.md` final passed
+  Review: 按用户“快速开发、快速验证”要求跳过独立 peer review；纯 Renderer 交互与既有 IPC 复用，无重大架构或契约变更
+  Concerns: 权限审批业务流程继续暂停；child Agent 进度展示留给独立 Slice；Vite 主 chunk 约 790KB 警告为既有待办
