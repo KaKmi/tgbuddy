@@ -11,9 +11,10 @@ TgBuddy 是一个基于 **pi 内核**的本地优先 Agent Workbench，使用 El
 ## 当前状态
 
 项目正在进行一次**架构迁移式的二次开发**，不是从零重写。M1 可恢复 Agent
-内核与 M2 Workspace/安全已完成开发、review、Electron E2E 和 QA；M3 通用能力系统
-（Channel/Profile/Tool/Skill/MCP + Run 能力快照与 token 账本）已完成开发、集中
-review、E2E 与探索式 QA，当前进入 M4「附件与结果」。
+内核、M2 Workspace/安全、M3 通用能力系统（Channel/Profile/Tool/Skill/MCP +
+Run 能力快照与 token 账本）、M4 附件与结果（Blob/附件/长输出/Artifact/结果区）、
+M5 单层子 Agent（lineage/预算/取消/权限）与 M6 产品收口（空状态/会话搜索与菜单/
+设置与视觉收口/端到端验收）均已按 Slice 流程完成开发并全量回归通过，进入第一版联调 QA。
 
 Session/Run/Context 已迁入 Runtime、SQLite 和 pi `AgentHarness`；旧裸 `Agent`、
 JSONL canonical owner、Main compaction/permission/plan/ask-user/channel/tools
