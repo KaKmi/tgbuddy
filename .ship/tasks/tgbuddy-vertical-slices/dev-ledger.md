@@ -477,3 +477,13 @@ D03 "child 取消与权限继承" — complete
   RED/GREEN: 6 项（原 4 + 权限继承 + 级联停止）
   Concerns: 权限请求「标明来源」由 child sessionId 在 pending 队列中区分；
     child 事件流仍走 child sessionId（D04 归组）
+
+D04 "子 Agent 折叠组 UI" — complete
+  Commits: （本 Slice）
+  Files: src/renderer/App.tsx（ToolResultMap.delegated）、
+    src/renderer/components/ToolCard.tsx（子智能体徽标）、tests/tool-delegated-state.test.ts
+  Produces: delegate_to_agent 结果卡带「子智能体」徽标（折叠组语义 = 现有可展开卡片 +
+    child 摘要正文），details.delegated 标识
+  RED/GREEN: 1 项（delegated 标记 + 摘要文本）
+  Concerns: child 完整消息在 child 会话内（可从侧栏进入），父对话只展示委派卡 + 摘要；
+    深折叠组（多层级树）不在第一版范围（docs/02 2.4 单层）

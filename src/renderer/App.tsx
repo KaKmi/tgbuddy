@@ -914,7 +914,13 @@ function groupSessions(sessions: SessionMeta[]): { title: string; items: Session
 /** toolCallId → 该次调用的结果。历史回放时用来给工具卡片定状态 */
 export type ToolResultMap = Map<
   string,
-  { isError: boolean; text: string; outputRef?: { hash: string; size: number; mime?: string } }
+  {
+    isError: boolean
+    text: string
+    outputRef?: { hash: string; size: number; mime?: string }
+    /** D04：delegate_to_agent 的 child 摘要，UI 收进「子智能体」折叠组 */
+    delegated?: boolean
+  }
 >
 
 /**
@@ -937,10 +943,12 @@ export function buildToolResultMap(messages: SessionMessage[]): ToolResultMap {
         ? (m.message.details as Record<string, unknown>)
         : undefined
     const outputRef = details?.outputRef
+    const delegated = details?.delegated === true
     map.set(m.message.toolCallId, {
       isError: m.message.isError,
       text,
       ...(isBlobRef(outputRef) ? { outputRef } : {}),
+      ...(delegated ? { delegated: true } : {}),
     })
   }
   return map

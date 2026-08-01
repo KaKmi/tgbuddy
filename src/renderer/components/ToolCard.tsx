@@ -91,6 +91,8 @@ export interface ToolCardProps {
     text: string
     /** A04：超长输出完整内容 ref（BlobStore），点击「查看完整输出」读取 */
     outputRef?: { hash: string; size: number; mime?: string }
+    /** D04：delegate_to_agent 结果，折叠组展示 child 摘要 */
+    delegated?: boolean
   }
   elapsedMs?: number
 }
@@ -134,6 +136,14 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
             >
               {name}
             </span>
+            {result?.delegated && (
+              <span
+                className="flex-none rounded px-1.5 py-0.5 text-[10.5px]"
+                style={{ background: 'rgba(176,162,224,.16)', color: '#b0a2e0' }}
+              >
+                子智能体
+              </span>
+            )}
 
             <span className="min-w-0 flex-1 truncate text-[13px]" style={{ color: '#dbdbe0' }}>
               {describe(name, args)}
