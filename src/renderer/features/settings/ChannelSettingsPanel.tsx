@@ -6,6 +6,7 @@ import type {
   ChannelSaveInput,
   ChannelTestResult,
 } from '../../../shared/contracts/channel.ts'
+import { ProviderBrandIcon } from './ProviderBrandIcon.tsx'
 import type { Profile, ProfileSaveInput } from '../../../shared/contracts/profile.ts'
 import type {
   ToolPermission,
@@ -440,12 +441,15 @@ export function ChannelSettingsPanel(props: ChannelSettingsPanelProps) {
                 className="flex flex-col gap-1 rounded-[10px] bg-[#17171a] px-3 py-2.5"
               >
                 <div className="flex items-center gap-3">
-                  <span
-                    className="h-[7px] w-[7px] flex-none rounded-full"
-                    style={{ background: channel.secretRef ? '#8fc6a5' : '#55555c' }}
-                  />
+                  <ProviderBrandIcon name={channel.name} baseUrl={channel.baseUrl} />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] text-[#e4e4e9]">{channel.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-[12.5px] text-[#e4e4e9]">{channel.name}</span>
+                      <span
+                        className="h-1.5 w-1.5 shrink-0 rounded-full"
+                        style={{ background: channel.secretRef ? '#8fc6a5' : '#777780' }}
+                      />
+                    </div>
                     <div className="truncate font-mono text-[11px] text-[#8a8a92]">
                       {channel.baseUrl}
                     </div>
