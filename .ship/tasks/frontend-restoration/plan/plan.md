@@ -36,11 +36,11 @@ UI Slice 复用现有 `window.tgbuddy` 和 Runtime 行为，不得为了对齐�
 
 **Interfaces:** `type ThemeName='light'|'dark'`; `readTheme(storage)`; `applyTheme(theme,root)`; `useTheme()`。
 
-- [ ] RED：空 storage 为 light，非法值回退，toggle/data-theme，fresh light，重启保持 dark。
-- [ ] Run: `bun test tests/theme-state.test.ts`; expected FAIL 缺少模块。
-- [ ] GREEN：移除 `index.html` 写死 `.dark`，映射设计稿 semantic token，接入 ThemeToggle。
-- [ ] Run: `bun test tests/theme-state.test.ts && bun run typecheck && bun run build && bunx playwright test tests/e2e/ui-theme.e2e.ts`。
-- [ ] Commit: `feat(ui): add persistent light and dark themes`。
+- [x] RED：空 storage 为 light，非法值回退，toggle/data-theme，fresh light，重启保持 dark。
+- [x] Run: `bun test tests/theme-state.test.ts`; expected FAIL 缺少模块。
+- [x] GREEN：移除 `index.html` 写死 `.dark`，映射设计稿 semantic token，接入 ThemeToggle。
+- [x] Run: `bun test tests/theme-state.test.ts && bun run typecheck && bun run build && bunx playwright test tests/e2e/ui-theme.e2e.ts`。
+- [x] Commit: `b22e3d9 feat(ui): 添加持久化明暗主题`。
 
 ### FR02：三栏 AppShell 与 Thread Header
 
