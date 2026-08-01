@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  extractBashOutputPath,
   projectArtifact,
   PRODUCING_TOOLS,
 } from '../../../src/runtime/artifacts/artifact-projector.ts'
@@ -43,7 +44,7 @@ describe('projectArtifact（A05）', () => {
     expect(project({ toolName: 'read' })).toBeUndefined()
     expect(project({ toolName: 'delete' })).toBeUndefined()
     expect(project({ toolName: 'bash' })).toBeUndefined()
-    expect(PRODUCING_TOOLS).toEqual(new Set(['write', 'edit']))
+    expect(PRODUCING_TOOLS).toEqual(new Set(['write', 'edit', 'bash']))
   })
 
   test('失败结果不投影', () => {
@@ -93,5 +94,37 @@ describe('ArtifactRepository（A05）', () => {
     repo.deleteSession('s1')
     expect(repo.bySession('s1')).toHaveLength(0)
     expect(repo.bySession('s2')).toHaveLength(1)
+  })
+})
+
+describe('extractBashOutputPath（A05 导出类工具）', () => {
+  test('重定向 `>` 提取输出路径，`2>` 排除', () => {
+    expect(extractBashOutputPath('node gen.js > report.docx')).toBe('report.docx')
+    expect(extractBashOutputPath('pandoc a.md -o out.pdf 2> err.log')).toBe('out.pdf')
+    expect(extractBashOutputPath('node gen.js > out.txt 2>&1')).toBe('out.txt')
+  })
+
+  test('`-o` / `--output` / `--output=` 提取', () => {
+    expect(extractBashOutputPath('pandoc a.md -o out.pdf')).toBe('out.pdf')
+    expect(extractBashOutputPath('soffice --convert-to docx a.md')).toBe('a.docx')
+    expect(extractBashOutputPath('tool --output=result.json')).toBe('result.json')
+  })
+
+  test('纯读命令 / stderr 重定向不产出', () => {
+    expect(extractBashOutputPath('git status')).toBeUndefined()
+    expect(extractBashOutputPath('node gen.js 2> err.log')).toBeUndefined()
+    expect(extractBashOutputPath('ls -la')).toBeUndefined()
+  })
+
+  test('bash 命令含输出路径时投影为 document 产物', () => {
+    const artifact = project({
+      toolName: 'bash',
+      args: { command: 'pandoc report.md -o report.pdf' },
+    })
+    expect(artifact).toMatchObject({
+      name: 'report.pdf',
+      kind: 'document',
+      mime: 'application/pdf',
+    })
   })
 })

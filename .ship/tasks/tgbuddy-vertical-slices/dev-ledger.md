@@ -526,4 +526,16 @@ M4–M6 探索式 QA（ship:qa）— complete
   Findings: 无功能性缺陷（两处初跑 FAIL 均为驱动检查方式问题：预览 DOM 探针取错节点、
     改标题后未刷新会话列表）；视觉细节留原型截图人工比对
   Concerns: 视觉比对清单（主窗口/结果区/设置页/计划审批卡 ↔ 原型场景）已写入报告，
-    需人工对照截图逐项确认灰阶/角标/边框透明度；原型截图脚本因原型 JS 较重超时，未产出
+   需人工对照截图逐项确认灰阶/角标/边框透明度；原型截图脚本因原型 JS 较重超时，未产出
+
+QA 后续修复：bash 导出文档未进结果区（用户实测）— complete
+  Commits: （本 Slice）
+  Results: 用户实测「生成的 doc 不在结果区」——根因是文档技能（docx/pdf/xlsx）走 bash
+    产出文件（pandoc/soffice/docx-js），而 A05 投影只认 write/edit
+  Fixes: `PRODUCING_TOOLS` 加入 bash；`extractBashOutputPath` 从命令提取输出路径
+    （`>`/`1>` 重定向、`-o`/`--output`/`--output=`、`--convert-to <fmt> <in>`、`--outdir`），
+    排除 `2>` stderr；投影为 document/file 产物
+  RED/GREEN: 新增 4 项 bash 提取测试（重定向/标志位/纯读命令不产出/bash 投影 document）；
+    QA 驱动新增「bash 导出文档出现在结果区」场景，12/12 通过；全量单测 354/354、E2E 22/22
+  Concerns: bash 产物推导是保守正则，`node -e "writeFileSync(...)"` 等脚本内写文件不会被识别
+    （需要时再扩展）；`> out.docx` 这类带空格的命令曾因正则漏掉 `>` 后空格而失败，已修

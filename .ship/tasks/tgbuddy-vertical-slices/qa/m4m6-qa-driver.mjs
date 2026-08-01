@@ -119,6 +119,19 @@ const server = createServer((req, res) => {
         }
         return
       }
+      if (prompt.includes('M4 导出')) {
+        if (lastMessage?.role === 'tool') {
+          await streamText(res, 'M4 导出完成')
+        } else {
+          streamToolCall(
+            res,
+            'bash',
+            { command: 'node -e "process.stdout.write(\'x\'.repeat(100))" > report.docx' },
+            'call_qa_export',
+          )
+        }
+        return
+      }
       await streamText(res, `QA 回复：${prompt}`)
     })().catch((error) => {
       if (!res.headersSent) {
@@ -332,6 +345,18 @@ await step('完全访问：写操作直接放行不询问', async () => {
   await page.getByText('M2 写入完成', { exact: true }).last().waitFor({ timeout: 15000 })
   const askCount = await page.getByText('请求执行 write').count()
   if (askCount !== 0) throw new Error('完全访问下仍询问')
+})
+
+await step('M4 回归：bash 导出文档出现在结果区', async () => {
+  await createSession(page)
+  await setBypassMode(page)
+  await send(page, 'M4 导出')
+  await page.getByText('M4 导出完成', { exact: true }).last().waitFor({ timeout: 15000 })
+  await page
+    .getByTestId('result-item')
+    .filter({ hasText: 'report.docx' })
+    .waitFor({ timeout: 8000 })
+  await shot(page, '08-bash-export-artifact')
 })
 
 // ══ 5. 设置页与布局证据 ═══════════════════════════════════════
