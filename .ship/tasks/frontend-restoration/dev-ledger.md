@@ -31,3 +31,11 @@ Story FR04: “Sidebar 品牌与 Workspace 收口” — complete
   Verification: RED 缺品牌和 mount-error 节点；`bun run check:architecture`；`bun run typecheck`；`bun run build`；Workspace 新旧 Electron E2E 4/4
   Review: 按用户快速路径跳过；只移动 Renderer owner，复用既有 Workspace IPC
   Concerns: 搜索、菜单、草稿保护在 FR05；Vite 主 chunk 752.09KB 警告为既有基线
+
+Story FR05: “Session 搜索、菜单与草稿保护” — complete
+  Commits: 7250290
+  Files: `src/renderer/App.tsx`, `src/renderer/features/session/SessionSidebar.tsx`, `src/renderer/features/session/SessionMenu.tsx`, `src/renderer/features/session/SessionActionDialog.tsx`, `src/renderer/features/session/session-view.ts`, `tests/session-view.test.ts`, `tests/e2e/ui-session-actions.e2e.ts`
+  Produces: `NavigationIntent`；`hasUnsavedDraft`；`filterSessions`；`groupSessions`；`SessionActionDialog`；三类导航 stay/discard 门卫
+  Verification: RED 缺 view 模块、原生弹窗和无草稿门卫；unit 3/3；`bun run check:architecture`；`bun run typecheck`；`bun run build`；Electron E2E 2/2
+  Review: 按用户快速路径跳过；Renderer 内状态与交互，无 IPC contract 变化
+  Concerns: 自动标题进入 FR05A；Vite 主 chunk 756.59KB 警告为既有基线

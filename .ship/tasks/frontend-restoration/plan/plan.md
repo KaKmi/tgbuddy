@@ -79,10 +79,10 @@ UI Slice 复用现有 `window.tgbuddy` 和 Runtime 行为，不得为了对齐�
 
 **Interfaces:** `hasUnsavedDraft(text,attachments)`、`groupSessions`、`SessionActionDialog`；`type NavigationIntent = {kind:'new-session'} | {kind:'switch-session';sessionId:string} | {kind:'switch-workspace';workspaceId:string}`；`requestNavigation(intent):void`。无草稿立即执行；正文非空白或有附件时打开确认；`stay` 不改 state/IPC，`discard` 清除草稿和附件后只执行一次 intent。
 
-- [ ] RED：unit 固定标题/摘要命中与不命中、置顶优先与 Today 分组、纯空白无草稿、任一附件有草稿；E2E 覆盖 Ctrl/Cmd+N、Popover Escape/焦点、产品内重命名/删除，以及三种 intent 的 stay/discard。
-- [ ] GREEN：移除 `window.prompt/confirm`；菜单/Dialog 可键盘操作；无假导出。
-- [ ] Run: `bun test tests/session-view.test.ts && bun run build && bunx playwright test tests/e2e/ui-session-actions.e2e.ts`。
-- [ ] Commit: `feat(ui): polish session navigation`。
+- [x] RED：unit 固定标题/摘要命中与不命中、置顶优先与 Today 分组、纯空白无草稿、任一附件有草稿；E2E 覆盖 Ctrl/Cmd+N、Popover Escape/焦点、产品内重命名/删除，以及三种 intent 的 stay/discard。
+- [x] GREEN：移除 `window.prompt/confirm`；菜单/Dialog 可键盘操作；无假导出。
+- [x] Run: `bun test tests/session-view.test.ts && bun run build && bunx playwright test tests/e2e/ui-session-actions.e2e.ts`。
+- [x] Commit: `7250290 feat(ui): polish session navigation`。
 
 ### FR05A：LLM Session Title 生成
 
