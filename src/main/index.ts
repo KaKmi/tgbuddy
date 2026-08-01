@@ -2,7 +2,7 @@
  * Electron 主进程入口。
  */
 
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import {
@@ -27,8 +27,8 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 600,
     show: false,
-    // 深色底，避免加载时白闪
-    backgroundColor: '#111111',
+    frame: false,
+    backgroundColor: '#efefec',
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -65,6 +65,7 @@ async function loadDevUrlWithRetry(win: BrowserWindow, attempts = 20): Promise<v
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null)
   application = await createApplication({
     getWindow: () => mainWindow,
     databasePath: join(app.getPath('userData'), 'tgbuddy.db'),

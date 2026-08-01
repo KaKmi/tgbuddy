@@ -130,6 +130,11 @@ export const IPC = {
 
   // Run 账本
   RUNS_LIST: 'runs:list',
+
+  // 自绘标题栏
+  WINDOW_MINIMIZE: 'window:minimize',
+  WINDOW_TOGGLE_MAXIMIZE: 'window:toggle-maximize',
+  WINDOW_CLOSE: 'window:close',
 } as const satisfies Record<string, keyof IpcCommandMap | keyof IpcEventMap>
 
 // ── 请求/响应类型 ─────────────────────────────────────────────────
@@ -230,6 +235,9 @@ export interface IpcCommandMap {
   'mcp:disconnect': IpcCommand<string, void>
   'mcp:status': IpcCommand<undefined, McpServerStatus[]>
   'runs:list': IpcCommand<string, RunRecord[]>
+  'window:minimize': IpcCommand<undefined, void>
+  'window:toggle-maximize': IpcCommand<undefined, void>
+  'window:close': IpcCommand<undefined, void>
 }
 
 export type IpcCommandName = keyof IpcCommandMap
@@ -362,6 +370,11 @@ export interface TgBuddyAPI {
     list(
       sessionId: IpcRequest<'runs:list'>,
     ): Promise<IpcResponse<'runs:list'>>
+  }
+  windowControls: {
+    minimize(): Promise<IpcResponse<'window:minimize'>>
+    toggleMaximize(): Promise<IpcResponse<'window:toggle-maximize'>>
+    close(): Promise<IpcResponse<'window:close'>>
   }
 }
 

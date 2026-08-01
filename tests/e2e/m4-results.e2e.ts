@@ -31,7 +31,7 @@ test('M4：附件选择 → chip → 发送后消息回显附件', async ({ tgbu
   await expect(page.getByTestId('attachment-chip')).toHaveCount(1)
 })
 
-test('M4：write 产物出现在结果区，可预览并「让 Agent 改这份」', async ({ tgbuddy }) => {
+test('M4：write 产物出现在结果区，可预览并用系统打开', async ({ tgbuddy }, testInfo) => {
   const page = tgbuddy.page
   await createSession(page)
   await send(page, 'M2 写入')
@@ -45,8 +45,8 @@ test('M4：write 产物出现在结果区，可预览并「让 Agent 改这份�
   await expect(item).toBeVisible()
   await item.click()
 
-  // 只读预览 + 让 Agent 改这份注入输入（不自动发送）
-  await expect(page.getByTestId('artifact-edit-request')).toBeVisible()
-  await page.getByTestId('artifact-edit-request').click()
-  await expect(page.getByPlaceholder(/给 Agent 下达任务/)).toHaveValue(/请修改这个文件：/)
+  await expect(page.getByTestId('artifact-preview-card')).toBeVisible()
+  await expect(page.getByTestId('artifact-open')).toBeVisible()
+  await expect(page.getByText('让 Agent 改这份', { exact: true })).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath('results-panel.png') })
 })

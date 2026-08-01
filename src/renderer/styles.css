@@ -53,6 +53,11 @@
     --popover: 0 0% 100%;
     --popover-foreground: 60 7% 8%;
 
+    --tool-card-bg: #fbfbf9;
+    --tool-card-ring: rgba(35, 35, 31, .11);
+    --tool-chip-bg: rgba(35, 35, 31, .06);
+    --tool-chip-text: #50504a;
+
     --radius: 0.5rem; /* 8px —— 原型里出现 32 次，是主导圆角 */
   }
 
@@ -98,6 +103,11 @@
     --card-foreground: 50 19% 94%;
     --popover: 60 4% 17%; /* #2c2c29 */
     --popover-foreground: 50 19% 94%;
+
+    --tool-card-bg: #252523;
+    --tool-card-ring: rgba(255, 255, 255, .07);
+    --tool-chip-bg: rgba(255, 255, 255, .065);
+    --tool-chip-text: #c3c3ca;
   }
 }
 
@@ -133,6 +143,16 @@
     color: hsl(var(--foreground));
     transition: background-color 160ms ease, color 160ms ease;
   }
+}
+
+.window-drag {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.window-no-drag,
+.window-no-drag * {
+  -webkit-app-region: no-drag;
 }
 
 html,

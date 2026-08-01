@@ -9,7 +9,6 @@ import { useState, type ReactNode } from 'react'
 import type { AttachmentRef } from '../../../shared/contracts/attachment.ts'
 import type { Channel, ChannelModel } from '../../../shared/contracts/channel.ts'
 import type { Profile } from '../../../shared/contracts/profile.ts'
-import type { RunUsageLedger } from '../../../shared/contracts/run-snapshot.ts'
 import type { ContextUsage } from '../../../shared/types/context.ts'
 import type { PermissionMode } from '../../../shared/types/permission.ts'
 import { AttachmentChipList } from '../../components/AttachmentChips.tsx'
@@ -33,7 +32,6 @@ export interface AgentComposerProps {
   channels: Channel[]
   profiles: Profile[]
   contextUsage?: ContextUsage
-  ledger?: RunUsageLedger
   value: string
   attachments: AttachmentRef[]
   running: boolean
@@ -99,7 +97,6 @@ export function AgentComposer(props: AgentComposerProps) {
               <ContextUsagePanel
                 sessionId={props.sessionId}
                 usage={props.contextUsage}
-                ledger={props.ledger}
                 disabled={props.running || props.compacting}
               />
             )}

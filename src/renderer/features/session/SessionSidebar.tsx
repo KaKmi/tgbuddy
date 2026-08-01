@@ -1,5 +1,5 @@
-import { HardDrive, Plus, Settings } from 'lucide-react'
-import { useState } from 'react'
+import { Activity, Folder, HardDrive, Plus, Settings } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import type { SessionMeta } from '../../../shared/contracts/session.ts'
 import type {
   Workspace,
@@ -44,7 +44,34 @@ export function SessionSidebar({
 }: SessionSidebarProps) {
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [sessionQuery, setSessionQuery] = useState('')
+  const [preview, setPreview] = useState<{
+    session: SessionMeta
+    left: number
+    top: number
+  }>()
+  const previewTimer = useRef<ReturnType<typeof setTimeout>>()
   const filteredSessions = filterSessions(sessions, sessionQuery)
+
+  useEffect(() => () => {
+    if (previewTimer.current) clearTimeout(previewTimer.current)
+  }, [])
+
+  function schedulePreview(session: SessionMeta, element: HTMLElement): void {
+    if (previewTimer.current) clearTimeout(previewTimer.current)
+    const rect = element.getBoundingClientRect()
+    previewTimer.current = setTimeout(() => {
+      setPreview({
+        session,
+        left: rect.right + 8,
+        top: Math.min(rect.top, window.innerHeight - 150),
+      })
+    }, 320)
+  }
+
+  function clearPreview(): void {
+    if (previewTimer.current) clearTimeout(previewTimer.current)
+    setPreview(undefined)
+  }
 
   return (
     <aside
@@ -157,7 +184,12 @@ export function SessionSidebar({
               {group.title}
             </div>
             {group.items.map((session) => (
-              <div key={session.id} className="group relative mb-0.5 flex items-center">
+              <div
+                key={session.id}
+                className="group relative mb-0.5 flex items-center"
+                onMouseEnter={(event) => schedulePreview(session, event.currentTarget)}
+                onMouseLeave={clearPreview}
+              >
                 <button
                   type="button"
                   data-testid="session-item"
@@ -199,6 +231,31 @@ export function SessionSidebar({
         )}
       </div>
 
+      {preview && (
+        <div
+          data-testid="session-preview"
+          className="pointer-events-none fixed z-[55] w-[270px] rounded-xl border bg-popover p-3 text-popover-foreground shadow-[0_18px_48px_rgba(0,0,0,.22)]"
+          style={{ left: preview.left, top: preview.top }}
+        >
+          <div className="flex items-baseline gap-3">
+            <strong className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+              {preview.session.title}
+            </strong>
+            <span className="shrink-0 text-[10.5px] text-muted-foreground">
+              {relativeTime(preview.session.updatedAt)}
+            </span>
+          </div>
+          <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <Folder size={14} strokeWidth={1.7} />
+            <span className="truncate">{workspaceName(preview.session, workspaces)}</span>
+          </div>
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <Activity size={14} strokeWidth={1.7} />
+            <span className="truncate">{sessionSubtitle(preview.session)}</span>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-1 border-t px-2 py-2">
         <div
           data-testid="local-mode"
@@ -220,6 +277,11 @@ export function SessionSidebar({
       </div>
     </aside>
   )
+}
+
+function workspaceName(session: SessionMeta, workspaces: Workspace[]): string {
+  const workspace = workspaces.find((item) => item.id === session.workspaceId)
+  return workspace?.name ?? '当前工作区'
 }
 
 function sessionSubtitle(session: SessionMeta): string {

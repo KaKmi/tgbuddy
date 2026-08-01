@@ -13,10 +13,6 @@ import { AttachmentChipList } from './components/AttachmentChips.tsx'
 import { ResultsPanel } from './features/results/ResultsPanel.tsx'
 import { SessionSamples } from './features/session/SessionSamples.tsx'
 import {
-  injectEditIntent,
-  stripEditIntent,
-} from './features/results/edit-draft.ts'
-import {
   currentMessagesAtom,
   currentSessionIdAtom,
   currentStreamAtom,
@@ -35,7 +31,6 @@ import {
   channelsAtom,
   profilesAtom,
 } from './atoms/agent.ts'
-import type { RunUsageLedger } from '../shared/contracts/run-snapshot.ts'
 import { roleOf, type SessionMessage } from '../shared/types/message.ts'
 import type { SessionMeta } from '../shared/ipc.ts'
 import type { WorkspaceMountResolution } from '../shared/ipc.ts'
@@ -80,7 +75,6 @@ export function App() {
   const [profiles, setProfiles] = useAtom(profilesAtom)
   const setMessagesMap = useSetAtom(messagesBySessionAtom)
   const [queuedPrompts, setQueuedPrompts] = useAtom(queuedPromptsAtom)
-  const [runLedger, setRunLedger] = useState<RunUsageLedger>()
   const messages = useAtomValue(currentMessagesAtom)
   const stream = useAtomValue(currentStreamAtom)
   const permissions = useAtomValue(currentPermissionsAtom)
@@ -109,8 +103,6 @@ export function App() {
   const [pendingNavigation, setPendingNavigation] = useState<NavigationIntent>()
   const [navigationBusy, setNavigationBusy] = useState(false)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
-  // A08：输入区已注入的「让 Agent 改这份」引用（切换会话时清理错误引用）
-  const [editRef, setEditRef] = useState<{ sessionId: string; path: string }>()
   const resultsToggleRef = useRef<HTMLButtonElement>(null)
   const queuedPrompt = currentId ? queuedPrompts.get(currentId) : undefined
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId)
@@ -144,20 +136,6 @@ export function App() {
   useEffect(() => {
     if (currentId) window.localStorage.setItem('tgbuddy-last-session', currentId)
   }, [currentId])
-
-  // C12：会话最近一次 Run 的 token/cost 账本（Run 结束后刷新）。
-  useEffect(() => {
-    if (!currentId) {
-      setRunLedger(undefined)
-      return
-    }
-    void window.tgbuddy.runs.list(currentId).then((records) => {
-      const settled = records.find(
-        (record) => record.status !== 'running' && record.snapshot?.usage,
-      )
-      setRunLedger(settled?.snapshot?.usage)
-    })
-  }, [currentId, stream.running, setRunLedger])
 
   // C02/C04：渠道与 Profile 设置镜像，输入区模型 chip 和设置页共用。
   useEffect(() => {
@@ -250,7 +228,6 @@ export function App() {
     setNavigationBusy(true)
     setInput('')
     setAttachmentDrafts([])
-    setEditRef(undefined)
     try {
       await Promise.all(drafts.map(async (draft) => {
         try {
@@ -349,21 +326,6 @@ export function App() {
       console.error('[附件] discard 失败（交给 A09 引用计数清理）：', error)
     }
   }
-
-  /** A08：把产物引用 + 意图注入输入区，不自动发送 */
-  function requestArtifactEdit(artifact: { path?: string }) {
-    const path = artifact.path
-    if (!currentId || !path) return
-    setInput((current) => injectEditIntent(current, path))
-    setEditRef({ sessionId: currentId, path })
-  }
-
-  // A08：切换会话后清理不属于当前会话的注入引用，避免发错目标
-  useEffect(() => {
-    if (!editRef || editRef.sessionId === currentId) return
-    setInput((current) => stripEditIntent(current, editRef.path))
-    setEditRef(undefined)
-  }, [currentId, editRef])
 
   async function editAndResend(messageId: string, text: string) {
     if (!currentId || stream.running || stream.compaction) return
@@ -595,7 +557,6 @@ export function App() {
           channels={channels}
           profiles={profiles}
           contextUsage={currentSession?.contextUsage}
-          ledger={runLedger}
           value={input}
           attachments={attachmentDrafts.map((draft) => draft.ref)}
           running={stream.running}
@@ -640,7 +601,6 @@ export function App() {
       {/* ── 结果区（A06：产物列表，时间倒序 + 分组 + 类型筛选）────────── */}
       <ResultsPanel
         sessionId={currentId ?? undefined}
-        onEditRequest={requestArtifactEdit}
         active={stream.running}
         open={resultsOpen}
         onClose={closeResults}

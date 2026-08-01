@@ -117,6 +117,11 @@ const api = {
   runs: {
     list: (sessionId) => ipcRenderer.invoke(IPC.RUNS_LIST, sessionId),
   },
+  windowControls: {
+    minimize: () => ipcRenderer.invoke(IPC.WINDOW_MINIMIZE),
+    toggleMaximize: () => ipcRenderer.invoke(IPC.WINDOW_TOGGLE_MAXIMIZE),
+    close: () => ipcRenderer.invoke(IPC.WINDOW_CLOSE),
+  },
 } satisfies TgBuddyAPI
 
 contextBridge.exposeInMainWorld('tgbuddy', api)

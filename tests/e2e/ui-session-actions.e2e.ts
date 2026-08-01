@@ -26,6 +26,20 @@ test('UI：会话菜单使用产品内重命名/删除，并支持 Escape 返回
   await expect(page.getByTestId('session-item')).toHaveCount(0)
 })
 
+test('UI：悬停会话显示 Codex 式工作区预览', async ({ tgbuddy }) => {
+  const page = tgbuddy.page
+  await page.getByRole('button', { name: '+ 新会话' }).click()
+
+  await page.getByTestId('session-item').first().hover()
+  const preview = page.getByTestId('session-preview')
+  await expect(preview).toBeVisible()
+  await expect(preview).toContainText('未开始')
+  await expect(preview).toContainText(/default|proma-mini/)
+
+  await page.getByTestId('session-search').hover()
+  await expect(preview).toHaveCount(0)
+})
+
 test('UI：三种导航都保护草稿，留下不动、丢弃后只执行一次', async ({ tgbuddy }) => {
   const page = tgbuddy.page
   const workspacePath = await mkdtemp(join(tmpdir(), 'tgbuddy-draft-nav-'))

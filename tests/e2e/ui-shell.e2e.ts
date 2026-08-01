@@ -6,6 +6,7 @@ test('UI：三栏骨架、会话标题与结果区开关保持轻量一致', asy
   await page.getByRole('button', { name: '+ 新会话' }).click()
 
   const shell = page.getByTestId('app-shell')
+  const toolbar = page.getByTestId('window-toolbar')
   const sidebar = page.getByTestId('app-sidebar')
   const header = page.getByTestId('conversation-header')
   const title = page.getByTestId('conversation-title')
@@ -13,6 +14,9 @@ test('UI：三栏骨架、会话标题与结果区开关保持轻量一致', asy
   const toggle = page.getByTestId('results-toggle')
 
   await expect(shell).toBeVisible()
+  await expect(toolbar).toBeVisible()
+  await expect(page.getByRole('button', { name: '最小化' })).toBeVisible()
+  expect(await toolbar.evaluate((element) => element.getBoundingClientRect().height)).toBe(36)
   await expect(header).toBeVisible()
   await expect(title).not.toHaveText('')
   await expect(results).toBeVisible()
@@ -20,7 +24,7 @@ test('UI：三栏骨架、会话标题与结果区开关保持轻量一致', asy
 
   expect(await sidebar.evaluate((element) => element.getBoundingClientRect().width)).toBe(252)
   expect(await header.evaluate((element) => element.getBoundingClientRect().height)).toBe(48)
-  expect(await results.evaluate((element) => element.getBoundingClientRect().width)).toBe(356)
+  expect(await results.evaluate((element) => element.getBoundingClientRect().width)).toBe(396)
 
   await toggle.click()
   await expect(results).toBeHidden()

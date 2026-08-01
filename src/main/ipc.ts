@@ -391,5 +391,18 @@ export function registerIpc(
     ): IpcResponse<'runs:list'> => agentRuntime.runs.list(sessionId),
   )
 
+  ipcMain.handle(IPC.WINDOW_MINIMIZE, (): void => {
+    getWindow()?.minimize()
+  })
+  ipcMain.handle(IPC.WINDOW_TOGGLE_MAXIMIZE, (): void => {
+    const win = getWindow()
+    if (!win) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+  ipcMain.handle(IPC.WINDOW_CLOSE, (): void => {
+    getWindow()?.close()
+  })
+
   return unsubscribe
 }

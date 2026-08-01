@@ -184,13 +184,15 @@ test('C09/C10/C11：MCP 连接、工具发现与真实调用闭环', async ({ tg
   await expect(page.getByText('M3 MCP 完成', { exact: true })).toBeVisible()
 })
 
-test('C12：Run 结束后上下文面板展示最近一次运行账本', async ({ tgbuddy }) => {
+test('上下文面板只展示当前窗口用量，不展示累计账本和 cost', async ({ tgbuddy }) => {
   const page = tgbuddy.page
   await createSession(page)
   await send(page, 'M3 账本')
   await expect(page.getByText(/E2E 回复：M3 账本/)).toBeVisible()
 
   await page.getByRole('button', { name: '查看上下文用量' }).click()
-  await expect(page.getByText('最近一次运行账本', { exact: true })).toBeVisible()
-  await expect(page.getByText(/\$\d+\.\d{4}/).first()).toBeVisible()
+  const panel = page.getByTestId('context-usage-popover')
+  await expect(panel.getByText(/已使用 \d/)).toBeVisible()
+  await expect(panel.getByText('最近一次运行账本', { exact: true })).toHaveCount(0)
+  await expect(panel.getByText(/成本|\$\d/)).toHaveCount(0)
 })

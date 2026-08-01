@@ -50,8 +50,8 @@ const ST = {
   success: {
     color: '#7f8b98', // ★ 灰蓝，不是绿 —— 成功是常态，不该抢注意力
     bar: 'transparent',
-    ring: 'rgba(255,255,255,.05)',
-    bg: '#17171a',
+    ring: 'var(--tool-card-ring)',
+    bg: 'var(--tool-card-bg)',
     badge: null,
     badgeBg: '',
   },
@@ -67,16 +67,16 @@ const ST = {
   denied: {
     color: '#8a8a92',
     bar: '#55555c',
-    ring: 'rgba(255,255,255,.05)',
-    bg: '#17171a',
+    ring: 'var(--tool-card-ring)',
+    bg: 'var(--tool-card-bg)',
     badge: '已拒绝',
     badgeBg: 'rgba(255,255,255,.05)',
   },
   unknown: {
     color: '#8a8a92',
     bar: '#55555c',
-    ring: 'rgba(255,255,255,.05)',
-    bg: '#17171a',
+    ring: 'var(--tool-card-ring)',
+    bg: 'var(--tool-card-bg)',
     badge: '未完成',
     badgeBg: 'rgba(255,255,255,.05)',
   },
@@ -121,7 +121,7 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
           <button
             type="button"
             onClick={() => setOpen(!open)}
-            className="flex w-full cursor-pointer items-center gap-[9px] px-3 py-[9px] text-left transition-colors hover:bg-white/[.025]"
+            className="flex w-full cursor-pointer items-center gap-[9px] px-3 py-[9px] text-left transition-colors hover:bg-foreground/[.035]"
           >
             <span
               className="flex h-[18px] w-[18px] flex-none items-center justify-center"
@@ -132,7 +132,7 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
 
             <span
               className="flex-none rounded-[5px] px-[7px] py-0.5 font-mono text-[11.5px]"
-              style={{ background: 'rgba(255,255,255,.055)', color: '#c3c3ca' }}
+              style={{ background: 'var(--tool-chip-bg)', color: 'var(--tool-chip-text)' }}
             >
               {name}
             </span>
@@ -145,7 +145,7 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
               </span>
             )}
 
-            <span className="min-w-0 flex-1 truncate text-[13px]" style={{ color: '#dbdbe0' }}>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-foreground/85">
               {describe(name, args)}
             </span>
 

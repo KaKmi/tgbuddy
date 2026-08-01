@@ -54,7 +54,9 @@ export const Response = memo(function Response({
         table: { copy: true, download: false, fullscreen: false },
       }}
       className={cn(
-        'prose prose-sm prose-invert max-w-none',
+        'prose prose-sm max-w-none text-foreground',
+        'prose-headings:text-foreground prose-p:text-foreground/90 prose-li:text-foreground/90',
+        'prose-strong:text-foreground prose-blockquote:text-muted-foreground',
         // 收紧间距 —— prose 的默认值是给长文排版的，对话里太松
         'prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-headings:mt-4 prose-headings:mb-2',
 
