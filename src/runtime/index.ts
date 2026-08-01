@@ -77,6 +77,11 @@ export {
   type DelegationPolicyContext,
 } from './delegation/delegation-policy.ts'
 export {
+  createDelegationService,
+  type DelegationService,
+  type CreateDelegationServiceOptions,
+} from './delegation/delegation-service.ts'
+export {
   MemoryAttachmentRepository,
   type AttachmentRepository,
 } from './attachments/attachment-repository.ts'

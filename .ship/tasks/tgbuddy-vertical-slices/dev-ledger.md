@@ -450,3 +450,17 @@ D01 "Run lineage 与共享预算" — complete
   RED/GREEN: 3 项（放行/child 上限/token 预算）
   Concerns: 深度 ≤1 由「child 不加载 delegate 工具」在 D02 注入时保证；
     两条 RunRecord 类型（run.ts 遗留 / run-snapshot.ts 持久化）——lineage 加在持久化侧
+
+D02 "同步 child run 与结果回传" — complete
+  Commits: （本 Slice）
+  Files: src/kernel/pi/pi-delegate.ts、src/runtime/delegation/delegation-service.ts、
+    src/runtime/runs/agent-engine.ts（AgentInvocation.lineage）、
+    src/main/bootstrap/create-application.ts（delegationRef + tools 注入门控）、
+    create-legacy-runtime.ts（服务装配）、src/runtime/index.ts、src/kernel/pi/index.ts、
+    tests/unit/runtime/delegation-service.test.ts
+  Produces: `delegate_to_agent` 工具（{task} → 同步等待 child 摘要）、`createDelegationService`
+    （策略校验 → child 会话 → coordinator.start(lineage) → 摘要收集）、child 不加载 delegate 工具
+  RED/GREEN: 4 项（成功摘要+lineage/上限拒绝/会话创建失败/无输出）
+  Concerns: child 会话用 `sessions.create({title:'子任务'})`（当前工作区）；
+    child 事件走 child sessionId 的帧（D04 归组展示）；进程内计数 childrenByRoot，
+    重启后运行中的 child 本来就随父中止

@@ -53,6 +53,7 @@ import {
   buildMcpTool,
   buildPlanModeTools,
   buildSkillTool,
+  buildDelegateTool,
   createPiAgentEngine,
   createPiContextCompactor,
   createPiProviderCatalog,
@@ -173,6 +174,8 @@ export async function createApplication(
   const skillLoader = createFsSkillLoader()
   // C05：内置工具统一注册，Run 启动按 snapshot 冻结启用集合。
   const toolRegistry = createBuiltinToolRegistry()
+  // D02：delegate 服务由 createLegacyRuntime 注入（它持有 coordinator/sessions/runs）
+  const delegationRef: { service?: import('../../runtime/delegation/delegation-service.ts').DelegationService } = {}
   // C09：MCP 服务配置落 SQLite，连接状态由 Runtime 持有；
   // stdio/http 传输由 SDK adapter（Main 侧能力）实现；
   // C10：发现的工具注册进统一 ToolRegistry。
@@ -362,6 +365,22 @@ export async function createApplication(
             frozen.map((descriptor) => descriptor.name),
           )
           const tools: AgentTool[] = []
+          // D02：child run 不加载 delegate 工具（深度 ≤1 由注入门控保证）；
+          // 钩子绑定当前 invocation 的 session/workspace 供子任务使用。
+          if (!invocation.lineage && delegationRef.service) {
+            tools.push(
+              buildDelegateTool({
+                delegate: (task, toolCallId, signal) =>
+                  delegationRef.service!.delegate({
+                    parentSessionId: invocation.sessionId,
+                    workspaceId: invocation.workspaceId,
+                    task,
+                    parentToolCallId: toolCallId,
+                    signal,
+                  }),
+              }),
+            )
+          }
           // 基础六工具：只在 snapshot 启用时保留，顺序稳定。
           for (const tool of buildBuiltinTools(invocation.cwd, {
             env,
@@ -471,6 +490,7 @@ export async function createApplication(
       skills,
       mcp,
       runs,
+      delegationRef,
       createRunId: createId,
       toolRegistry,
       dispose: () => createdMessageStore.dispose(),

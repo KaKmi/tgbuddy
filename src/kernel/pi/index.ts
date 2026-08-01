@@ -17,6 +17,10 @@ export {
   type AskUserHooks,
 } from './pi-ask-user.ts'
 export {
+  buildDelegateTool,
+  type DelegateHooks,
+} from './pi-delegate.ts'
+export {
   createSandboxedEnv,
   PiRunExecutionEnv,
   PiRunExecutionEnvFactory,

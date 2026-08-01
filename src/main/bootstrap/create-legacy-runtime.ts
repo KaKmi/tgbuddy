@@ -24,6 +24,7 @@ import {
   type RunRepository,
   type ArtifactRepository,
   type BlobCleanup,
+  type DelegationService,
   mountFailureMessage,
   resolveModelSelection,
   type SessionCommands,
@@ -34,6 +35,7 @@ import {
   type ToolRegistry,
   type WorkspaceCommands,
 } from '../../runtime/index.ts'
+import { createDelegationService } from '../../runtime/index.ts'
 import { formatSkillsSystemPrompt } from '../../kernel/pi/index.ts'
 import type { PermissionMode } from '../../shared/contracts/permission.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
@@ -73,6 +75,8 @@ export interface CreateLegacyRuntimeOptions {
   artifacts?: ArtifactRepository
   /** A09：会话删除后清理无引用 Blob */
   blobCleanup?: BlobCleanup
+  /** D02：delegate 服务注入位（engine tools 闭包经此引用读取） */
+  delegationRef?: { service?: DelegationService }
   createRunId?(): string
   /** C12：工具注册表快照在 Run 启动时冻结 */
   toolRegistry: ToolRegistry
@@ -133,6 +137,15 @@ export function createLegacyRuntime(
       },
     },
   })
+  if (options.delegationRef) {
+    options.delegationRef.service = createDelegationService({
+      sessions: options.sessions,
+      coordinator: runs,
+      runs: options.runs,
+      createId: options.createRunId ?? (() => `child-${Date.now()}`),
+      now: Date.now,
+    })
+  }
   return createAgentRuntime({
     workspaces: options.workspaces,
     sessions: options.blobCleanup
@@ -342,6 +355,7 @@ async function createAgentInvocation(
     modelId,
     skills: enabledSkills,
     tools: frozenTools,
+    ...(input.lineage ? { lineage: input.lineage } : {}),
     ...(profileSnapshot ? { profile: profileSnapshot } : {}),
     systemPrompt:
       selection?.systemPrompt
