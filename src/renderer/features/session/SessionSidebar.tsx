@@ -1,4 +1,4 @@
-import { Activity, Folder, HardDrive, Pin, Plus, Search, Settings } from 'lucide-react'
+import { Activity, Folder, HardDrive, Plus, Search, Settings } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { SessionMeta } from '../../../shared/contracts/session.ts'
 import type {
@@ -219,9 +219,6 @@ export function SessionSidebar({
                     <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                       {session.title}
                     </span>
-                    {session.pinned && (
-                      <Pin className="h-[11px] w-[11px] shrink-0 text-muted-foreground" strokeWidth={1.8} />
-                    )}
                     <span className="shrink-0 text-[10.5px] text-muted-foreground transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
                       {relativeTime(session.updatedAt)}
                     </span>
