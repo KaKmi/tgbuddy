@@ -5,7 +5,10 @@ import {
   emptyStreamState,
   type LocalEvent,
 } from '../src/renderer/atoms/agent.ts'
-import { previewToolText } from '../src/renderer/components/ToolCard.tsx'
+import {
+  describeToolNonSuccess,
+  previewToolText,
+} from '../src/renderer/components/ToolCard.tsx'
 import {
   createToolRunningTimers,
 } from '../src/renderer/hooks/useGlobalAgentListeners.ts'
@@ -16,6 +19,40 @@ function wait(milliseconds: number): Promise<void> {
 }
 
 describe('工具调用四态', () => {
+  test('计划门禁、权限拒绝、目录参数错误和执行失败不会被合并为同一 error', () => {
+    const started = applyAgentEvent(emptyStreamState(), {
+      type: 'tool_start',
+      toolCallId: 'call-reason',
+      toolName: 'read',
+      args: { path: 'docs' },
+    })
+    const ended = applyAgentEvent(started, {
+      type: 'tool_end',
+      toolCallId: 'call-reason',
+      isError: true,
+      reason: {
+        kind: 'invalid_invocation',
+        code: 'directory_requires_list',
+        repairHint: '请改用 glob/list',
+      },
+    })
+
+    expect(ended.toolActivities[0]?.reason).toEqual({
+      kind: 'invalid_invocation',
+      code: 'directory_requires_list',
+      repairHint: '请改用 glob/list',
+    })
+    expect(ended.toolActivities[0]?.status).toBe('error')
+    expect(describeToolNonSuccess({ kind: 'plan_gate', code: 'plan_required' }).title)
+      .toBe('等待计划批准')
+    expect(describeToolNonSuccess({ kind: 'permission', code: 'denied' }).title)
+      .toBe('权限已拒绝')
+    expect(describeToolNonSuccess({ kind: 'invalid_invocation', code: 'bad_args' }).title)
+      .toBe('调用参数错误')
+    expect(describeToolNonSuccess({ kind: 'execution', code: 'failed', retryable: false }).title)
+      .toBe('执行失败')
+  })
+
   test('tool start、running、success/error 和停止后交回历史状态', () => {
     const started = applyAgentEvent(emptyStreamState(), {
       type: 'tool_start',

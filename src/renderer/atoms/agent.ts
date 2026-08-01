@@ -17,6 +17,7 @@ import type {
   PlanRequest,
 } from '../../shared/types/permission.ts'
 import type { MarkerKind } from '../components/SystemMarker.tsx'
+import type { ToolNonSuccessReason } from '../../shared/contracts/permission.ts'
 
 export interface ToolActivity {
   toolCallId: string
@@ -35,6 +36,8 @@ export interface ToolActivity {
   elapsedMs?: number
   /** 实时结果预览；完整内容在落盘的 toolResult 消息中。 */
   result?: { isError: boolean; text: string }
+  /** 结构化非成功原因；Renderer 只展示，不据此外的错误文本改变权限状态。 */
+  reason?: ToolNonSuccessReason
 }
 
 export interface StreamState {
@@ -389,7 +392,11 @@ export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEven
         ...prev,
         toolActivities: prev.toolActivities.map((t) =>
           t.toolCallId === event.toolCallId && t.status === 'awaiting_permission'
-            ? { ...t, status: 'denied' as const }
+            ? {
+                ...t,
+                status: 'denied' as const,
+                reason: { kind: 'permission', code: 'denied' as const },
+              }
             : t,
         ),
       }
@@ -405,6 +412,7 @@ export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEven
                 ...t,
                 status: event.isError ? ('error' as const) : ('success' as const),
                 elapsedMs: Date.now() - t.startedAt,
+                ...(event.reason ? { reason: event.reason } : {}),
                 ...(event.output
                   ? {
                       result: {

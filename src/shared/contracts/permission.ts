@@ -56,6 +56,17 @@ export interface PermissionRule {
 /** 危险等级。决定 UI 用 inline 卡片还是升级为模态 */
 export type RiskLevel = 'low' | 'medium' | 'high'
 
+/**
+ * Tool 没有成功时的结构化原因。
+ *
+ * 该字段只解释已经发生的结果，不能由 Renderer 根据错误文本反向推导权限决策。
+ */
+export type ToolNonSuccessReason =
+  | { kind: 'plan_gate'; code: 'plan_required' | 'plan_revision_required' }
+  | { kind: 'permission'; code: 'denied' | 'forbidden' | 'approval_cancelled' }
+  | { kind: 'invalid_invocation'; code: string; repairHint?: string }
+  | { kind: 'execution'; code: string; retryable: boolean }
+
 export interface PermissionRequest {
   requestId: string
   sessionId: string

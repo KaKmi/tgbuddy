@@ -22,6 +22,7 @@ import type {
 } from '../../runtime/runs/agent-engine.ts'
 import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
 import type { BlobRef } from '../../shared/contracts/blob.ts'
+import type { ToolNonSuccessReason } from '../../shared/contracts/permission.ts'
 import { preparePromptWithAttachments } from './pi-attachment-content.ts'
 import { prepareToolOutputPreview } from './pi-tool-output.ts'
 import type {
@@ -469,12 +470,16 @@ export function piEventToAgentEvent(
     case 'tool_execution_end': {
       const details = extractDetails(event.result)
       const output = extractToolOutput(event.result)
+      const reason = event.isError
+        ? classifyToolNonSuccess(output)
+        : undefined
       return {
         type: 'tool_end',
         toolCallId: event.toolCallId,
         isError: event.isError,
         ...(output ? { output } : {}),
         ...(details ? { details } : {}),
+        ...(reason ? { reason } : {}),
       }
     }
 
@@ -496,6 +501,22 @@ export function piEventToAgentEvent(
 
     default:
       return null
+  }
+}
+
+/** pi 只兼容映射明确可识别的目录读取误用，其它失败保持执行失败。 */
+function classifyToolNonSuccess(output: string | undefined): ToolNonSuccessReason {
+  if (output && /EISDIR|illegal operation on a directory/i.test(output)) {
+    return {
+      kind: 'invalid_invocation',
+      code: 'directory_requires_list',
+      repairHint: '请改用 glob 或 list',
+    }
+  }
+  return {
+    kind: 'execution',
+    code: 'tool_execution_failed',
+    retryable: false,
   }
 }
 

@@ -20,6 +20,7 @@
 import { Check, ChevronRight, CircleSlash, Loader2, TriangleAlert, X } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../lib/utils.ts'
+import type { ToolNonSuccessReason } from '../../shared/contracts/permission.ts'
 
 export type ToolStatus =
   | 'awaiting_permission'
@@ -95,14 +96,16 @@ export interface ToolCardProps {
     delegated?: boolean
   }
   elapsedMs?: number
+  reason?: ToolNonSuccessReason
 }
 
-export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProps) {
+export function ToolCard({ name, args, status, result, elapsedMs, reason }: ToolCardProps) {
   // 失败默认展开 —— 用户需要立刻看到原因（docs/06 决定 2）
   const [open, setOpen] = useState(status === 'error')
   const [fullOutput, setFullOutput] = useState<string>()
   const [loadingOutput, setLoadingOutput] = useState(false)
   const s = ST[status]
+  const reasonDescription = reason ? describeToolNonSuccess(reason) : undefined
 
   return (
     <div
@@ -148,12 +151,12 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
               {describe(name, args)}
             </span>
 
-            {s.badge && (
+            {(reasonDescription?.title ?? s.badge) && (
               <span
                 className="flex-none rounded px-1.5 py-0.5 text-[11px]"
                 style={{ background: s.badgeBg, color: s.color }}
               >
-                {s.badge}
+                {reasonDescription?.title ?? s.badge}
               </span>
             )}
 
@@ -185,6 +188,14 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
                   >
                     {previewToolText(result.text)}
                   </pre>
+                </Field>
+              )}
+              {reasonDescription && (
+                <Field label="原因">
+                  <div className="rounded-lg bg-muted px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    <div className="font-medium text-foreground/80">{reasonDescription.title}</div>
+                    {reasonDescription.hint && <div className="mt-1">{reasonDescription.hint}</div>}
+                  </div>
                 </Field>
               )}
               {result?.outputRef && (
@@ -227,6 +238,30 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
       </div>
     </div>
   )
+}
+
+export interface ToolNonSuccessDescription {
+  title: '等待计划批准' | '权限已拒绝' | '调用参数错误' | '执行失败'
+  hint?: string
+}
+
+/** 将结构化原因翻译成 UI 文案；这里绝不解析原始错误文本。 */
+export function describeToolNonSuccess(
+  reason: ToolNonSuccessReason,
+): ToolNonSuccessDescription {
+  switch (reason.kind) {
+    case 'plan_gate':
+      return { title: '等待计划批准' }
+    case 'permission':
+      return { title: '权限已拒绝' }
+    case 'invalid_invocation':
+      return {
+        title: '调用参数错误',
+        ...(reason.repairHint ? { hint: reason.repairHint } : {}),
+      }
+    case 'execution':
+      return { title: '执行失败' }
+  }
 }
 
 /** K11 只展示八行预览；完整输出在 A04 接入 Blob 后提供打开入口。 */

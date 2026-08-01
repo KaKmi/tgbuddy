@@ -492,6 +492,7 @@ export function App() {
                   args={t.args}
                   status={t.status}
                   {...(t.result ? { result: t.result } : {})}
+                  {...(t.reason ? { reason: t.reason } : {})}
                   {...(t.elapsedMs !== undefined ? { elapsedMs: t.elapsedMs } : {})}
                 />
               ))}
