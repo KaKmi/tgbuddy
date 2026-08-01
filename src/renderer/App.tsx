@@ -693,6 +693,7 @@ export function App() {
       <ResultsPanel
         sessionId={currentId ?? undefined}
         onEditRequest={requestArtifactEdit}
+        active={stream.running}
       />
     </div>
   )
@@ -1042,6 +1043,9 @@ function MessageView({
       typeof inner.content === 'string'
         ? inner.content
         : inner.content.map((c) => (c.type === 'text' ? c.text : '')).join('')
+    // A03 的文本附件块由 chips 展示，气泡里剥掉避免重复显示
+    const displayText =
+      text.replace(/\[附件 [^\]]+\][\s\S]*?\[\/附件\]/g, '').trim() || text
     if (editing) {
       const submit = async (): Promise<void> => {
         const next = draft.trim()
@@ -1104,7 +1108,7 @@ function MessageView({
           <AttachmentChipList attachments={message.attachments} />
         )}
         <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-card px-4 py-2.5 text-sm leading-relaxed">
-          {text}
+          {displayText}
         </div>
         {canEdit && (
           <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">

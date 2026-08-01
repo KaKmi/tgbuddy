@@ -445,6 +445,9 @@ export function piEventToAgentEvent(
           id: persisted.id,
           createdAt: persisted.createdAt,
           message: persisted.message,
+          ...(persisted.attachments && persisted.attachments.length > 0
+            ? { attachments: persisted.attachments }
+            : {}),
         },
       }
 

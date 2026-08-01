@@ -14,6 +14,7 @@ export function AttachmentChipList({
       {attachments.map((attachment) => (
         <span
           key={attachment.id}
+          data-testid="attachment-chip"
           className="flex items-center gap-1.5 rounded-md bg-white/[.05] px-2 py-1 text-[11px] text-muted-foreground"
         >
           <span className="truncate">{attachment.name}</span>

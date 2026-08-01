@@ -28,9 +28,12 @@ const KIND_LABEL: Record<ArtifactRef['kind'], string> = {
 export function ResultsPanel({
   sessionId,
   onEditRequest,
+  active,
 }: {
   sessionId?: string
   onEditRequest?: (artifact: ArtifactRef) => void
+  /** Run 进行中标记：结束（或开始）时刷新结果列表 */
+  active?: boolean
 }) {
   const [artifacts, setArtifacts] = useState<ArtifactRef[]>([])
   const [filter, setFilter] = useState<ArtifactFilter>('all')
@@ -56,7 +59,7 @@ export function ResultsPanel({
       )
       setRunStartedAt(latest > 0 ? latest : undefined)
     })
-  }, [sessionId])
+  }, [sessionId, active])
 
   useEffect(() => {
     setPreview(undefined)
@@ -75,7 +78,7 @@ export function ResultsPanel({
   const groups = groupArtifacts(filterArtifacts(artifacts, filter), runStartedAt)
 
   return (
-    <aside className="hidden w-72 shrink-0 border-l bg-background xl:flex xl:flex-col">
+    <aside className="hidden w-72 shrink-0 border-l bg-background lg:flex lg:flex-col">
       <div className="flex items-center justify-between border-b px-4 py-3">
         <span className="text-sm font-medium">结果</span>
         {artifacts.length > 0 && (

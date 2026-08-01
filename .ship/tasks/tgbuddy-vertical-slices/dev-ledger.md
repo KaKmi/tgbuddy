@@ -505,3 +505,14 @@ U04–U08 "设置/视觉/收口核查" — complete
     整理标记为后续可选（不影响功能与架构门禁）
   Concerns: 视觉细节（灰阶层级、角标、边框透明度）建议用原型截图逐项比对（QA 阶段做）；
     无未解决 P1/P2
+
+U09 "端到端验收与第一版收口" — complete
+  Commits: （本 Slice）
+  Files: tests/e2e/m4-results.e2e.ts（+2）、src/kernel/pi/pi-agent-engine.ts
+    （message_end 携带 attachments）、src/renderer/features/results/ResultsPanel.tsx
+    （run 结束后刷新 + lg 断点）、AttachmentChips.tsx（testid）、App.tsx（气泡剥离附件块）
+  Results: M4 用户可见行为 E2E 2 项（附件 chip 回显、产物结果区/预览/让 Agent 改这份）；
+    全量单测 350/350、E2E 22/22、architecture/typecheck/build 全绿
+  QA 发现的真实缺陷（已修复）：message_end 事件未携带 attachments（实时消息缺 chip）、
+    ResultsPanel 只在挂载时取数（run 结束后不刷新）、xl 断点下 1280 窗口结果区不可见、
+    A03 文本附件块泄漏到用户气泡显示（改为 chips 展示并剥离气泡正文）
