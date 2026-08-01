@@ -46,12 +46,12 @@ UI Slice 复用现有 `window.tgbuddy` 和 Runtime 行为，不得为了对齐�
 
 **Files:** Create `src/renderer/features/shell/AppShell.tsx`, `src/renderer/features/conversation/ConversationHeader.tsx`; Modify `src/renderer/App.tsx`, `src/renderer/features/results/ResultsPanel.tsx`; Test `tests/e2e/ui-shell.e2e.ts`。
 
-**Interfaces:** `AppShell({sidebar,main,results,resultsOpen})`; `ConversationHeader({title,running,resultsOpen,onToggleResults})`。
+**Interfaces:** `AppShell({children})`; `ConversationHeader({title,running,resultsOpen,onToggleResults})`；结果区通过 `open/onClose` 接入外壳状态。
 
-- [ ] RED：真实会话标题、run pill、results-toggle、开关结果区，以及 252/356/48px 计算尺寸。
-- [ ] GREEN：App 只持有 `resultsOpen`，Header 只消费 props，Results 接 `open/onClose`。
-- [ ] Run: `bun run typecheck && bun run build && bunx playwright test tests/e2e/ui-shell.e2e.ts`。
-- [ ] Commit: `feat(ui): add app shell and thread header`。
+- [x] RED：真实会话标题、run pill、results-toggle、开关结果区，以及 252/356/48px 计算尺寸。
+- [x] GREEN：App 只持有 `resultsOpen`，Header 只消费 props，Results 接 `open/onClose`。
+- [x] Run: `bun run typecheck && bun run build && bunx playwright test tests/e2e/ui-shell.e2e.ts`。
+- [x] Commit: `255fce2 feat(ui): add app shell and thread header`。
 
 ### FR03：结果区响应式覆盖层
 
