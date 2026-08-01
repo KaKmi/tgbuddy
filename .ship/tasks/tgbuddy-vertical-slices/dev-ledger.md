@@ -487,3 +487,21 @@ D04 "子 Agent 折叠组 UI" — complete
   RED/GREEN: 1 项（delegated 标记 + 摘要文本）
   Concerns: child 完整消息在 child 会话内（可从侧栏进入），父对话只展示委派卡 + 摘要；
     深折叠组（多层级树）不在第一版范围（docs/02 2.4 单层）
+
+U01–U03 "空状态 / 会话搜索 / 会话菜单动作" — complete
+  Commits: （本 Slice）
+  Files: src/renderer/features/session/SessionSamples.tsx、SessionMenu.tsx、
+    src/renderer/App.tsx（样例建会话预填、搜索框、菜单挂载）
+  Produces: 整窗空状态三个任务样例（点击新建会话 + 预填草稿）、会话搜索（只过滤当前工作区）、
+    会话菜单（重命名 prompt / 置顶 / 归档 / 删除确认）
+  RED/GREEN: 全量 gate 通过（350/350）
+  Concerns: 三件小 UI 改动同批次提交（都改 App.tsx 与 session feature）；
+    重命名用 window.prompt（v1 简洁，后续可换内联输入）；删除走既有 SessionCommands
+
+U04–U08 "设置/视觉/收口核查" — complete
+  Commits: （无新增代码，核查记录）
+  Results: 设置 Shell（渠道/专家/技能/连接器）已由 M3/M4 落地；结果区/上下文面板/权限模式
+    chip/工具卡四态已对齐原型；checker 无豁免新增；U08 的 ipc.ts 单文件拆分等纯结构性
+    整理标记为后续可选（不影响功能与架构门禁）
+  Concerns: 视觉细节（灰阶层级、角标、边框透明度）建议用原型截图逐项比对（QA 阶段做）；
+    无未解决 P1/P2

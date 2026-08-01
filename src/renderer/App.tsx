@@ -11,6 +11,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AttachmentDraft, AttachmentRef } from '../shared/contracts/attachment.ts'
 import { AttachmentChipList } from './components/AttachmentChips.tsx'
 import { ResultsPanel } from './features/results/ResultsPanel.tsx'
+import { SessionSamples } from './features/session/SessionSamples.tsx'
+import { SessionMenu } from './features/session/SessionMenu.tsx'
 import {
   injectEditIntent,
   stripEditIntent,
@@ -55,7 +57,6 @@ import type { PermissionMode } from '../shared/types/permission.ts'
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from './components/ai-elements/conversation.tsx'
 import { Response } from './components/ai-elements/response.tsx'
@@ -92,6 +93,7 @@ export function App() {
   const [input, setInput] = useState('')
   const [wsOpen, setWsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [sessionQuery, setSessionQuery] = useState('')
   const [mountStatus, setMountStatus] = useState<WorkspaceMountResolution>()
   // A02：输入区附件草稿（已 stage 到 BlobStore，发送前可移除）
   const [attachmentDrafts, setAttachmentDrafts] = useState<AttachmentDraft[]>([])
@@ -170,6 +172,12 @@ export function App() {
     const meta = await window.tgbuddy.session.create({})
     setSessions(await window.tgbuddy.session.list())
     setCurrentId(meta.id)
+  }
+
+  /** U01：空状态样例 → 新建会话并预填草稿（不自动发送） */
+  async function startFromSample(prompt: string) {
+    await newSession()
+    setInput(prompt)
   }
 
   async function selectSession(id: string) {
@@ -426,21 +434,35 @@ export function App() {
           >
             + 新会话
           </button>
+          {/* U02：会话搜索（只过滤当前工作区） */}
+          <input
+            value={sessionQuery}
+            onChange={(event) => setSessionQuery(event.target.value)}
+            placeholder="搜索会话…"
+            data-testid="session-search"
+            className="mt-2 w-full rounded-lg bg-white/[.03] px-2.5 py-1.5 text-xs text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground/50 focus:ring-ring/40"
+          />
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-2">
-          {groupSessions(sessions).map((group) => (
+          {groupSessions(
+            sessionQuery.trim()
+              ? sessions.filter((s) =>
+                  (s.title ?? '').toLowerCase().includes(sessionQuery.trim().toLowerCase()),
+                )
+              : sessions,
+          ).map((group) => (
             <div key={group.title} className="mb-3">
               <div className="px-3 pb-1 pt-2 text-[11px] text-muted-foreground">{group.title}</div>
               {group.items.map((s) => (
-                <button
-                  key={s.id}
-                  data-testid="session-item"
-                  onClick={() => selectSession(s.id)}
-                  className={`mb-0.5 block w-full rounded-md px-3 py-2 text-left transition-colors ${
-                    s.id === currentId ? 'bg-accent' : 'hover:bg-accent/60'
-                  }`}
-                >
-                  <div className="flex items-baseline gap-2">
+                <div key={s.id} className="group relative mb-0.5 flex items-center">
+                  <button
+                    data-testid="session-item"
+                    onClick={() => selectSession(s.id)}
+                    className={`block w-full rounded-md px-3 py-2 text-left transition-colors ${
+                      s.id === currentId ? 'bg-accent' : 'hover:bg-accent/60'
+                    }`}
+                  >
+                    <div className="flex items-baseline gap-2">
                     <span
                       className={`min-w-0 flex-1 truncate text-sm ${
                         s.id === currentId ? 'text-foreground' : 'text-foreground/80'
@@ -451,8 +473,8 @@ export function App() {
                     <span className="shrink-0 text-[11px] text-muted-foreground">
                       {relativeTime(s.updatedAt)}
                     </span>
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-1.5">
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1.5">
                     {s.status === 'running' && (
                       <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
                     )}
@@ -463,8 +485,15 @@ export function App() {
                     >
                       {sessionSubtitle(s)}
                     </span>
-                  </div>
-                </button>
+                    </div>
+                  </button>
+                  <SessionMenu
+                    session={s}
+                    onChanged={async () => {
+                      setSessions(await window.tgbuddy.session.list())
+                    }}
+                  />
+                </div>
               ))}
             </div>
           ))}
@@ -489,10 +518,7 @@ export function App() {
       <main className="flex min-w-0 flex-1 flex-col bg-content-area">
         <Conversation className="flex-1">
           {!currentId ? (
-            <ConversationEmptyState
-              title="还没有选中会话"
-              description="新建一个会话开始"
-            />
+            <SessionSamples onPick={startFromSample} />
           ) : (
             <ConversationContent className="mx-auto w-full max-w-3xl gap-4 px-6 py-6">
               {messages.map((m) => (
