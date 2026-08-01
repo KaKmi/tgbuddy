@@ -34,17 +34,32 @@ function harness(options: {
   frames?: StreamFrame[]
   runningRootRunId?: string
   parentPermissionMode?: string
+  parentProfileId?: string
+  parentChannelId?: string
+  parentModelId?: string
 }) {
   const created: string[] = []
   const started: Array<{ sessionId: string; text: string; lineage?: unknown }> = []
   const stopped: string[] = []
   const modeUpdates: Array<{ sessionId: string; mode?: string }> = []
+  const metaUpdates: Array<{
+    sessionId: string
+    patch: {
+      permissionMode?: string
+      profileId?: string
+      channelId?: string
+      modelId?: string
+    }
+  }> = []
   const parents = [
     {
       id: 'parent-1',
       workspaceId: 'ws-1',
       title: '父任务',
       permissionMode: options.parentPermissionMode ?? 'auto',
+      profileId: options.parentProfileId,
+      channelId: options.parentChannelId,
+      modelId: options.parentModelId,
       createdAt: 1,
       updatedAt: 1,
     },
@@ -57,8 +72,14 @@ function harness(options: {
       return { id }
     },
     list: () => parents,
-    updateMeta: (sessionId: string, patch: { permissionMode?: string }) => {
+    updateMeta: (sessionId: string, patch: {
+      permissionMode?: string
+      profileId?: string
+      channelId?: string
+      modelId?: string
+    }) => {
       if (patch.permissionMode) modeUpdates.push({ sessionId, mode: patch.permissionMode })
+      metaUpdates.push({ sessionId, patch })
       return { id: sessionId }
     },
     delete: async () => {},
@@ -90,7 +111,7 @@ function harness(options: {
     createId: () => 'child-0',
     now: () => 1,
   })
-  return { service, created, started, stopped, modeUpdates }
+  return { service, created, started, stopped, modeUpdates, metaUpdates }
 }
 
 describe('DelegationService（D02）', () => {
@@ -192,6 +213,33 @@ describe('DelegationService（D02）', () => {
 
     expect(modeUpdates).toEqual([{ sessionId: 'child-0', mode: 'plan' }])
     expect(started[0]?.lineage).toMatchObject({ parentSessionId: 'parent-1' })
+  })
+
+  test('child 继承父会话的专家与直接模型选择', async () => {
+    const { service, metaUpdates } = harness({
+      runningRootRunId: 'root-1',
+      frames: [assistantFrame('child-0', '完成')],
+      parentProfileId: 'profile-risk',
+      parentChannelId: 'channel-deepseek',
+      parentModelId: 'deepseek-v4',
+    })
+
+    await service.delegate({
+      parentSessionId: 'parent-1',
+      workspaceId: 'ws-1',
+      task: 'x',
+      parentToolCallId: 't1',
+    })
+
+    expect(metaUpdates.at(-1)).toEqual({
+      sessionId: 'child-0',
+      patch: {
+        permissionMode: 'auto',
+        profileId: 'profile-risk',
+        channelId: 'channel-deepseek',
+        modelId: 'deepseek-v4',
+      },
+    })
   })
 
   test('D03：停止父会话级联停止全部 child run', async () => {

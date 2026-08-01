@@ -40,6 +40,7 @@ export type {
 export {
   createProfileService,
   resolveModelSelection,
+  resolveProfileSkills,
   type ModelSelectionSnapshot,
   type ProfileService,
   type CreateProfileServiceOptions,

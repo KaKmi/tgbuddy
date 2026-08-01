@@ -9,6 +9,8 @@ export interface Profile {
   channelId: string
   modelId: string
   systemPrompt?: string
+  /** undefined = 自动使用全部已启用技能；数组（含空数组）= 显式 allowlist。 */
+  skillIds?: string[]
   createdAt: number
   updatedAt: number
 }

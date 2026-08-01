@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { ProfileSaveInput } from '../../../src/shared/contracts/profile.ts'
 import {
   createProfileService,
+  resolveProfileSkills,
   resolveModelSelection,
   type ProfileService,
 } from '../../../src/runtime/profiles/profile-service.ts'
@@ -24,6 +25,7 @@ function profileInput(overrides: Partial<ProfileSaveInput> = {}): ProfileSaveInp
     channelId: 'ch-deepseek',
     modelId: 'deepseek-v4-pro',
     systemPrompt: '你擅长风险分析',
+    skillIds: ['builtin:reg-check', 'user:risk-report'],
     ...overrides,
   }
 }
@@ -76,7 +78,26 @@ describe('resolveModelSelection', () => {
       channelId: 'ch-deepseek',
       modelId: 'deepseek-v4-pro',
       systemPrompt: '你擅长风险分析',
+      skillIds: ['builtin:reg-check', 'user:risk-report'],
     })
+  })
+
+  test('未配置 Skill allowlist 的旧 Profile 保持自动使用全部已启用技能', () => {
+    const { profiles } = createFixture()
+    const profile = profiles.save(profileInput({ skillIds: undefined }))
+
+    const snapshot = resolveModelSelection({ profileId: profile.id }, profiles)
+
+    expect(snapshot?.skillIds).toBeUndefined()
+  })
+
+  test('Profile 的空 Skill allowlist 表示明确不加载技能', () => {
+    const { profiles } = createFixture()
+    const profile = profiles.save(profileInput({ skillIds: [] }))
+
+    const snapshot = resolveModelSelection({ profileId: profile.id }, profiles)
+
+    expect(snapshot?.skillIds).toEqual([])
   })
 
   test('无 Profile 时使用会话直接指定的 channelId/modelId', () => {
@@ -109,5 +130,40 @@ describe('resolveModelSelection', () => {
 
     // 已启动 Run 的快照仍是旧值
     expect(first?.modelId).toBe('deepseek-v4-pro')
+  })
+})
+
+describe('resolveProfileSkills', () => {
+  const skills = [
+    {
+      id: 'builtin:reg-check',
+      name: 'reg-check',
+      title: '监管口径核对',
+      description: '核对监管口径',
+      version: '1.0.0',
+      source: 'builtin' as const,
+      root: 'C:\\skills\\reg-check',
+      enabled: true,
+    },
+    {
+      id: 'user:report',
+      name: 'report',
+      title: '报告模板',
+      description: '生成报告',
+      version: '1.0.0',
+      source: 'user' as const,
+      root: 'C:\\skills\\report',
+      enabled: true,
+    },
+  ]
+
+  test('未配置 allowlist 保持全部；显式 allowlist 只保留存在的技能', () => {
+    expect(resolveProfileSkills(skills, undefined).map((skill) => skill.id)).toEqual([
+      'builtin:reg-check',
+      'user:report',
+    ])
+    expect(resolveProfileSkills(skills, ['user:report', 'missing']).map((skill) => skill.id))
+      .toEqual(['user:report'])
+    expect(resolveProfileSkills(skills, [])).toEqual([])
   })
 })

@@ -1,5 +1,6 @@
 import type { Profile, ProfileSaveInput } from '../../shared/contracts/profile.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
+import type { SkillManifest } from '../../shared/contracts/skill.ts'
 import type { ProfileRepository } from './profile-repository.ts'
 
 export interface CreateProfileServiceOptions {
@@ -26,6 +27,17 @@ export interface ModelSelectionSnapshot {
   channelId: string
   modelId: string
   systemPrompt?: string
+  skillIds?: string[]
+}
+
+/** Profile 未配置 allowlist 时保持旧语义；显式数组只暴露交集，未知 id 安全忽略。 */
+export function resolveProfileSkills(
+  enabledSkills: SkillManifest[],
+  skillIds: string[] | undefined,
+): SkillManifest[] {
+  if (skillIds === undefined) return [...enabledSkills]
+  const allowed = new Set(skillIds)
+  return enabledSkills.filter((skill) => allowed.has(skill.id))
 }
 
 /**
@@ -47,6 +59,7 @@ export function resolveModelSelection(
         channelId: profile.channelId,
         modelId: profile.modelId,
         systemPrompt: profile.systemPrompt,
+        ...(profile.skillIds ? { skillIds: [...profile.skillIds] } : {}),
       }
     }
   }
@@ -63,6 +76,7 @@ export function resolveModelSelection(
       channelId: fallback.channelId,
       modelId: fallback.modelId,
       systemPrompt: fallback.systemPrompt,
+      ...(fallback.skillIds ? { skillIds: [...fallback.skillIds] } : {}),
     }
   }
   return undefined
@@ -80,6 +94,7 @@ export function createProfileService(
       channelId: input.channelId,
       modelId: input.modelId,
       ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
+      ...(input.skillIds ? { skillIds: [...input.skillIds] } : {}),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }

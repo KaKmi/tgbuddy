@@ -67,10 +67,13 @@ export function createDelegationService(
       const parent = options.sessions.list().find(
         (session) => session.id === input.parentSessionId,
       )
-      if (parent?.permissionMode) {
+      if (parent) {
         try {
           options.sessions.updateMeta(childSessionId, {
-            permissionMode: parent.permissionMode,
+            permissionMode: parent.permissionMode ?? 'auto',
+            ...(parent.profileId ? { profileId: parent.profileId } : {}),
+            ...(parent.channelId ? { channelId: parent.channelId } : {}),
+            ...(parent.modelId ? { modelId: parent.modelId } : {}),
           })
         } catch (error) {
           console.error('[Delegation] child 权限模式继承失败：', error)

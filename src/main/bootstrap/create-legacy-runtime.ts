@@ -27,6 +27,7 @@ import {
   type DelegationService,
   mountFailureMessage,
   resolveModelSelection,
+  resolveProfileSkills,
   type SessionCommands,
   type SessionMessageHistory,
   type SessionTitleService,
@@ -332,9 +333,10 @@ async function createAgentInvocation(
   }
   const workspaceDir = mount.mount.path
   // C08：Run 启动时冻结启用技能摘要；正文只在 Agent 调用 skill 工具时加载。
-  const enabledSkills = skills
+  const allEnabledSkills = skills
     .list(meta.workspaceId)
     .filter((skill) => skill.enabled)
+  const enabledSkills = resolveProfileSkills(allEnabledSkills, selection?.skillIds)
   // C12：Run 启动时冻结工具快照（含 MCP 与内置），作为能力账本来源。
   const frozenTools = toolRegistry.snapshot()
   const profileSnapshot = selection?.profileId
@@ -369,21 +371,28 @@ async function createAgentInvocation(
       : {}),
     ...(profileSnapshot ? { profile: profileSnapshot } : {}),
     systemPrompt:
-      selection?.systemPrompt
-      ?? buildSystemPrompt(workspaceDir, mode, enabledSkills),
+      buildSystemPrompt(workspaceDir, mode, enabledSkills, selection?.systemPrompt),
   }
 }
 
-function buildSystemPrompt(
+export function buildSystemPrompt(
   workspaceDir: string,
   mode: PermissionMode,
   skills: ReturnType<SkillCatalog['list']> = [],
+  profileInstructions?: string,
 ): string {
   return [
     '你是 TgBuddy 的 Agent 助手。回答简洁准确，中文优先。',
     '',
     '## 工作区',
     `当前工作目录：${workspaceDir}`,
+    ...(profileInstructions
+      ? [
+          '',
+          '## 专家指令',
+          profileInstructions,
+        ]
+      : []),
     ...(mode === 'plan'
       ? [
           '',

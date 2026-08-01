@@ -172,8 +172,9 @@ export async function runAppDatabaseScenario(
           '015_app_blob_refs.sql',
           '016_app_runs_lineage.sql',
           '017_app_sessions_title_source.sql',
+          '018_app_profiles_skill_ids.sql',
         ]),
-      'app migration 必须按顺序包含当前 001–017（已删除的 008 除外）',
+      'app migration 必须按顺序包含当前 001–018（已删除的 008 除外）',
     )
     assertions++
 
