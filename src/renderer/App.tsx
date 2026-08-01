@@ -60,8 +60,10 @@ import {
   ConversationScrollButton,
 } from './components/ai-elements/conversation.tsx'
 import { Response } from './components/ai-elements/response.tsx'
+import { ThemeToggle, useTheme } from './features/theme/ThemeToggle.tsx'
 
 export function App() {
+  const { theme, toggle: toggleTheme } = useTheme()
   const [sessions, setSessions] = useAtom(sessionsAtom)
   const [currentId, setCurrentId] = useAtom(currentSessionIdAtom)
   const [workspaces, setWorkspaces] = useAtom(workspacesAtom)
@@ -502,15 +504,16 @@ export function App() {
           )}
         </div>
 
-        <div className="border-t px-2 py-2">
+        <div className="flex items-center gap-1 border-t px-2 py-2">
           <button
             type="button"
             data-testid="settings-open"
             onClick={() => setSettingsOpen(true)}
-            className="w-full rounded-md px-2 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+            className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
           >
             ⚙ 设置
           </button>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
         </div>
       </aside>
 

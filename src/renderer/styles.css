@@ -27,30 +27,31 @@
  */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --content-area: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    color-scheme: light;
+    --background: 60 9% 93%; /* #efefec 侧栏 */
+    --content-area: 60 11% 96%; /* #f7f7f5 对话区 */
+    --foreground: 60 7% 8%; /* #171714 */
 
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
+    --muted: 60 11% 95%; /* #f3f3f0 */
+    --muted-foreground: 60 3% 47%; /* #7c7c74 */
 
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --border: 60 8% 88%; /* #e4e4df */
+    --input: 60 8% 88%;
+    --ring: 217 32% 47%; /* #526f9f */
 
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
+    --primary: 60 7% 8%;
+    --primary-foreground: 60 11% 96%;
+    --secondary: 60 11% 95%;
+    --secondary-foreground: 60 7% 8%;
+    --accent: 60 8% 88%;
+    --accent-foreground: 60 7% 8%;
+    --destructive: 6 40% 45%;
     --destructive-foreground: 0 0% 98%;
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 60 7% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
+    --popover-foreground: 60 7% 8%;
 
     --radius: 0.5rem; /* 8px —— 原型里出现 32 次，是主导圆角 */
   }
@@ -65,13 +66,14 @@
    * ★ `--background`（侧边栏）和 `--content-area`（对话区）刻意不同，
    *   这是三栏布局拉开层次的主要手段。
    */
-  .dark {
-    --background: 240 3% 6%; /* #0e0e0f 侧边栏 */
-    --content-area: 240 2% 8%; /* #141415 对话区 */
-    --foreground: 240 4% 95%; /* #f2f2f3 */
+  [data-theme='dark'] {
+    color-scheme: dark;
+    --background: 60 4% 10%; /* #1b1b19 侧栏 */
+    --content-area: 60 3% 12%; /* #20201e 对话区 */
+    --foreground: 50 19% 94%; /* #f2f1ec */
 
-    --muted: 240 6% 10%; /* #17171a */
-    --muted-foreground: 240 4% 56%; /* #8a8a92 次要文字 */
+    --muted: 60 3% 13%; /* #232321 */
+    --muted-foreground: 53 4% 57%; /* #96958d */
 
     /*
      * 原型里边框是 `rgba(255,255,255,.055)` 叠在 #141415 上，
@@ -79,23 +81,23 @@
      * 因为下面有全局 `* { border-color: hsl(var(--border)) }`，
      * 存白色会让所有边框变成实心白。
      */
-    --border: 240 2% 13%;
-    --input: 240 5% 11%;
-    --ring: 212 49% 66%;
+    --border: 60 4% 21%; /* #373733 */
+    --input: 60 3% 13%;
+    --ring: 217 60% 76%; /* #9cb8e6 */
 
-    --primary: 240 4% 96%; /* #f4f4f5 主按钮=近白 */
-    --primary-foreground: 240 6% 10%;
-    --secondary: 240 6% 10%;
-    --secondary-foreground: 240 4% 95%;
-    --accent: 240 5% 11%; /* #1b1b1e hover/选中 */
-    --accent-foreground: 240 4% 95%;
-    --destructive: 4 51% 57%; /* #c9635b */
+    --primary: 50 19% 94%;
+    --primary-foreground: 60 4% 10%;
+    --secondary: 60 3% 13%;
+    --secondary-foreground: 50 19% 94%;
+    --accent: 60 4% 21%;
+    --accent-foreground: 50 19% 94%;
+    --destructive: 6 56% 75%;
     --destructive-foreground: 0 0% 98%;
 
-    --card: 240 6% 10%; /* #17171a */
-    --card-foreground: 240 4% 95%;
-    --popover: 240 5% 11%; /* #1b1b1e 弹出层比卡片再亮一档 */
-    --popover-foreground: 240 4% 95%;
+    --card: 60 4% 15%; /* #272724 */
+    --card-foreground: 50 19% 94%;
+    --popover: 60 4% 17%; /* #2c2c29 */
+    --popover-foreground: 50 19% 94%;
   }
 }
 
@@ -105,12 +107,20 @@
  */
 @layer base {
   :root {
-    --status-pending: 37 73% 56%; /* #e0a33e 琥珀：等待授权 */
-    --status-running: 212 49% 66%; /* #7fa7d4 蓝：执行中 */
-    --status-success: 140 33% 67%; /* #8fc6a5 绿：成功 */
-    --status-error: 4 51% 57%; /* #c9635b 红：失败 */
-    --status-skill: 254 53% 76%; /* #b0a2e0 紫：技能 */
+    --status-pending: 35 60% 38%; /* #9b6a27 琥珀：等待授权 */
+    --status-running: 217 32% 47%; /* #526f9f 蓝：执行中 */
+    --status-success: 143 22% 40%; /* #4f7b60 绿：成功 */
+    --status-error: 6 40% 45%; /* #a24f46 红：失败 */
+    --status-skill: 260 25% 49%; /* #725d9b 紫：技能 */
     --code-bg: 216 14% 14%; /* #1e2228 代码块，亮暗一致 */
+  }
+
+  [data-theme='dark'] {
+    --status-pending: 36 61% 66%;
+    --status-running: 217 60% 76%;
+    --status-success: 139 29% 68%;
+    --status-error: 6 56% 75%;
+    --status-skill: 260 45% 78%;
   }
 }
 
@@ -121,6 +131,7 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    transition: background-color 160ms ease, color 160ms ease;
   }
 }
 
