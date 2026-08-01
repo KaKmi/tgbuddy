@@ -3,24 +3,28 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from './support/electron-fixture'
 
-test('UI：会话菜单使用产品内重命名/删除，并支持 Escape 返回焦点', async ({ tgbuddy }) => {
+test('UI：会话悬停显示置顶、删除、归档三个图标操作', async ({ tgbuddy }) => {
   const page = tgbuddy.page
   await page.getByRole('button', { name: '+ 新会话' }).click()
+  await page.getByRole('button', { name: '+ 新会话' }).click()
 
-  const menu = page.locator('[data-testid^="session-menu-"]').first()
-  await menu.click()
-  await page.keyboard.press('Escape')
-  await expect(menu).toBeFocused()
+  const first = page.getByTestId('session-item').first()
+  await first.hover()
+  const actions = page.locator('[data-testid^="session-actions-"]').first()
+  await expect(actions).toBeVisible()
+  await expect(page.locator('[data-testid^="session-menu-"]')).toHaveCount(0)
+  await expect(actions.getByRole('button')).toHaveCount(3)
 
-  await menu.click()
-  await page.getByRole('menuitem', { name: '重命名', exact: true }).click()
-  const renameDialog = page.getByRole('dialog', { name: '重命名会话' })
-  await renameDialog.getByRole('textbox').fill('新的会话名称')
-  await renameDialog.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByText('新的会话名称', { exact: true }).first()).toBeVisible()
+  await actions.getByRole('button', { name: '置顶', exact: true }).click()
+  await expect(page.getByText('置顶', { exact: true })).toBeVisible()
 
-  await page.locator('[data-testid^="session-menu-"]').first().click()
-  await page.getByRole('menuitem', { name: '删除会话', exact: true }).click()
+  const pinned = page.getByTestId('session-item').first()
+  await pinned.hover()
+  await page.locator('[data-testid^="session-actions-"]').first().getByRole('button', { name: '归档', exact: true }).click()
+  await expect(page.getByTestId('session-item')).toHaveCount(1)
+
+  await page.getByTestId('session-item').first().hover()
+  await page.locator('[data-testid^="session-actions-"]').first().getByRole('button', { name: '删除会话', exact: true }).click()
   const deleteDialog = page.getByRole('dialog', { name: '删除会话' })
   await deleteDialog.getByRole('button', { name: '删除', exact: true }).click()
   await expect(page.getByTestId('session-item')).toHaveCount(0)

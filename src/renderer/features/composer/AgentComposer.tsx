@@ -53,9 +53,7 @@ export function AgentComposer(props: AgentComposerProps) {
   const currentMode = MODES.find((item) => item.id === props.mode) ?? MODES[0]!
   const currentProfile = props.profiles.find((item) => item.id === props.profileId)
   const currentModel = resolveCurrentModel(props)
-  const disabled = !props.sessionId
-  const sendDisabled = disabled
-    || (!props.value.trim() && props.attachments.length === 0)
+  const sendDisabled = (!props.value.trim() && props.attachments.length === 0)
     || props.queued
 
   function toggle(next: Exclude<ComposerMenu, null>): void {
@@ -114,8 +112,7 @@ export function AgentComposer(props: AgentComposerProps) {
           data-testid="agent-composer-input"
           rows={2}
           value={props.value}
-          disabled={disabled}
-          placeholder={disabled ? '先新建会话' : '给 Agent 下达任务…'}
+          placeholder="给 Agent 下达任务…"
           onChange={(event) => props.onValueChange(event.target.value)}
           onKeyDown={(event) => {
             if (!composerKeyShouldSend({
@@ -134,7 +131,7 @@ export function AgentComposer(props: AgentComposerProps) {
             className="agent-composer-attachment"
             aria-label="添加附件"
             data-testid="attachment-pick"
-            disabled={disabled || props.running || props.compacting}
+            disabled={props.running || props.compacting}
             onClick={props.onPickAttachments}
           >
             <Paperclip size={15} />

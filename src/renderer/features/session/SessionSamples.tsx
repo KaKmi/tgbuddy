@@ -19,24 +19,24 @@ const SAMPLES = [
 
 export function SessionSamples({ onPick }: { onPick(prompt: string): void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 px-6">
+    <div className="flex h-full flex-col items-center justify-center gap-5 px-6">
       <div className="text-center">
-        <h2 className="text-base font-medium text-foreground">开始一个任务</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <h2 className="text-[15px] font-semibold text-foreground">开始一个任务</h2>
+        <p className="mt-1 text-[11.5px] text-muted-foreground">
           点一个样例新建会话，或直接在新会话里描述目标
         </p>
       </div>
-      <div className="flex w-full max-w-md flex-col gap-2">
+      <div className="flex w-full max-w-[440px] flex-col gap-[7px]">
         {SAMPLES.map((sample) => (
           <button
             key={sample.title}
             type="button"
             data-testid="session-sample"
             onClick={() => onPick(sample.prompt)}
-            className="rounded-xl bg-card px-4 py-3 text-left ring-1 ring-border transition-colors hover:bg-accent/40"
+            className="rounded-[10px] border bg-card px-3 py-2.5 text-left transition-colors hover:bg-accent/45"
           >
-            <span className="block text-sm text-foreground">{sample.title}</span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
+            <span className="block text-[12.5px] font-medium text-foreground">{sample.title}</span>
+            <span className="mt-0.5 block text-[10.8px] leading-[1.55] text-muted-foreground">
               {sample.desc}
             </span>
           </button>

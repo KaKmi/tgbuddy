@@ -26,11 +26,11 @@ export function AskUserCard({ request }: { request: AskUserRequest }) {
       className="max-w-[720px] overflow-hidden px-3 py-3"
       style={{
         borderRadius: 11,
-        background: 'rgba(127,167,212,.045)',
-        boxShadow: 'inset 0 0 0 1px rgba(127,167,212,.20)',
+        background: 'color-mix(in srgb, hsl(var(--status-running)) 7%, hsl(var(--card)))',
+        boxShadow: 'inset 0 0 0 1px hsl(var(--status-running) / .20)',
       }}
     >
-      <div className="mb-3 text-[13px] font-medium" style={{ color: '#9dbfe0' }}>
+      <div className="mb-3 text-[13px] font-medium text-status-running">
         需要你的补充
       </div>
 
@@ -45,7 +45,7 @@ export function AskUserCard({ request }: { request: AskUserRequest }) {
               {question.options.map((option) => (
                 <label
                   key={option.label}
-                  className="flex cursor-pointer gap-2 rounded-lg bg-white/[.025] px-2.5 py-2 hover:bg-white/[.045]"
+                  className="flex cursor-pointer gap-2 rounded-lg bg-muted px-2.5 py-2 hover:bg-accent"
                 >
                   <input
                     type="radio"
@@ -55,7 +55,7 @@ export function AskUserCard({ request }: { request: AskUserRequest }) {
                       setAnswers((prev) => ({ ...prev, [question.id]: option.label }))
                       setCustom((prev) => ({ ...prev, [question.id]: '' }))
                     }}
-                    className="mt-0.5 accent-[#9dbfe0]"
+                    className="mt-0.5 accent-[hsl(var(--status-running))]"
                   />
                   <span>
                     <span className="block text-xs text-foreground/90">{option.label}</span>
@@ -79,7 +79,7 @@ export function AskUserCard({ request }: { request: AskUserRequest }) {
       <button
         disabled={busy || !complete}
         onClick={() => void submit()}
-        className="mt-3 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+        className="mt-3 inline-flex min-h-[30px] items-center rounded-lg border border-primary bg-primary px-3 text-[11.5px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40"
       >
         提交回答
       </button>

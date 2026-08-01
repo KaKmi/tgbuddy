@@ -32,53 +32,53 @@ export type ToolStatus =
 /** 逐项取自原型的 ST 表 */
 const ST = {
   awaiting_permission: {
-    color: '#e0a33e',
-    bar: '#e0a33e',
-    ring: 'rgba(224,163,62,.22)',
-    bg: 'rgba(224,163,62,.05)',
+    color: 'hsl(var(--status-pending))',
+    bar: 'hsl(var(--status-pending))',
+    ring: 'color-mix(in srgb, hsl(var(--status-pending)) 24%, transparent)',
+    bg: 'color-mix(in srgb, hsl(var(--status-pending)) 9%, hsl(var(--card)))',
     badge: '等待授权',
     badgeBg: 'rgba(224,163,62,.14)',
   },
   running: {
-    color: '#7fa7d4',
-    bar: '#7fa7d4',
-    ring: 'rgba(127,167,212,.20)',
-    bg: 'rgba(127,167,212,.045)',
+    color: 'hsl(var(--status-running))',
+    bar: 'hsl(var(--status-running))',
+    ring: 'color-mix(in srgb, hsl(var(--status-running)) 20%, transparent)',
+    bg: 'color-mix(in srgb, hsl(var(--status-running)) 7%, hsl(var(--card)))',
     badge: null,
     badgeBg: '',
   },
   success: {
-    color: '#7f8b98', // ★ 灰蓝，不是绿 —— 成功是常态，不该抢注意力
+    color: 'hsl(var(--muted-foreground))', // ★ 成功是常态，不使用强调色
     bar: 'transparent',
     ring: 'var(--tool-card-ring)',
-    bg: 'var(--tool-card-bg)',
+    bg: 'hsl(var(--card))',
     badge: null,
     badgeBg: '',
   },
   error: {
-    color: '#c9635b',
-    bar: '#c9635b',
-    ring: 'rgba(201,99,91,.22)',
-    bg: 'rgba(201,99,91,.045)',
+    color: 'hsl(var(--status-error))',
+    bar: 'hsl(var(--status-error))',
+    ring: 'color-mix(in srgb, hsl(var(--status-error)) 22%, transparent)',
+    bg: 'color-mix(in srgb, hsl(var(--status-error)) 7%, hsl(var(--card)))',
     badge: '失败',
     badgeBg: 'rgba(201,99,91,.14)',
   },
   // 原型 denied 与 unknown 同款低饱和灰 —— 拒绝是“没有发生”的结果，不抢红叉的注意力
   denied: {
-    color: '#8a8a92',
-    bar: '#55555c',
+    color: 'hsl(var(--muted-foreground))',
+    bar: 'hsl(var(--muted-foreground) / .45)',
     ring: 'var(--tool-card-ring)',
-    bg: 'var(--tool-card-bg)',
+    bg: 'hsl(var(--card))',
     badge: '已拒绝',
-    badgeBg: 'rgba(255,255,255,.05)',
+    badgeBg: 'hsl(var(--muted))',
   },
   unknown: {
-    color: '#8a8a92',
-    bar: '#55555c',
+    color: 'hsl(var(--muted-foreground))',
+    bar: 'hsl(var(--muted-foreground) / .45)',
     ring: 'var(--tool-card-ring)',
-    bg: 'var(--tool-card-bg)',
+    bg: 'hsl(var(--card))',
     badge: '未完成',
-    badgeBg: 'rgba(255,255,255,.05)',
+    badgeBg: 'hsl(var(--muted))',
   },
 } as const satisfies Record<ToolStatus, unknown>
 
@@ -106,22 +106,22 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
 
   return (
     <div
-      className="mb-0.5 max-w-[720px] overflow-hidden"
+      className="mb-[3px] max-w-[720px] overflow-hidden border shadow-[0_1px_2px_rgba(30,28,24,.04)]"
       style={{
         borderRadius: 11,
         background: s.bg,
-        boxShadow: `inset 0 0 0 1px ${s.ring}`,
+        borderColor: s.ring,
       }}
     >
       <div className="flex">
         {/* 左侧 2px 状态条。成功态是 transparent —— 常态不画条 */}
-        <div className="w-0.5 flex-none" style={{ background: s.bar }} />
+        <div className="w-[3px] flex-none" style={{ background: s.bar }} />
 
         <div className="min-w-0 flex-1">
           <button
             type="button"
             onClick={() => setOpen(!open)}
-            className="flex w-full cursor-pointer items-center gap-[9px] px-3 py-[9px] text-left transition-colors hover:bg-foreground/[.035]"
+            className="flex min-h-[42px] w-full cursor-pointer items-center gap-[9px] px-[11px] py-2 text-left transition-colors hover:bg-accent/55"
           >
             <span
               className="flex h-[18px] w-[18px] flex-none items-center justify-center"
@@ -131,8 +131,7 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
             </span>
 
             <span
-              className="flex-none rounded-[5px] px-[7px] py-0.5 font-mono text-[11.5px]"
-              style={{ background: 'var(--tool-chip-bg)', color: 'var(--tool-chip-text)' }}
+              className="flex-none rounded-[5px] bg-muted px-[7px] py-0.5 font-mono text-[10.5px] leading-[1.4] text-foreground/70"
             >
               {name}
             </span>
@@ -145,7 +144,7 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
               </span>
             )}
 
-            <span className="min-w-0 flex-1 truncate text-[13px] text-foreground/85">
+            <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/85">
               {describe(name, args)}
             </span>
 
@@ -158,7 +157,7 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
               </span>
             )}
 
-            <span className="flex-none text-[11.5px] text-muted-foreground/70">
+            <span className="flex-none text-[10.5px] text-muted-foreground">
               {meta(elapsedMs, result)}
             </span>
             <ChevronRight
@@ -170,9 +169,9 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
           </button>
 
           {open && (
-            <div className="space-y-2 px-3 pb-2.5 pl-[39px]">
+            <div className="space-y-[9px] px-3 pb-3 pl-[39px]">
               <Field label="参数">
-                <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-muted-foreground">
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 font-mono text-[10.8px] leading-[1.7] text-muted-foreground">
                   {JSON.stringify(args, null, 2)}
                 </pre>
               </Field>
@@ -180,7 +179,7 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
                 <Field label={result.isError ? '错误' : '输出'}>
                   <pre
                     className={cn(
-                      'max-h-52 overflow-auto whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed',
+                      'max-h-52 overflow-auto whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 font-mono text-[10.8px] leading-[1.7]',
                       result.isError ? 'text-status-error/90' : 'text-muted-foreground',
                     )}
                   >
@@ -211,7 +210,7 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
                           setLoadingOutput(false)
                         })
                     }}
-                    className="rounded-md bg-white/5 px-2 py-1 text-[11px] text-[#8ba7c4] hover:bg-white/10 disabled:opacity-40"
+                    className="rounded-md bg-muted px-2 py-1 text-[11px] text-status-running hover:bg-accent disabled:opacity-40"
                   >
                     {loadingOutput ? '读取中…' : fullOutput ? '收起完整输出' : '查看完整输出'}
                   </button>

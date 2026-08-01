@@ -35,8 +35,8 @@
     --muted: 60 11% 95%; /* #f3f3f0 */
     --muted-foreground: 60 3% 47%; /* #7c7c74 */
 
-    --border: 60 8% 88%; /* #e4e4df */
-    --input: 60 8% 88%;
+    --border: 60 6% 89%; /* #e5e5e2，独立于选中态 #e4e4df */
+    --input: 60 6% 89%;
     --ring: 217 32% 47%; /* #526f9f */
 
     --primary: 60 7% 8%;
@@ -58,7 +58,7 @@
     --tool-chip-bg: rgba(35, 35, 31, .06);
     --tool-chip-text: #50504a;
 
-    --radius: 0.5rem; /* 8px —— 原型里出现 32 次，是主导圆角 */
+    --radius: 10px;
   }
 
   /*
@@ -141,7 +141,18 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
     transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
   }
 }
 

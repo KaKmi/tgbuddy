@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import type { ContextUsage, ContextUsageBreakdown } from '../../shared/types/context.ts'
 
 interface ContextRow {
@@ -9,11 +10,11 @@ interface ContextRow {
 }
 
 const ROWS: { key: keyof ContextUsageBreakdown; label: string; color: string }[] = [
-  { key: 'systemPrompt', label: '系统提示词', color: '#6d6d78' },
-  { key: 'tools', label: '工具及子智能体', color: '#7fa7d4' },
-  { key: 'messages', label: '对话消息', color: '#e0a33e' },
-  { key: 'skills', label: '技能', color: '#b0a2e0' },
-  { key: 'mcp', label: '连接器及 MCP', color: '#8fc6a5' },
+  { key: 'systemPrompt', label: '系统提示词', color: 'hsl(var(--muted-foreground))' },
+  { key: 'tools', label: '工具及子智能体', color: 'hsl(var(--status-running))' },
+  { key: 'messages', label: '对话消息', color: 'hsl(var(--status-pending))' },
+  { key: 'skills', label: '技能', color: 'hsl(var(--status-skill))' },
+  { key: 'mcp', label: '连接器及 MCP', color: 'hsl(var(--status-success))' },
 ]
 
 export function buildContextRows(usage: ContextUsage): ContextRow[] {
@@ -45,14 +46,14 @@ export function ContextUsagePanel({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex h-7 items-center gap-[7px] rounded-lg bg-[rgba(224,163,62,.10)] px-2.5 text-xs text-[#d7c9a9] transition-[filter] hover:brightness-125"
+        className="flex h-7 items-center gap-[7px] rounded-lg bg-status-pending/10 px-2.5 text-[11px] text-status-pending transition-colors hover:bg-status-pending/15"
         aria-label="查看上下文用量"
         aria-expanded={open}
       >
         <span
           className="h-[9px] w-[9px] rounded-full"
           style={{
-            background: `conic-gradient(#e0a33e 0 ${safePercent}%, rgba(255,255,255,.16) ${safePercent}% 100%)`,
+            background: `conic-gradient(hsl(var(--status-pending)) 0 ${safePercent}%, hsl(var(--status-pending) / .18) ${safePercent}% 100%)`,
           }}
         />
         {usage.percent.toFixed(1)}%
@@ -75,7 +76,7 @@ export function ContextUsagePanel({
                 className="ml-auto h-[22px] w-[22px] rounded-md text-muted-foreground hover:bg-foreground/[.07]"
                 aria-label="关闭上下文用量"
               >
-                ×
+                <X aria-hidden="true" size={13} strokeWidth={1.8} />
               </button>
             </div>
 
@@ -121,10 +122,10 @@ export function ContextUsagePanel({
                 <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">85%</span>
               </div>
               <div className="relative h-1 rounded-[3px] bg-foreground/[.09]">
-                <div className="absolute inset-y-0 left-0 w-[85%] rounded-[3px] bg-[rgba(224,163,62,.55)]" />
-                <div className="absolute left-[85%] top-[-4px] ml-[-6px] h-3 w-3 rounded-full bg-[#e8e8ec] shadow-[0_1px_4px_rgba(0,0,0,.5)]" />
+                <div className="absolute inset-y-0 left-0 w-[85%] rounded-[3px] bg-status-pending/55" />
+                <div className="absolute left-[85%] top-[-4px] ml-[-6px] h-3 w-3 rounded-full border bg-card shadow-[0_1px_4px_rgba(0,0,0,.18)]" />
                 <div
-                  className="absolute top-[-3px] h-[10px] w-0.5 bg-[#9dbfe0]"
+                  className="absolute top-[-3px] h-[10px] w-0.5 bg-status-running"
                   style={{ left: `${safePercent}%` }}
                 />
               </div>

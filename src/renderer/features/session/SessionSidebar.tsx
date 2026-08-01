@@ -1,4 +1,4 @@
-import { Activity, Folder, HardDrive, Plus, Settings } from 'lucide-react'
+import { Activity, Folder, HardDrive, Pin, Plus, Search, Settings } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { SessionMeta } from '../../../shared/contracts/session.ts'
 import type {
@@ -7,7 +7,7 @@ import type {
 } from '../../../shared/contracts/workspace.ts'
 import { ThemeToggle } from '../theme/ThemeToggle.tsx'
 import type { ThemeName } from '../theme/theme-state.ts'
-import { SessionMenu } from './SessionMenu.tsx'
+import { SessionActions } from './SessionActions.tsx'
 import { filterSessions, groupSessions } from './session-view.ts'
 
 interface SessionSidebarProps {
@@ -76,35 +76,46 @@ export function SessionSidebar({
   return (
     <aside
       data-testid="app-sidebar"
-      className="flex w-[252px] shrink-0 flex-col border-r bg-background max-[820px]:w-[218px] max-[640px]:hidden"
+      className="flex w-[252px] shrink-0 flex-col gap-2.5 border-r bg-background px-2.5 pb-2.5 pt-3 max-[820px]:w-[218px] max-[640px]:hidden"
     >
-      <div data-testid="app-brand" className="flex h-12 items-center gap-2.5 border-b px-3">
-        <span className="grid h-7 w-7 place-items-center rounded-[9px] bg-primary text-[12px] font-semibold text-primary-foreground shadow-sm">
+      <div data-testid="app-brand" className="flex items-center gap-2 px-1 pb-0.5 pt-0.5">
+        <span className="grid h-[23px] w-[23px] place-items-center rounded-[7px] bg-primary text-[11px] font-bold tracking-[-.02em] text-primary-foreground">
           T
         </span>
-        <span className="min-w-0">
-          <span className="block text-[13px] font-semibold tracking-[-0.01em]">TgBuddy</span>
-          <span className="block text-[9px] tracking-[0.12em] text-muted-foreground">LOCAL AGENT</span>
-        </span>
+        <span className="min-w-0 truncate text-[13.5px] font-semibold tracking-[-.01em]">TgBuddy</span>
+        <div className="ml-auto flex items-center gap-0.5">
+          <button
+            type="button"
+            data-testid="settings-open"
+            aria-label="打开设置"
+            onClick={onOpenSettings}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Settings className="h-3.5 w-3.5" strokeWidth={1.7} />
+          </button>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        </div>
       </div>
 
-      <div className="border-b p-3">
+      <div>
         <div className="relative">
           <button
             type="button"
             data-testid="workspace-picker"
             aria-expanded={workspaceOpen}
             onClick={() => setWorkspaceOpen((open) => !open)}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
+            className="flex min-h-[52px] w-full items-center gap-[9px] rounded-[10px] bg-card/70 px-[9px] py-[7px] text-left transition-colors hover:bg-card hover:ring-1 hover:ring-border"
           >
-            <HardDrive className="h-3.5 w-3.5 shrink-0 text-status-info" strokeWidth={1.7} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-medium text-foreground">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-status-running/10 text-status-running">
+              <HardDrive className="h-3.5 w-3.5" strokeWidth={1.7} />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="block truncate text-[12.5px] font-semibold text-foreground">
                 {currentWorkspace?.name ?? '选择工作区'}
               </span>
               <span
                 data-testid={mountStatus?.ok === false ? 'workspace-mount-error' : undefined}
-                className={`block truncate font-mono text-[10.5px] ${
+                className={`block truncate font-mono text-[10.5px] leading-[1.35] ${
                   mountStatus?.ok === false ? 'text-status-error' : 'text-muted-foreground'
                 }`}
               >
@@ -158,35 +169,39 @@ export function SessionSidebar({
         </div>
       </div>
 
-      <div className="p-3 pb-2">
+      <div className="flex flex-col gap-2">
         <button
           type="button"
           aria-label="+ 新会话"
           onClick={() => void onNewSession()}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          className="flex min-h-9 w-full items-center gap-2 rounded-[10px] border border-dashed border-border px-2.5 text-left text-[13px] text-foreground/85 transition-colors hover:border-muted-foreground hover:bg-card"
         >
           <Plus aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={1.7} />
           新会话
+          <kbd className="ml-auto font-mono text-[10px] text-muted-foreground/65">Ctrl N</kbd>
         </button>
-        <input
-          value={sessionQuery}
-          onChange={(event) => setSessionQuery(event.target.value)}
-          placeholder="搜索会话…"
-          data-testid="session-search"
-          className="mt-2 w-full rounded-lg bg-accent/45 px-2.5 py-1.5 text-xs text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground/60 focus:ring-ring/40"
-        />
+        <label className="flex min-h-9 w-full items-center gap-2 rounded-[10px] bg-card/60 px-2.5 text-muted-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))] focus-within:bg-card focus-within:shadow-[inset_0_0_0_1px_hsl(var(--border)),0_0_0_3px_hsl(var(--ring)/.12)]">
+          <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.7} />
+          <input
+            value={sessionQuery}
+            onChange={(event) => setSessionQuery(event.target.value)}
+            placeholder="搜索会话与产物"
+            data-testid="session-search"
+            className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/60"
+          />
+        </label>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div className="-mx-0.5 min-h-0 flex-1 overflow-y-auto px-0.5 pb-3.5">
         {groupSessions(filteredSessions).map((group) => (
-          <section key={group.title} className="mb-3">
-            <div className="px-3 pb-1 pt-2 text-[10.5px] text-muted-foreground">
+          <section key={group.title} className="mt-3 flex flex-col gap-0.5">
+            <div className="px-2 py-1 text-[10.5px] font-semibold tracking-[.07em] text-muted-foreground/70">
               {group.title}
             </div>
             {group.items.map((session) => (
               <div
                 key={session.id}
-                className="group relative mb-0.5 flex items-center"
+                className="group relative flex items-center"
                 onMouseEnter={(event) => schedulePreview(session, event.currentTarget)}
                 onMouseLeave={clearPreview}
               >
@@ -196,24 +211,27 @@ export function SessionSidebar({
                   data-session-id={session.id}
                   aria-current={session.id === currentSessionId ? 'true' : undefined}
                   onClick={() => void onSelectSession(session.id)}
-                  className={`block w-full rounded-lg px-3 py-2 text-left transition-colors ${
-                    session.id === currentSessionId ? 'bg-accent' : 'hover:bg-accent/60'
+                  className={`block w-full rounded-[10px] px-[9px] py-[9px] text-left transition-colors ${
+                    session.id === currentSessionId ? 'bg-accent shadow-[inset_0_0_0_1px_hsl(var(--border))]' : 'hover:bg-accent/75'
                   }`}
                 >
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5 transition-[padding] group-hover:pr-[74px] group-focus-within:pr-[74px]">
                     <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                       {session.title}
                     </span>
-                    <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                    {session.pinned && (
+                      <Pin className="h-[11px] w-[11px] shrink-0 text-muted-foreground" strokeWidth={1.8} />
+                    )}
+                    <span className="shrink-0 text-[10.5px] text-muted-foreground transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
                       {relativeTime(session.updatedAt)}
                     </span>
                   </div>
-                  <div className="mt-0.5 flex items-center gap-1.5">
+                  <div className="mt-1 flex items-center gap-1.5">
                     {session.status === 'running' && (
                       <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-status-warning" />
                     )}
                     <span
-                      className={`truncate text-[11px] ${
+                      className={`truncate pl-px text-[10.8px] ${
                         session.status === 'failed' ? 'text-status-error' : 'text-muted-foreground'
                       }`}
                     >
@@ -221,7 +239,11 @@ export function SessionSidebar({
                     </span>
                   </div>
                 </button>
-                <SessionMenu session={session} onChanged={onSessionsChanged} />
+                <SessionActions
+                  session={session}
+                  onChanged={onSessionsChanged}
+                  onInteract={clearPreview}
+                />
               </div>
             ))}
           </section>
@@ -256,7 +278,7 @@ export function SessionSidebar({
         </div>
       )}
 
-      <div className="flex items-center gap-1 border-t px-2 py-2">
+      <div className="flex items-center gap-1 px-[7px] pb-0.5 pt-2 text-[10.5px]">
         <div
           data-testid="local-mode"
           className="mr-auto inline-flex min-w-0 items-center gap-1.5 px-1.5 text-[10.5px] text-muted-foreground"
@@ -264,16 +286,6 @@ export function SessionSidebar({
           <span className="h-1.5 w-1.5 rounded-full bg-status-success" />
           本地模式
         </div>
-        <button
-          type="button"
-          data-testid="settings-open"
-          aria-label="打开设置"
-          onClick={onOpenSettings}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <Settings className="h-4 w-4" strokeWidth={1.7} />
-        </button>
-        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
     </aside>
   )

@@ -43,12 +43,12 @@ export function PlanApproval({ request }: { request: PlanRequest }) {
       className="max-w-[720px] overflow-hidden"
       style={{
         borderRadius: 11,
-        background: 'rgba(157,191,224,.045)',
-        boxShadow: 'inset 0 0 0 1px rgba(157,191,224,.22)',
+        background: 'color-mix(in srgb, hsl(var(--status-running)) 7%, hsl(var(--card)))',
+        boxShadow: 'inset 0 0 0 1px hsl(var(--status-running) / .22)',
       }}
     >
       <div className="flex items-center gap-2 px-3 py-2.5">
-        <span className="text-[13px] font-medium" style={{ color: '#9dbfe0' }}>
+        <span className="text-[13px] font-medium text-status-running">
           计划待审批
         </span>
         <span className="text-[11.5px] text-muted-foreground/70">
@@ -57,13 +57,13 @@ export function PlanApproval({ request }: { request: PlanRequest }) {
       </div>
 
       <div className="px-3 pb-2">
-        <div className="rounded-lg bg-white/[.03] px-2.5 py-2 text-[12px] leading-relaxed text-foreground/85">
+        <div className="rounded-lg bg-muted px-2.5 py-2 text-[12px] leading-relaxed text-foreground/85">
           {planSummary(request.plan)}
         </div>
         <button
           type="button"
           onClick={() => setExpanded((current) => !current)}
-          className="mt-1.5 text-[11px] text-[#8ba7c4] hover:text-[#cfe0f2]"
+          className="mt-1.5 text-[11px] text-status-running hover:text-foreground"
         >
           {expanded ? '▾ 收起完整计划' : '▸ 查看完整计划'}
         </button>
@@ -87,11 +87,11 @@ export function PlanApproval({ request }: { request: PlanRequest }) {
         </div>
       )}
 
-      <div className="flex gap-2 px-3 pb-3">
+      <div className="flex justify-end gap-2 px-3 pb-3">
         <button
           disabled={busy}
           onClick={() => void respond(true)}
-          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+          className="inline-flex min-h-[30px] items-center rounded-lg border border-primary bg-primary px-3 text-[11.5px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40"
         >
           批准并执行
         </button>
@@ -99,7 +99,7 @@ export function PlanApproval({ request }: { request: PlanRequest }) {
           <button
             disabled={busy}
             onClick={() => void respond(false)}
-            className="rounded-md bg-accent px-3 py-1.5 text-xs text-foreground/80 hover:bg-accent/70 disabled:opacity-40"
+            className="inline-flex min-h-[30px] items-center rounded-lg border bg-card px-3 text-[11.5px] text-foreground/80 hover:bg-accent disabled:opacity-40"
           >
             提交意见
           </button>
@@ -107,7 +107,7 @@ export function PlanApproval({ request }: { request: PlanRequest }) {
           <button
             disabled={busy}
             onClick={() => setRejecting(true)}
-            className="rounded-md bg-accent px-3 py-1.5 text-xs text-foreground/80 hover:bg-accent/70 disabled:opacity-40"
+            className="inline-flex min-h-[30px] items-center rounded-lg border bg-card px-3 text-[11.5px] text-foreground/80 hover:bg-accent disabled:opacity-40"
           >
             要修改
           </button>

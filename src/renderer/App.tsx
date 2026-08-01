@@ -183,6 +183,7 @@ export function App() {
     }
     setSessions(await window.tgbuddy.session.list())
     setCurrentId(meta.id)
+    return meta
   }
 
   /** U01：空状态样例 → 新建会话并预填草稿（不自动发送） */
@@ -261,16 +262,17 @@ export function App() {
 
   async function send() {
     const text = input.trim()
-    if ((!text && attachmentDrafts.length === 0) || !currentId || stream.running || queuedPrompt) return
+    if ((!text && attachmentDrafts.length === 0) || stream.running || queuedPrompt) return
+    const sessionId = currentId ?? (await newSession()).id
     const attachments = attachmentDrafts.map((draft) => draft.ref)
     setInput('')
     setAttachmentDrafts([])
     if (stream.compaction) {
-      setQueuedPrompts((current) => new Map(current).set(currentId, text))
+      setQueuedPrompts((current) => new Map(current).set(sessionId, text))
       return
     }
     await window.tgbuddy.agent.send({
-      sessionId: currentId,
+      sessionId,
       text,
       ...(attachments.length > 0 ? { attachments } : {}),
     })
@@ -403,25 +405,19 @@ export function App() {
       {/* 底部常驻授权队列提示：解决 inline 卡片被划过去的问题 */}
       {pendingPermissionCount > 0 && (
         <div
-          className="fixed left-1/2 z-20 flex translate-x-[-50%] items-center gap-[10px] rounded-[22px] px-3 py-2 text-xs"
+          className="fixed left-1/2 z-20 flex translate-x-[-50%] items-center gap-[9px] rounded-full border border-status-pending/25 bg-status-pending/10 px-2.5 py-[7px] text-[11px] text-status-pending shadow-[0_12px_30px_rgba(34,32,27,.12)]"
           style={{
-            bottom: 168,
-            background: '#26221a',
-            boxShadow: '0 12px 30px rgba(0,0,0,.5), inset 0 0 0 1px rgba(224,163,62,.28)',
+            bottom: 153,
           }}
         >
-          <span
-            className="h-1.5 w-1.5 animate-pulse rounded-full"
-            style={{ background: '#e0a33e' }}
-          />
-          <span style={{ color: '#e6d3ae' }}>
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-status-pending" />
+          <span>
             {pendingPermissionCount} 个授权请求等待处理
           </span>
           <button
             type="button"
             onClick={jumpToPendingPermission}
-            className="rounded-[6px] px-[9px] py-[3px] text-[11.5px]"
-            style={{ background: 'rgba(255,255,255,.1)', color: '#f0e6d2' }}
+            className="rounded-[6px] bg-card/60 px-2 py-[3px] text-[10.5px] text-inherit hover:bg-card"
           >
             跳到该处
           </button>
@@ -463,7 +459,7 @@ export function App() {
           {!currentId ? (
             <SessionSamples onPick={startFromSample} />
           ) : (
-            <ConversationContent className="mx-auto w-full max-w-3xl gap-4 px-6 py-6">
+            <ConversationContent className="mx-auto w-full max-w-[720px] gap-0.5 px-6 pb-2.5 pt-6">
               {messages.map((m) => (
                 <MessageView
                   key={m.id}
@@ -479,11 +475,11 @@ export function App() {
 
               {/* 流式中的内容 */}
               {stream.thinking && (
-                <pre className="whitespace-pre-wrap rounded-lg bg-card p-3 text-xs text-muted-foreground">
+                <pre className="mb-1 max-w-[700px] whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 font-mono text-[10.8px] leading-[1.7] text-muted-foreground">
                   {stream.thinking}
                 </pre>
               )}
-              {stream.text && <Response streaming>{stream.text}</Response>}
+              {stream.text && <AssistantResponse streaming>{stream.text}</AssistantResponse>}
 
               {currentId && stream.compaction && (
                 <CompactionStatus sessionId={currentId} state={stream.compaction} />
@@ -529,7 +525,7 @@ export function App() {
 
               {/* ★ 内核错误必须显示。不显示的话认证失败看起来就是"模型不说话" */}
               {stream.error && (
-                <div className="rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+                <div className="rounded-[9px] border border-status-error/30 bg-status-error/10 px-3 py-2 text-[12.5px] text-status-error">
                   {stream.error}
                 </div>
               )}
@@ -735,14 +731,14 @@ function MessageView({
 
       return (
         <div className="flex justify-end">
-          <div className="flex w-full max-w-[80%] flex-col gap-2 rounded-2xl bg-card p-3">
+          <div className="flex w-full max-w-[560px] flex-col gap-2 rounded-[15px_15px_4px_15px] bg-primary p-3 text-primary-foreground shadow-[0_2px_8px_rgba(20,20,18,.09)]">
             <textarea
               aria-label="编辑消息"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               rows={Math.max(2, Math.min(8, draft.split('\n').length))}
               autoFocus
-              className="min-h-[64px] resize-y bg-transparent text-sm leading-relaxed text-foreground outline-none"
+              className="min-h-[64px] resize-y bg-transparent text-[13px] leading-[1.7] text-primary-foreground outline-none"
             />
             {editError && (
               <div className="text-[11px] text-[#dfa39d]">{editError}</div>
@@ -755,7 +751,7 @@ function MessageView({
                   setEditError(undefined)
                 }}
                 disabled={submitting}
-                className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#9a9aa2] hover:bg-white/[.06] disabled:opacity-40"
+                className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-primary-foreground/65 hover:bg-primary-foreground/10 disabled:opacity-40"
               >
                 取消
               </button>
@@ -763,7 +759,7 @@ function MessageView({
                 type="button"
                 onClick={() => void submit()}
                 disabled={!draft.trim() || submitting}
-                className="rounded-[6px] bg-white/[.06] px-[9px] py-1 text-[11px] text-[#b6b6be] hover:bg-white/[.12] disabled:opacity-40"
+                className="rounded-[6px] bg-primary-foreground/10 px-[9px] py-1 text-[11px] text-primary-foreground/85 hover:bg-primary-foreground/15 disabled:opacity-40"
               >
                 {submitting ? '重发中…' : '重发'}
               </button>
@@ -778,7 +774,7 @@ function MessageView({
         {message.attachments && message.attachments.length > 0 && (
           <AttachmentChipList attachments={message.attachments} />
         )}
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-card px-4 py-2.5 text-sm leading-relaxed">
+        <div className="mb-[13px] mt-[3px] max-w-[560px] whitespace-pre-wrap rounded-[15px_15px_4px_15px] bg-primary px-3.5 py-[11px] text-[13px] leading-[1.7] text-primary-foreground shadow-[0_2px_8px_rgba(20,20,18,.09)]">
           {displayText}
         </div>
         {canEdit && (
@@ -791,7 +787,7 @@ function MessageView({
                 setEditing(true)
               }}
               disabled={cloning}
-              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#777780] hover:bg-white/[.06] hover:text-[#b6b6be] disabled:opacity-40"
+              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
               编辑并重发
             </button>
@@ -806,7 +802,7 @@ function MessageView({
                 })
               }}
               disabled={cloning}
-              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#777780] hover:bg-white/[.06] hover:text-[#b6b6be] disabled:opacity-40"
+              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
               {cloning ? '创建中…' : '从此新建会话'}
             </button>
@@ -825,7 +821,7 @@ function MessageView({
       <div className="space-y-2">
         {inner.content.map((block, i) => {
           if (block.type === 'text' && block.text.trim()) {
-            return <Response key={i}>{block.text}</Response>
+            return <AssistantResponse key={i}>{block.text}</AssistantResponse>
           }
           if (block.type === 'toolCall') {
             if (liveToolIds.has(block.id)) return null // 实时卡片正在显示它
@@ -849,4 +845,26 @@ function MessageView({
 
   // toolResult 消息本身不单独渲染 —— 它的内容显示在对应的工具卡片里
   return null
+}
+
+function AssistantResponse({
+  children,
+  streaming = false,
+}: {
+  children: string
+  streaming?: boolean
+}) {
+  return (
+    <div className="flex max-w-[700px] gap-2.5 pb-3 pt-[7px]">
+      <span className="mt-px grid h-[23px] w-[23px] shrink-0 place-items-center rounded-[7px] bg-accent text-[10px] font-bold text-foreground/65 shadow-[inset_0_0_0_1px_hsl(var(--border))]">
+        T
+      </span>
+      <Response
+        streaming={streaming}
+        className="min-w-0 flex-1 text-[13px] leading-[1.8] text-foreground/75 prose-p:my-0 prose-p:text-foreground/75 prose-li:text-foreground/75"
+      >
+        {children}
+      </Response>
+    </div>
+  )
 }

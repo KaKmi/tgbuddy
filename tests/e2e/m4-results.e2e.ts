@@ -48,5 +48,15 @@ test('M4：write 产物出现在结果区，可预览并用系统打开', async 
   await expect(page.getByTestId('artifact-preview-card')).toBeVisible()
   await expect(page.getByTestId('artifact-open')).toBeVisible()
   await expect(page.getByText('让 Agent 改这份', { exact: true })).toHaveCount(0)
+
+  await page.getByTestId('artifact-preview-card').getByRole('button').last().click()
+  await expect(page.getByTestId('file-viewer')).toBeVisible()
+  await page.getByRole('button', { name: '关闭文件查看器' }).click()
+
+  await page.getByTestId('results-panel').getByRole('button', { name: '工作区', exact: true }).click()
+  await expect(page.getByPlaceholder('筛选工作区文件')).toBeVisible()
+  await page.getByTestId('workspace-file').filter({ hasText: 'm2-write.txt' }).click()
+  await expect(page.getByTestId('file-viewer')).toBeVisible()
+  await page.getByRole('button', { name: '关闭文件查看器' }).click()
   await page.screenshot({ path: testInfo.outputPath('results-panel.png') })
 })

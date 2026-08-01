@@ -48,7 +48,7 @@ function WindowToolbar() {
   return (
     <header
       data-testid="window-toolbar"
-      className="window-drag flex h-9 shrink-0 items-center border-b bg-background/95 pl-3 text-[11.5px] text-muted-foreground"
+      className="window-drag flex h-9 shrink-0 items-center border-b bg-content-area/95 pl-3 text-[11.5px] text-muted-foreground"
     >
       <span className="font-medium tracking-[-.01em] text-foreground/80">TgBuddy</span>
       <span className="ml-2 text-muted-foreground/55">本地智能体</span>

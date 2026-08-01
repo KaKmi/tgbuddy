@@ -1,4 +1,5 @@
 import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
+import { X } from 'lucide-react'
 
 /** 附件 chip（A02）：名称 + 大小，可带移除按钮；消息回放时只读。 */
 export function AttachmentChipList({
@@ -15,7 +16,7 @@ export function AttachmentChipList({
         <span
           key={attachment.id}
           data-testid="attachment-chip"
-          className="flex items-center gap-1.5 rounded-md bg-white/[.05] px-2 py-1 text-[11px] text-muted-foreground"
+          className="flex items-center gap-1.5 rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground"
         >
           <span className="truncate">{attachment.name}</span>
           <span className="shrink-0 opacity-60">{formatSize(attachment.size)}</span>
@@ -26,7 +27,7 @@ export function AttachmentChipList({
               className="shrink-0 text-muted-foreground/60 hover:text-status-error"
               aria-label={`移除附件 ${attachment.name}`}
             >
-              ×
+              <X aria-hidden="true" size={12} strokeWidth={1.8} />
             </button>
           )}
         </span>
