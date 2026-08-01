@@ -57,7 +57,7 @@ Story FR05B: “Provider 品牌图标预置” — complete
   Concerns: FR14 设置 Models 重构必须复用本组件，不再创建第二套 Provider 标识
 
 Story SC01: “按 V3 原型还原设置中心” — complete（按用户反馈提前实施）
-  Commits: pending
+  Commits: 0201b1c
   Files: `src/renderer/App.tsx`, `src/renderer/features/settings/ChannelSettingsPanel.tsx`, `src/renderer/features/settings/settings-preferences.ts`, `src/renderer/styles.css`, `tests/settings-preferences.test.ts`, `tests/e2e/m3-settings.e2e.ts`, `tests/e2e/settings-center.e2e.ts`
   Produces: 900×650 设置 Dialog；通用/模型/工具与权限/能力/外观导航；应用级 Skill/MCP 管理；Provider/Profile 编辑；权限规则撤销；主题和本地偏好交互
   Verification: `bun test` 374/374；architecture；typecheck；build；Settings Electron E2E 7/7 + shell/visual E2E 1/1；明亮主题截图 2 张
