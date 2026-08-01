@@ -98,6 +98,10 @@ function ruleIsValid(
   workspaceId: string | undefined,
 ): boolean {
   switch (rule.scope) {
+    // v2 的短生命周期规则必须结合稳定 subject 判断；Task 4/6 接入前 fail closed。
+    case 'agent_run':
+    case 'delegation':
+      return false
     case 'session':
       return rule.ownerId === sessionId
     case 'project':

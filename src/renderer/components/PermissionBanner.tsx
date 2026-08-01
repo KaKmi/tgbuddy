@@ -13,7 +13,8 @@ import { TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import type { PermissionRequest, RuleScope } from '../../shared/types/permission.ts'
 
-const SCOPE_LABELS: Record<RuleScope, string> = {
+const LEGACY_SCOPE_OPTIONS = ['session', 'project', 'global'] as const satisfies RuleScope[]
+const SCOPE_LABELS: Record<(typeof LEGACY_SCOPE_OPTIONS)[number], string> = {
   session: '本会话',
   project: '本项目',
   global: '全局',
@@ -93,7 +94,7 @@ export function PermissionBanner({ request }: { request: PermissionRequest }) {
           ))}
           {grantIndex !== null && (
             <div className="flex items-center gap-1 pt-1">
-              {(Object.keys(SCOPE_LABELS) as RuleScope[]).map((s) => (
+              {LEGACY_SCOPE_OPTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => setScope(s)}

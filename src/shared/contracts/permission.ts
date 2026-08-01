@@ -23,7 +23,7 @@ export type RuleMatch =
   | 'method'
 
 /** 有效期。默认 project —— 换工作区自动失效 */
-export type RuleScope = 'session' | 'project' | 'global'
+export type RuleScope = 'agent_run' | 'delegation' | 'session' | 'project' | 'global'
 
 export interface PermissionRule {
   /** 规则唯一标识；SQLite/内存仓库都以此删除 */
