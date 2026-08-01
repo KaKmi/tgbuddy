@@ -12,7 +12,6 @@ import type { AttachmentDraft, AttachmentRef } from '../shared/contracts/attachm
 import { AttachmentChipList } from './components/AttachmentChips.tsx'
 import { ResultsPanel } from './features/results/ResultsPanel.tsx'
 import { SessionSamples } from './features/session/SessionSamples.tsx'
-import { SessionMenu } from './features/session/SessionMenu.tsx'
 import {
   injectEditIntent,
   stripEditIntent,
@@ -60,9 +59,10 @@ import {
   ConversationScrollButton,
 } from './components/ai-elements/conversation.tsx'
 import { Response } from './components/ai-elements/response.tsx'
-import { ThemeToggle, useTheme } from './features/theme/ThemeToggle.tsx'
+import { useTheme } from './features/theme/ThemeToggle.tsx'
 import { AppShell } from './features/shell/AppShell.tsx'
 import { ConversationHeader } from './features/conversation/ConversationHeader.tsx'
+import { SessionSidebar } from './features/session/SessionSidebar.tsx'
 
 export function App() {
   const { theme, toggle: toggleTheme } = useTheme()
@@ -95,10 +95,8 @@ export function App() {
   const currentSession = sessions.find((x) => x.id === currentId)
   const mode: PermissionMode = currentSession?.permissionMode ?? 'auto'
   const [input, setInput] = useState('')
-  const [wsOpen, setWsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [resultsOpen, setResultsOpen] = useState(true)
-  const [sessionQuery, setSessionQuery] = useState('')
   const [mountStatus, setMountStatus] = useState<WorkspaceMountResolution>()
   // A02：输入区附件草稿（已 stage 到 BlobStore，发送前可移除）
   const [attachmentDrafts, setAttachmentDrafts] = useState<AttachmentDraft[]>([])
@@ -195,7 +193,6 @@ export function App() {
   async function selectWorkspace(id: string) {
     const workspace = await window.tgbuddy.workspace.select(id)
     setCurrentWorkspaceId(workspace.id)
-    setWsOpen(false)
     const nextSessions = await window.tgbuddy.session.list()
     setSessions(nextSessions)
     if (currentId && !nextSessions.some((session) => session.id === currentId)) {
@@ -361,174 +358,23 @@ export function App() {
       )}
 
       {/* ── 侧边栏 ────────────────────────────────────────── */}
-      <aside
-        data-testid="app-sidebar"
-        className="flex w-[252px] shrink-0 flex-col border-r bg-background max-[820px]:w-[218px] max-[640px]:hidden"
-      >
-        <div className="border-b p-3">
-          <div className="relative">
-            <button
-              type="button"
-              data-testid="workspace-picker"
-              onClick={() => setWsOpen((open) => !open)}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.9"
-                strokeLinecap="round"
-                className="shrink-0 text-sky-400/70"
-              >
-                <path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              </svg>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-foreground">
-                  {currentWorkspace?.name ?? '选择工作区'}
-                </span>
-                <span
-                  className={`block truncate font-mono text-[10.5px] ${
-                    mountStatus?.ok === false
-                      ? 'text-red-400/80'
-                      : 'text-muted-foreground'
-                  }`}
-                >
-                  {mountStatus?.ok === false
-                    ? '目录不可用 · 请重新选择文件夹'
-                    : currentWorkspace?.mount?.path ?? '还没有工作区'}
-                </span>
-              </span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">▾</span>
-            </button>
-            {wsOpen && (
-              <div className="absolute left-0 right-0 top-full z-40 mt-1.5 rounded-xl border border-white/5 bg-popover p-1.5 shadow-2xl">
-                <div className="px-2 py-1 text-[11px] tracking-wide text-muted-foreground">
-                  工作区
-                </div>
-                {workspaces.map((workspace) => (
-                  <button
-                    key={workspace.id}
-                    type="button"
-                    data-testid="workspace-option"
-                    onClick={() => selectWorkspace(workspace.id)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
-                  >
-                    <span className="w-3 shrink-0 text-center text-xs text-sky-400">
-                      {workspace.id === currentWorkspaceId ? '✓' : ''}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12.5px] text-foreground">
-                        {workspace.name}
-                      </span>
-                      <span className="block truncate font-mono text-[10.5px] text-muted-foreground">
-                        {workspace.mount?.path}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  data-testid="workspace-add"
-                  onClick={addWorkspace}
-                  className="mt-1 flex w-full items-center gap-2 rounded-lg border-t border-white/5 px-2 pb-1 pt-2 text-left text-xs text-sky-300 transition-colors hover:bg-accent/60"
-                >
-                  + 选择其他文件夹…
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="p-3">
-          <button
-            onClick={newSession}
-            className="w-full rounded-lg border border-dashed border-muted-foreground/25 px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
-          >
-            + 新会话
-          </button>
-          {/* U02：会话搜索（只过滤当前工作区） */}
-          <input
-            value={sessionQuery}
-            onChange={(event) => setSessionQuery(event.target.value)}
-            placeholder="搜索会话…"
-            data-testid="session-search"
-            className="mt-2 w-full rounded-lg bg-white/[.03] px-2.5 py-1.5 text-xs text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground/50 focus:ring-ring/40"
-          />
-        </div>
-        <div className="flex-1 overflow-y-auto px-2 pb-2">
-          {groupSessions(
-            sessionQuery.trim()
-              ? sessions.filter((s) =>
-                  (s.title ?? '').toLowerCase().includes(sessionQuery.trim().toLowerCase()),
-                )
-              : sessions,
-          ).map((group) => (
-            <div key={group.title} className="mb-3">
-              <div className="px-3 pb-1 pt-2 text-[11px] text-muted-foreground">{group.title}</div>
-              {group.items.map((s) => (
-                <div key={s.id} className="group relative mb-0.5 flex items-center">
-                  <button
-                    data-testid="session-item"
-                    onClick={() => selectSession(s.id)}
-                    className={`block w-full rounded-md px-3 py-2 text-left transition-colors ${
-                      s.id === currentId ? 'bg-accent' : 'hover:bg-accent/60'
-                    }`}
-                  >
-                    <div className="flex items-baseline gap-2">
-                    <span
-                      className={`min-w-0 flex-1 truncate text-sm ${
-                        s.id === currentId ? 'text-foreground' : 'text-foreground/80'
-                      }`}
-                    >
-                      {s.title}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
-                      {relativeTime(s.updatedAt)}
-                    </span>
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-1.5">
-                    {s.status === 'running' && (
-                      <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
-                    )}
-                    <span
-                      className={`truncate text-[11px] ${
-                        s.status === 'failed' ? 'text-red-400/80' : 'text-muted-foreground'
-                      }`}
-                    >
-                      {sessionSubtitle(s)}
-                    </span>
-                    </div>
-                  </button>
-                  <SessionMenu
-                    session={s}
-                    onChanged={async () => {
-                      setSessions(await window.tgbuddy.session.list())
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          ))}
-          {sessions.length === 0 && (
-            <p className="px-3 py-8 text-center text-xs text-muted-foreground">还没有会话</p>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1 border-t px-2 py-2">
-          <button
-            type="button"
-            data-testid="settings-open"
-            onClick={() => setSettingsOpen(true)}
-            className="min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-          >
-            ⚙ 设置
-          </button>
-          <ThemeToggle theme={theme} onToggle={toggleTheme} />
-        </div>
-      </aside>
-
+      <SessionSidebar
+        sessions={sessions}
+        currentSessionId={currentId}
+        workspaces={workspaces}
+        currentWorkspace={currentWorkspace}
+        mountStatus={mountStatus}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onNewSession={newSession}
+        onSelectSession={selectSession}
+        onSelectWorkspace={selectWorkspace}
+        onAddWorkspace={addWorkspace}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onSessionsChanged={async () => {
+          setSessions(await window.tgbuddy.session.list())
+        }}
+      />
       {/* ── 对话区 ────────────────────────────────────────── */}
       <main className="flex min-w-[430px] flex-1 flex-col bg-content-area max-[640px]:min-w-0">
         <ConversationHeader
@@ -911,55 +757,6 @@ function ModelChip({
       )}
     </div>
   )
-}
-
-// ── 侧边栏元数据的展示逻辑 ──────────────────────────────────────
-// 注意这些全部只依赖 SessionMeta，不读 JSONL —— 列 200 个会话不能读 200 个文件。
-
-/** 侧边栏第二行：运行中显示实时活动，失败显示原因，完成显示产物数 */
-function sessionSubtitle(s: SessionMeta): string {
-  if (s.status === 'running') return s.lastActivity ?? '进行中…'
-  if (s.status === 'interrupted') {
-    return `已中断 · ${s.statusDetail ?? '可继续发送'}`
-  }
-  if (s.status === 'failed') return `失败 · ${s.statusDetail ?? '未知原因'}`
-  if (s.artifactCount) return `已完成 · ${s.artifactCount} 个产物`
-  if (s.status === 'done') return '已完成'
-  return '未开始'
-}
-
-function relativeTime(ts: number): string {
-  const diff = Date.now() - ts
-  if (diff < 60_000) return '刚刚'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
-  const d = new Date(ts)
-  const today = new Date()
-  const sameDay = d.toDateString() === today.toDateString()
-  if (sameDay) return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
-  if (diff < 7 * 86_400_000) return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]!
-  return `${d.getMonth() + 1}-${d.getDate()}`
-}
-
-/** 置顶 / 今天 / 更早 · 7 天内 / 更早 */
-function groupSessions(sessions: SessionMeta[]): { title: string; items: SessionMeta[] }[] {
-  const now = Date.now()
-  const buckets: Record<string, SessionMeta[]> = { 置顶: [], 今天: [], '更早 · 7 天内': [], 更早: [] }
-
-  for (const s of sessions) {
-    if (s.archived) continue
-    if (s.pinned) {
-      buckets['置顶']!.push(s)
-      continue
-    }
-    const sameDay = new Date(s.updatedAt).toDateString() === new Date(now).toDateString()
-    if (sameDay) buckets['今天']!.push(s)
-    else if (now - s.updatedAt < 7 * 86_400_000) buckets['更早 · 7 天内']!.push(s)
-    else buckets['更早']!.push(s)
-  }
-
-  return Object.entries(buckets)
-    .filter(([, items]) => items.length > 0)
-    .map(([title, items]) => ({ title, items }))
 }
 
 /** toolCallId → 该次调用的结果。历史回放时用来给工具卡片定状态 */
