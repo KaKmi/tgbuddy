@@ -59,10 +59,10 @@ UI Slice 复用现有 `window.tgbuddy` 和 Runtime 行为，不得为了对齐�
 
 **Interfaces:** `resultPresentation(width):'column'|'overlay'`; `sidebarPresentation(width):'full'|'compact'|'hidden'`。
 
-- [ ] RED：1500 column、1180 overlay、820 compact、640 hidden；无横向溢出且 toggle 可达。
-- [ ] GREEN：精确实现三个断点；overlay 遮罩、Escape/关闭后焦点返回 toggle。
-- [ ] Run: `bun test tests/layout-state.test.ts && bun run build && bunx playwright test tests/e2e/ui-responsive.e2e.ts`。
-- [ ] Commit: `feat(ui): make result panel responsive`。
+- [x] RED：1500 column、1180 overlay、820 compact、640 hidden；无横向溢出且 toggle 可达。
+- [x] GREEN：精确实现三个断点；overlay 遮罩、Escape/关闭后焦点返回 toggle。
+- [x] Run: `bun test tests/layout-state.test.ts && bun run build && bunx playwright test tests/e2e/ui-responsive.e2e.ts`。
+- [x] Commit: `59fce31 feat(ui): make result panel responsive`。
 
 ### FR04：Sidebar 品牌与 Workspace 收口
 

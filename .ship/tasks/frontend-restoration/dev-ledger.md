@@ -15,3 +15,11 @@ Story FR02: “三栏 AppShell 与 Thread Header” — complete
   Verification: RED 缺少 `app-shell`；`bun run check:architecture`；`bun run typecheck`；`bun run build`；`bunx playwright test tests/e2e/ui-shell.e2e.ts` 1/1
   Review: 按用户快速路径跳过；纯 Renderer UI，无 shared DTO/IPC/存储语义变化
   Concerns: 响应式 overlay 与焦点恢复留给 FR03；Vite 主 chunk 748.52KB 警告为既有基线
+
+Story FR03: “结果区响应式覆盖层” — complete
+  Commits: 59fce31
+  Files: `src/renderer/App.tsx`, `src/renderer/features/shell/AppShell.tsx`, `src/renderer/features/shell/layout-state.ts`, `src/renderer/features/conversation/ConversationHeader.tsx`, `src/renderer/features/results/ResultsPanel.tsx`, `tests/layout-state.test.ts`, `tests/e2e/ui-responsive.e2e.ts`
+  Produces: `resultPresentation(width)`；`sidebarPresentation(width)`；1180px 结果覆盖层、820px 紧凑侧栏、640px 隐藏侧栏；遮罩/Escape 关闭并恢复焦点
+  Verification: RED 缺少 layout-state 与遮罩；`bun test tests/layout-state.test.ts` 2/2；`bun run check:architecture`；`bun run typecheck`；`bun run build`；FR02/FR03 Electron E2E 2/2
+  Review: 按用户快速路径跳过；纯 Renderer 布局与无障碍交互
+  Concerns: 640px 下能力入口收口留给 FR07；Vite 主 chunk 749.36KB 警告为既有基线
