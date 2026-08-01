@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import type {
   ArtifactPreviewResult,
   ArtifactRef,
@@ -29,11 +30,15 @@ export function ResultsPanel({
   sessionId,
   onEditRequest,
   active,
+  open,
+  onClose,
 }: {
   sessionId?: string
   onEditRequest?: (artifact: ArtifactRef) => void
   /** Run 进行中标记：结束（或开始）时刷新结果列表 */
   active?: boolean
+  open: boolean
+  onClose(): void
 }) {
   const [artifacts, setArtifacts] = useState<ArtifactRef[]>([])
   const [filter, setFilter] = useState<ArtifactFilter>('all')
@@ -77,15 +82,30 @@ export function ResultsPanel({
 
   const groups = groupArtifacts(filterArtifacts(artifacts, filter), runStartedAt)
 
+  if (!open) return null
+
   return (
-    <aside className="hidden w-72 shrink-0 border-l bg-background lg:flex lg:flex-col">
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <span className="text-sm font-medium">结果</span>
-        {artifacts.length > 0 && (
-          <span className="text-[11px] text-muted-foreground">
-            {artifacts.length} 个产物
-          </span>
-        )}
+    <aside
+      data-testid="results-panel"
+      className="flex w-[356px] shrink-0 flex-col border-l bg-background"
+    >
+      <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-[13px] font-medium">结果</span>
+          {artifacts.length > 0 && (
+            <span className="text-[10.5px] text-muted-foreground">
+              {artifacts.length} 个产物
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          aria-label="关闭结果区"
+          onClick={onClose}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <X aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={1.7} />
+        </button>
       </div>
       <div className="flex gap-1 border-b px-3 py-2">
         {FILTERS.map((option) => {

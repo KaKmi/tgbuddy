@@ -61,6 +61,8 @@ import {
 } from './components/ai-elements/conversation.tsx'
 import { Response } from './components/ai-elements/response.tsx'
 import { ThemeToggle, useTheme } from './features/theme/ThemeToggle.tsx'
+import { AppShell } from './features/shell/AppShell.tsx'
+import { ConversationHeader } from './features/conversation/ConversationHeader.tsx'
 
 export function App() {
   const { theme, toggle: toggleTheme } = useTheme()
@@ -95,6 +97,7 @@ export function App() {
   const [input, setInput] = useState('')
   const [wsOpen, setWsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [resultsOpen, setResultsOpen] = useState(true)
   const [sessionQuery, setSessionQuery] = useState('')
   const [mountStatus, setMountStatus] = useState<WorkspaceMountResolution>()
   // A02：输入区附件草稿（已 stage 到 BlobStore，发送前可移除）
@@ -309,7 +312,7 @@ export function App() {
   }
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
+    <AppShell>
       {activeModal && (
         <PermissionModal
           request={activeModal}
@@ -352,7 +355,10 @@ export function App() {
       )}
 
       {/* ── 侧边栏 ────────────────────────────────────────── */}
-      <aside className="flex w-60 shrink-0 flex-col border-r bg-background">
+      <aside
+        data-testid="app-sidebar"
+        className="flex w-[252px] shrink-0 flex-col border-r bg-background"
+      >
         <div className="border-b p-3">
           <div className="relative">
             <button
@@ -519,6 +525,12 @@ export function App() {
 
       {/* ── 对话区 ────────────────────────────────────────── */}
       <main className="flex min-w-0 flex-1 flex-col bg-content-area">
+        <ConversationHeader
+          title={currentSession?.title?.trim() || '新任务'}
+          running={stream.running}
+          resultsOpen={resultsOpen}
+          onToggleResults={() => setResultsOpen((open) => !open)}
+        />
         <Conversation className="flex-1">
           {!currentId ? (
             <SessionSamples onPick={startFromSample} />
@@ -697,8 +709,10 @@ export function App() {
         sessionId={currentId ?? undefined}
         onEditRequest={requestArtifactEdit}
         active={stream.running}
+        open={resultsOpen}
+        onClose={() => setResultsOpen(false)}
       />
-    </div>
+    </AppShell>
   )
 }
 

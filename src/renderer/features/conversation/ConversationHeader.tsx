@@ -1,0 +1,54 @@
+import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+
+interface ConversationHeaderProps {
+  title: string
+  running: boolean
+  resultsOpen: boolean
+  onToggleResults(): void
+}
+
+/** 会话级状态只在 Header 汇总，避免把运行提示散落到对话正文。 */
+export function ConversationHeader({
+  title,
+  running,
+  resultsOpen,
+  onToggleResults,
+}: ConversationHeaderProps) {
+  const ResultsIcon = resultsOpen ? PanelRightClose : PanelRightOpen
+
+  return (
+    <header
+      data-testid="conversation-header"
+      className="flex h-12 shrink-0 items-center gap-3 border-b px-4"
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <h1
+          data-testid="conversation-title"
+          className="truncate text-[13px] font-medium text-foreground"
+        >
+          {title}
+        </h1>
+        {running && (
+          <span
+            data-testid="run-pill"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-2 py-1 text-[10.5px] text-muted-foreground"
+          >
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-status-info" />
+            正在运行
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        data-testid="results-toggle"
+        aria-label={resultsOpen ? '收起结果区' : '展开结果区'}
+        aria-pressed={resultsOpen}
+        onClick={onToggleResults}
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <ResultsIcon aria-hidden="true" className="h-4 w-4" strokeWidth={1.7} />
+        <span>结果</span>
+      </button>
+    </header>
+  )
+}
