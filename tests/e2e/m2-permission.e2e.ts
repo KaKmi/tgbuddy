@@ -7,7 +7,7 @@ import { expect, test } from './support/electron-fixture'
 
 async function createSession(page: Page): Promise<void> {
   await page.getByRole('button', { name: '+ 新会话' }).click()
-  await expect(page.getByPlaceholder(/说点什么/)).toBeEnabled()
+  await expect(page.getByPlaceholder(/给 Agent 下达任务/)).toBeEnabled()
 }
 
 async function switchToWorkspace(page: Page, path: string): Promise<void> {
@@ -23,7 +23,7 @@ async function switchToWorkspace(page: Page, path: string): Promise<void> {
 }
 
 async function send(page: Page, prompt: string): Promise<void> {
-  const input = page.getByPlaceholder(/说点什么/)
+  const input = page.getByPlaceholder(/给 Agent 下达任务/)
   await input.fill(prompt)
   await page.getByRole('button', { name: '发送', exact: true }).click()
 }

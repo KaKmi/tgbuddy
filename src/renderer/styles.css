@@ -198,6 +198,195 @@ pre::-webkit-scrollbar-thumb,
 }
 
 /*
+ * Composer —— 对齐 V3 原型：一个完整容器承载能力入口、输入与发送动作。
+ * 常态只用中性色，危险模式与停止动作才使用状态色。
+ */
+.agent-composer-shell {
+  flex: none;
+  padding: 7px 22px 18px;
+  border-top: 1px solid hsl(var(--border) / 0.68);
+}
+
+.agent-composer {
+  width: min(820px, 100%);
+  min-height: 130px;
+  position: relative;
+  z-index: 12;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 9px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 15px;
+  background: hsl(var(--card));
+  box-shadow: 0 8px 24px hsl(var(--foreground) / 0.07), 0 1px 2px hsl(var(--foreground) / 0.05);
+  transition: border-color 130ms ease, box-shadow 130ms ease;
+}
+
+.agent-composer:focus-within {
+  border-color: hsl(var(--foreground) / 0.28);
+  box-shadow: 0 8px 26px hsl(var(--foreground) / 0.08), 0 0 0 3px hsl(var(--ring) / 0.1);
+}
+
+.agent-composer-toolbar,
+.agent-composer-toolbar-right,
+.agent-composer-footer,
+.agent-composer-actions {
+  display: flex;
+  align-items: center;
+}
+
+.agent-composer-toolbar { gap: 5px; flex-wrap: wrap; }
+.agent-composer-toolbar-right { margin-left: auto; gap: 5px; }
+
+.agent-composer-chip,
+.agent-composer-model-chip {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground) / 0.82);
+  font-size: 11px;
+}
+
+.agent-composer-chip:hover,
+.agent-composer-model-chip:hover,
+.agent-composer-chip[aria-expanded='true'],
+.agent-composer-model-chip[aria-expanded='true'] {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.agent-composer-chip > span { color: hsl(var(--muted-foreground) / 0.72); }
+.agent-composer-chip > b { max-width: 144px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 520; }
+.agent-composer-model-chip > span { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.agent-composer > textarea {
+  min-height: 52px;
+  max-height: 112px;
+  padding: 0 2px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.agent-composer > textarea::placeholder { color: hsl(var(--muted-foreground) / 0.58); }
+.agent-composer > textarea:disabled { opacity: 0.5; }
+
+.agent-composer-footer {
+  min-height: 30px;
+  gap: 9px;
+  color: hsl(var(--muted-foreground) / 0.72);
+  font-size: 10.5px;
+}
+
+.agent-composer-attachment {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+}
+
+.agent-composer-attachment:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.agent-composer-attachment:disabled { opacity: 0.38; }
+.agent-composer-actions { margin-left: auto; gap: 7px; }
+
+.agent-composer-stop,
+.agent-composer-send {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.agent-composer-stop {
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--status-error) / 0.25);
+  background: hsl(var(--status-error) / 0.12);
+  color: hsl(var(--status-error));
+  font-size: 11px;
+}
+
+.agent-composer-stop:hover { background: hsl(var(--status-error) / 0.2); }
+.agent-composer-send {
+  width: 30px;
+  border: 1px solid hsl(var(--primary));
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+.agent-composer-send:hover { filter: brightness(1.08); }
+.agent-composer-send:disabled { cursor: default; opacity: 0.28; filter: none; }
+
+.agent-composer-menu-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  background: transparent;
+}
+
+.agent-composer-menu {
+  width: 300px;
+  max-height: 330px;
+  position: absolute;
+  bottom: calc(100% + 9px);
+  z-index: 30;
+  overflow: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--popover));
+  box-shadow: 0 20px 52px hsl(var(--foreground) / 0.18);
+}
+
+.agent-composer-menu.is-mode { left: 12px; }
+.agent-composer-menu.is-expert { left: 94px; }
+.agent-composer-menu.is-model { right: 12px; }
+.agent-composer-menu header { display: flex; align-items: center; padding: 9px 11px 6px; }
+.agent-composer-menu header strong { font-size: 10.5px; }
+.agent-composer-menu header span { margin-left: auto; color: hsl(var(--muted-foreground)); font-size: 9px; }
+
+.agent-composer-menu-row {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--foreground));
+  text-align: left;
+}
+.agent-composer-menu-row:hover { background: hsl(var(--accent) / 0.72); }
+.agent-composer-menu-row > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.agent-composer-menu-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 560; }
+.agent-composer-menu-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--muted-foreground)); font-size: 9.5px; }
+.agent-composer-menu-row > svg { flex: none; color: hsl(var(--ring)); }
+.agent-composer-menu-empty { margin: 0; padding: 10px 11px 12px; color: hsl(var(--muted-foreground)); font-size: 10px; }
+
+@media (max-width: 700px) {
+  .agent-composer-shell { padding: 7px 10px 10px; }
+  .agent-composer-toolbar-right { width: 100%; margin-left: 0; }
+  .agent-composer-menu { left: 8px !important; right: 8px !important; width: auto; }
+  .agent-composer-footer > span { display: none; }
+}
+
+/*
  * 设置中心 —— 数值与交互层级来自 V3 原型。
  * 这里全部使用现有语义 token，确保明亮/深色主题共用一套组件结构。
  */
@@ -581,6 +770,74 @@ pre::-webkit-scrollbar-thumb,
 .settings-form-grid label { display: flex; flex-direction: column; gap: 5px; }
 .settings-form-grid label.span-2 { grid-column: 1 / -1; }
 .settings-form-grid label > span { color: hsl(var(--muted-foreground)); font-size: 9.5px; }
+
+.settings-skill-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 8px;
+}
+
+.settings-skill-mode > button {
+  min-height: 62px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  text-align: left;
+}
+.settings-skill-mode > button.active {
+  border-color: hsl(var(--ring) / 0.5);
+  background: hsl(var(--ring) / 0.12);
+}
+.settings-skill-mode strong { font-size: 10.5px; }
+.settings-skill-mode small { color: hsl(var(--muted-foreground)); font-size: 9px; line-height: 1.45; }
+
+.settings-profile-skills {
+  max-height: 230px;
+  overflow: auto;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.settings-profile-skills > button {
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  background: transparent;
+  color: hsl(var(--foreground));
+  text-align: left;
+}
+.settings-profile-skills > button:last-child { border-bottom: 0; }
+.settings-profile-skills > button:hover:not(:disabled) { background: hsl(var(--muted)); }
+.settings-profile-skills > button.selected { background: hsl(var(--ring) / 0.07); }
+.settings-profile-skills > button:disabled { opacity: 0.48; }
+.settings-profile-skills > button > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.settings-profile-skills strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+.settings-profile-skills small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--muted-foreground)); font-size: 9px; }
+.settings-profile-skills em { color: hsl(var(--muted-foreground) / 0.72); font-size: 8.8px; font-style: normal; white-space: nowrap; }
+.settings-skill-check {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  color: hsl(var(--ring));
+}
+.settings-profile-skills > button.selected .settings-skill-check {
+  border-color: hsl(var(--ring) / 0.5);
+  background: hsl(var(--ring) / 0.12);
+}
 
 .settings-manager-view { gap: 12px; }
 .settings-manager-head { display: grid; grid-template-columns: 132px 1fr auto; align-items: center; gap: 12px; }

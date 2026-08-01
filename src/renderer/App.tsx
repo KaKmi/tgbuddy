@@ -34,10 +34,7 @@ import {
   currentWorkspaceIdAtom,
   channelsAtom,
   profilesAtom,
-  resolveModelChipLabel,
 } from './atoms/agent.ts'
-import type { Channel } from '../shared/contracts/channel.ts'
-import type { Profile } from '../shared/contracts/profile.ts'
 import type { RunUsageLedger } from '../shared/contracts/run-snapshot.ts'
 import { roleOf, type SessionMessage } from '../shared/types/message.ts'
 import type { SessionMeta } from '../shared/ipc.ts'
@@ -47,7 +44,6 @@ import { PermissionModal } from './components/PermissionModal.tsx'
 import { ToolCard } from './components/ToolCard.tsx'
 import { PlanApproval } from './components/PlanApproval.tsx'
 import { AskUserCard } from './components/AskUserCard.tsx'
-import { ContextUsagePanel } from './components/ContextUsagePanel.tsx'
 import { CompactionDivider } from './components/CompactionDivider.tsx'
 import { CompactionStatus } from './components/CompactionStatus.tsx'
 import { ChannelSettingsPanel } from './features/settings/ChannelSettingsPanel.tsx'
@@ -68,6 +64,7 @@ import { AppShell } from './features/shell/AppShell.tsx'
 import { ConversationHeader } from './features/conversation/ConversationHeader.tsx'
 import { SessionSidebar } from './features/session/SessionSidebar.tsx'
 import { SessionActionDialog } from './features/session/SessionActionDialog.tsx'
+import { AgentComposer } from './features/composer/AgentComposer.tsx'
 import {
   hasUnsavedDraft,
   type NavigationIntent,
@@ -299,6 +296,26 @@ export function App() {
       sessionId: currentId,
       text,
       ...(attachments.length > 0 ? { attachments } : {}),
+    })
+  }
+
+  async function updateCurrentSessionMeta(patch: {
+    profileId?: string
+    channelId?: string
+    modelId?: string
+  }): Promise<void> {
+    if (!currentId) return
+    await window.tgbuddy.session.updateMeta(currentId, patch)
+    setSessions(await window.tgbuddy.session.list())
+  }
+
+  function refreshComposerCapabilities(): void {
+    void Promise.all([
+      window.tgbuddy.channel.list(),
+      window.tgbuddy.profile.list(),
+    ]).then(([channelList, profileList]) => {
+      setChannels(channelList)
+      setProfiles(profileList)
     })
   }
 
@@ -560,97 +577,64 @@ export function App() {
           <ConversationScrollButton />
         </Conversation>
 
-        {/* ── 输入框 ──────────────────────────────────────── */}
-        <div className="border-t p-4">
-          {currentId && (
-            <div className="mx-auto mb-2 flex max-w-3xl items-center gap-1.5">
-              <ModeChip sessionId={currentId} mode={mode} />
-              <ModelChip
-                sessionId={currentId}
-                meta={currentSession}
-                channels={channels}
-                profiles={profiles}
-              />
-              {currentSession?.contextUsage && (
-                <ContextUsagePanel
-                  sessionId={currentId}
-                  usage={currentSession.contextUsage}
-                  ledger={runLedger}
-                  disabled={stream.running || Boolean(stream.compaction)}
-                />
-              )}
-            </div>
-          )}
-          <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border bg-card p-1.5">
-            <div className="flex flex-1 flex-col gap-1.5">
-              {attachmentDrafts.length > 0 && (
-                <AttachmentChipList
-                  attachments={attachmentDrafts.map((draft) => draft.ref)}
-                  onRemove={(ref) => void discardAttachment(ref)}
-                />
-              )}
-              <div className="flex items-end gap-1">
-                <input
-                  ref={attachmentInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  data-testid="attachment-input"
-                  onChange={(event) => void onPickAttachments(event.target.files)}
-                />
-                <button
-                  type="button"
-                  aria-label="添加附件"
-                  data-testid="attachment-pick"
-                  disabled={!currentId || stream.running || Boolean(stream.compaction)}
-                  onClick={() => attachmentInputRef.current?.click()}
-                  className="shrink-0 rounded-lg px-2 py-2 text-[13px] text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40"
-                >
-                  📎
-                </button>
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      void send()
-                    }
-                  }}
-                  rows={2}
-                  placeholder={currentId ? '说点什么…（Enter 发送，Shift+Enter 换行）' : '先新建会话'}
-                  disabled={!currentId}
-                  className="flex-1 resize-none border-0 bg-transparent px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 disabled:opacity-50"
-                />
-              </div>
-            </div>
-            {stream.running ? (
-              <button
-                onClick={() => currentId && window.tgbuddy.agent.stop(currentId)}
-                className="shrink-0 rounded-xl bg-status-error/20 px-4 py-2 text-sm text-status-error transition-colors hover:bg-status-error/30"
-              >
-                停止
-              </button>
-            ) : (
-              <button
-                onClick={() => void send()}
-                disabled={
-                  !currentId
-                  || (!input.trim() && attachmentDrafts.length === 0)
-                  || Boolean(queuedPrompt)
-                }
-                className="shrink-0 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
-              >
-                {stream.compaction ? '排队' : '发送'}
-              </button>
-            )}
-          </div>
-          {queuedPrompt && (
-            <p className="mx-auto mt-2 max-w-3xl text-right text-[11px] text-muted-foreground">
-              已排队，压缩完成后自动发送
-            </p>
-          )}
-        </div>
+        {/* ── 输入区：结构与交互以 V3 原型为准 ───────────────────── */}
+        <input
+          ref={attachmentInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          data-testid="attachment-input"
+          onChange={(event) => void onPickAttachments(event.target.files)}
+        />
+        <AgentComposer
+          sessionId={currentId ?? undefined}
+          mode={mode}
+          profileId={currentSession?.profileId}
+          channelId={currentSession?.channelId}
+          modelId={currentSession?.modelId}
+          channels={channels}
+          profiles={profiles}
+          contextUsage={currentSession?.contextUsage}
+          ledger={runLedger}
+          value={input}
+          attachments={attachmentDrafts.map((draft) => draft.ref)}
+          running={stream.running}
+          compacting={Boolean(stream.compaction)}
+          queued={Boolean(queuedPrompt)}
+          onValueChange={setInput}
+          onPickAttachments={() => attachmentInputRef.current?.click()}
+          onRemoveAttachment={(ref) => void discardAttachment(ref)}
+          onModeChange={(nextMode) => {
+            if (!currentId) return
+            void window.tgbuddy.plan.setMode(currentId, nextMode).then(() =>
+              window.tgbuddy.session.list().then(setSessions),
+            )
+          }}
+          onProfileChange={(profile) => {
+            if (profile) {
+              void updateCurrentSessionMeta({
+                profileId: profile.id,
+                channelId: profile.channelId,
+                modelId: profile.modelId,
+              })
+              return
+            }
+            const selected = profiles.find((item) => item.id === currentSession?.profileId)
+            void updateCurrentSessionMeta({
+              profileId: undefined,
+              channelId: selected?.channelId ?? currentSession?.channelId,
+              modelId: selected?.modelId ?? currentSession?.modelId,
+            })
+          }}
+          onModelChange={(channel, model) => void updateCurrentSessionMeta({
+            profileId: undefined,
+            channelId: channel.id,
+            modelId: model.id,
+          })}
+          onRefreshCapabilities={refreshComposerCapabilities}
+          onSend={() => void send()}
+          onStop={() => currentId && window.tgbuddy.agent.stop(currentId)}
+        />
       </main>
 
       {/* ── 结果区（A06：产物列表，时间倒序 + 分组 + 类型筛选）────────── */}
@@ -662,196 +646,6 @@ export function App() {
         onClose={closeResults}
       />
     </AppShell>
-  )
-}
-
-/**
- * 权限模式切换 —— 对应原型输入框上方那排入口的第一个。
- *
- * 每项都带一句人话说明。这比一个写着 `auto / plan / bypass` 的下拉好懂得多，
- * 而且「完全访问」那条明确写出风险，不给人误点的机会。
- */
-const MODES: { id: PermissionMode; label: string; desc: string }[] = [
-  { id: 'auto', label: '默认权限', desc: '只读工具直接执行，写和命令逐次授权' },
-  { id: 'plan', label: '计划模式', desc: '先出计划，你批准后才动手' },
-  { id: 'bypass', label: '完全访问', desc: '不再询问。仅建议在沙箱或一次性容器里用' },
-]
-
-function ModeChip({ sessionId, mode }: { sessionId: string; mode: PermissionMode }) {
-  const [open, setOpen] = useState(false)
-  const current = MODES.find((m) => m.id === mode) ?? MODES[0]!
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 rounded-lg bg-card px-2.5 py-1 text-xs text-foreground/80 transition-colors hover:bg-accent"
-      >
-        <span
-          className="h-1.5 w-1.5 rounded-full"
-          style={{
-            background:
-              mode === 'plan' ? '#9dbfe0' : mode === 'bypass' ? '#c9635b' : '#7f8b98',
-          }}
-        />
-        {current.label}
-      </button>
-
-      {open && (
-        <>
-          {/* 点外面关掉。用一层透明遮罩比全局监听简单，也不会漏掉 */}
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-full z-20 mb-1.5 w-72 overflow-hidden rounded-xl bg-popover shadow-lg ring-1 ring-border">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => {
-                  void window.tgbuddy.plan.setMode(sessionId, m.id)
-                  setOpen(false)
-                }}
-                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition-colors hover:bg-accent"
-              >
-                <span className="flex items-center gap-1.5 text-xs text-foreground">
-                  {m.label}
-                  {m.id === mode && <span className="text-muted-foreground">✓</span>}
-                </span>
-                <span className="text-[11px] text-muted-foreground">{m.desc}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-/**
- * 输入区「模型」chip（原型入口 chips 之一）：展示当前 Profile/模型，
- * 点击选择 Profile 或渠道模型，选择即写入 Session 元数据，
- * 下一 Run 使用该不可变快照。
- */
-function ModelChip({
-  sessionId,
-  meta,
-  channels,
-  profiles,
-}: {
-  sessionId: string
-  meta: Pick<SessionMeta, 'profileId' | 'channelId' | 'modelId'> | undefined
-  channels: Channel[]
-  profiles: Profile[]
-}) {
-  const [open, setOpen] = useState(false)
-  const setProfiles = useSetAtom(profilesAtom)
-  const setChannels = useSetAtom(channelsAtom)
-  const label = resolveModelChipLabel(meta, channels, profiles)
-
-  // 打开菜单时刷新渠道/Profile：设置页新增/编辑后输入区即时可见，
-  // 否则 profilesAtom 只在 App 挂载时加载一次，新 Profile 要重启才出现。
-  function openMenu() {
-    setOpen(true)
-    void Promise.all([
-      window.tgbuddy.channel.list(),
-      window.tgbuddy.profile.list(),
-    ]).then(([channelList, profileList]) => {
-      setChannels(channelList)
-      setProfiles(profileList)
-    })
-  }
-
-  function select(selection: {
-    profileId?: string
-    channelId: string
-    modelId: string
-  }) {
-    void window.tgbuddy.session.updateMeta(sessionId, selection)
-    setOpen(false)
-  }
-
-  return (
-    <div className="relative">
-      <button
-        data-testid="model-chip"
-        onClick={() => (open ? setOpen(false) : openMenu())}
-        className="flex items-center gap-1.5 rounded-lg bg-card px-2.5 py-1 text-xs text-foreground/80 transition-colors hover:bg-accent"
-      >
-        <span className="h-1.5 w-1.5 rounded-full bg-sky-400/70" />
-        <span className="max-w-36 truncate">{label}</span>
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-full z-20 mb-1.5 max-h-72 w-80 overflow-y-auto rounded-xl bg-popover shadow-lg ring-1 ring-border">
-            {profiles.length > 0 && (
-              <>
-                <div className="px-3 pb-1 pt-2 text-[10.5px] tracking-wide text-muted-foreground">
-                  Profile / 专家
-                </div>
-                {profiles.map((profile) => (
-                  <button
-                    key={profile.id}
-                    data-testid="model-profile-option"
-                    onClick={() =>
-                      select({
-                        profileId: profile.id,
-                        channelId: profile.channelId,
-                        modelId: profile.modelId,
-                      })
-                    }
-                    className="flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors hover:bg-accent"
-                  >
-                    <span className="text-xs text-foreground">{profile.name}</span>
-                    <span className="ml-auto font-mono text-[10.5px] text-muted-foreground">
-                      {profile.modelId}
-                    </span>
-                    {meta?.profileId === profile.id && (
-                      <span className="text-muted-foreground">✓</span>
-                    )}
-                  </button>
-                ))}
-              </>
-            )}
-            <div className="px-3 pb-1 pt-2 text-[10.5px] tracking-wide text-muted-foreground">
-              模型
-            </div>
-            {channels.flatMap((channel) =>
-              channel.models.map((model) => (
-                <button
-                  key={`${channel.id}:${model.id}`}
-                  data-testid="model-option"
-                  onClick={() =>
-                    select({
-                      profileId: undefined,
-                      channelId: channel.id,
-                      modelId: model.id,
-                    })
-                  }
-                  className="flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors hover:bg-accent"
-                >
-                  <span className="min-w-0 flex-1 truncate text-xs text-foreground">
-                    {model.name}
-                  </span>
-                  <span className="flex-none font-mono text-[10.5px] text-muted-foreground">
-                    {channel.name}
-                  </span>
-                  {!meta?.profileId
-                    && meta?.channelId === channel.id
-                    && meta?.modelId === model.id && (
-                      <span className="text-muted-foreground">✓</span>
-                    )}
-                </button>
-              )),
-            )}
-            {channels.length === 0 && (
-              <p className="px-3 py-3 text-[11px] text-muted-foreground">
-                还没有渠道，请先在设置中添加
-              </p>
-            )}
-          </div>
-        </>
-      )}
-    </div>
   )
 }
 

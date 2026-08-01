@@ -3,7 +3,7 @@ import { expect, test } from './support/electron-fixture'
 
 async function createSession(page: Page): Promise<void> {
   await page.getByRole('button', { name: '+ 新会话' }).click()
-  await expect(page.getByPlaceholder(/说点什么/)).toBeEnabled()
+  await expect(page.getByPlaceholder(/给 Agent 下达任务/)).toBeEnabled()
 }
 
 async function sendAndWait(
@@ -11,7 +11,7 @@ async function sendAndWait(
   prompt: string,
   expectedReply: string | RegExp,
 ): Promise<void> {
-  const input = page.getByPlaceholder(/说点什么/)
+  const input = page.getByPlaceholder(/给 Agent 下达任务/)
   await input.fill(prompt)
   await page.getByRole('button', { name: '发送', exact: true }).click()
   await expect(page.getByText(expectedReply, { exact: typeof expectedReply === 'string' }))
@@ -32,7 +32,7 @@ test('会话流式结果可持久化，硬重启会恢复中断 Run 并可继续
   await expect(tgbuddy.page.getByText('你好 E2E', { exact: true })).toBeVisible()
   await expect(tgbuddy.page.getByText('E2E 回复：你好 E2E', { exact: true })).toBeVisible()
 
-  await tgbuddy.page.getByPlaceholder(/说点什么/).fill('慢速恢复')
+  await tgbuddy.page.getByPlaceholder(/给 Agent 下达任务/).fill('慢速恢复')
   await tgbuddy.page.getByRole('button', { name: '发送', exact: true }).click()
   await expect(tgbuddy.page.getByRole('button', { name: '停止', exact: true })).toBeVisible()
   await tgbuddy.restart({ hard: true })
@@ -44,7 +44,7 @@ test('会话流式结果可持久化，硬重启会恢复中断 Run 并可继续
 
 test('停止会中止 Run、丢弃迟到文本，并允许下一次发送', async ({ tgbuddy }) => {
   await createSession(tgbuddy.page)
-  const input = tgbuddy.page.getByPlaceholder(/说点什么/)
+  const input = tgbuddy.page.getByPlaceholder(/给 Agent 下达任务/)
   await input.fill('慢速停止')
   await tgbuddy.page.getByRole('button', { name: '发送', exact: true }).click()
   await tgbuddy.page.getByRole('button', { name: '停止', exact: true }).click()
@@ -81,7 +81,7 @@ test('达到阈值会自动压缩，并在压缩后发送排队消息', async ({
       `压缩素材完成：压缩素材 ${index}`,
     )
   }
-  const input = tgbuddy.page.getByPlaceholder(/说点什么/)
+  const input = tgbuddy.page.getByPlaceholder(/给 Agent 下达任务/)
   await input.fill('触发自动压缩')
   await tgbuddy.page.getByRole('button', { name: '发送', exact: true }).click()
   await expect(tgbuddy.page.getByText('E2E 回复：触发自动压缩', { exact: true }))

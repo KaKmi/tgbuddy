@@ -3,11 +3,11 @@ import { expect, test } from './support/electron-fixture'
 
 async function createSession(page: Page): Promise<void> {
   await page.getByRole('button', { name: '+ 新会话' }).click()
-  await expect(page.getByPlaceholder(/说点什么/)).toBeEnabled()
+  await expect(page.getByPlaceholder(/给 Agent 下达任务/)).toBeEnabled()
 }
 
 async function send(page: Page, prompt: string): Promise<void> {
-  const input = page.getByPlaceholder(/说点什么/)
+  const input = page.getByPlaceholder(/给 Agent 下达任务/)
   await input.fill(prompt)
   await page.getByRole('button', { name: '发送', exact: true }).click()
 }
@@ -48,5 +48,5 @@ test('M4：write 产物出现在结果区，可预览并「让 Agent 改这份�
   // 只读预览 + 让 Agent 改这份注入输入（不自动发送）
   await expect(page.getByTestId('artifact-edit-request')).toBeVisible()
   await page.getByTestId('artifact-edit-request').click()
-  await expect(page.getByPlaceholder(/说点什么/)).toHaveValue(/请修改这个文件：/)
+  await expect(page.getByPlaceholder(/给 Agent 下达任务/)).toHaveValue(/请修改这个文件：/)
 })

@@ -29,7 +29,7 @@ test('UI：三栏骨架、会话标题与结果区开关保持轻量一致', asy
   await toggle.click()
   await expect(results).toBeVisible()
 
-  const input = page.getByPlaceholder(/说点什么/)
+  const input = page.getByPlaceholder(/给 Agent 下达任务/)
   await input.fill('M2 写入')
   await page.getByRole('button', { name: '发送', exact: true }).click()
   await expect(page.getByText('请求执行 write')).toBeVisible()

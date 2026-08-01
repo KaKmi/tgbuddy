@@ -35,7 +35,7 @@ test('UI：三种导航都保护草稿，留下不动、丢弃后只执行一次
     }, workspacePath)
     await page.reload()
     await page.getByRole('button', { name: '+ 新会话' }).click()
-    const input = page.getByPlaceholder(/说点什么/)
+    const input = page.getByPlaceholder(/给 Agent 下达任务/)
 
     // new-session：Stay 不变；Discard 清空并只新增一个会话。
     await input.fill('新建前草稿')

@@ -1,5 +1,9 @@
 import type { Page } from '@playwright/test'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, test } from './support/electron-fixture'
+
+const COMPOSER_QA_DIRECTORY = join(process.cwd(), '.ship', 'tasks', 'composer-expert', 'qa')
 
 async function openSettings(page: Page): Promise<void> {
   await page.getByTestId('settings-open').click()
@@ -21,11 +25,11 @@ async function closeSettings(page: Page): Promise<void> {
 
 async function createSession(page: Page): Promise<void> {
   await page.getByRole('button', { name: '+ 新会话' }).click()
-  await expect(page.getByPlaceholder(/说点什么/)).toBeEnabled()
+  await expect(page.getByPlaceholder(/给 Agent 下达任务/)).toBeEnabled()
 }
 
 async function send(page: Page, prompt: string): Promise<void> {
-  const input = page.getByPlaceholder(/说点什么/)
+  const input = page.getByPlaceholder(/给 Agent 下达任务/)
   await input.fill(prompt)
   await page.getByRole('button', { name: '发送', exact: true }).click()
 }
@@ -82,6 +86,33 @@ test('C04：输入区模型 chip 选择写入会话元数据', async ({ tgbuddy 
   const sessions = await page.evaluate(() => window.tgbuddy.session.list())
   expect(sessions[0]?.channelId).toBeTruthy()
   expect(sessions[0]?.modelId).toBeTruthy()
+})
+
+test('专家可绑定指定 Skill，Composer 切换后写入会话', async ({ tgbuddy }) => {
+  const page = tgbuddy.page
+  mkdirSync(COMPOSER_QA_DIRECTORY, { recursive: true })
+  await openSettingsTab(page, 'models')
+  await page.getByTestId('profile-add').click()
+  await page.getByTestId('profile-name-input').fill('风险分析专家')
+  await page.getByTestId('profile-channel-input').selectOption({ index: 1 })
+  await page.getByTestId('profile-model-input').selectOption({ index: 1 })
+  await page.getByRole('button', { name: /指定技能/ }).click()
+
+  const picker = page.getByTestId('profile-skill-picker')
+  await picker.getByRole('button').filter({ hasText: '监管口径核对' }).click()
+  await page.screenshot({ path: join(COMPOSER_QA_DIRECTORY, 'expert-skills.png') })
+  await page.getByTestId('profile-save').click()
+  await expect(page.getByTestId('profile-row').filter({ hasText: '风险分析专家' }))
+    .toContainText('1 个技能')
+  await closeSettings(page)
+
+  await createSession(page)
+  await page.getByTestId('expert-chip').click()
+  await page.getByTestId('model-profile-option').filter({ hasText: '风险分析专家' }).click()
+  await page.screenshot({ path: join(COMPOSER_QA_DIRECTORY, 'composer.png') })
+
+  const sessions = await page.evaluate(() => window.tgbuddy.session.list())
+  expect(sessions[0]?.profileId).toBeTruthy()
 })
 
 test('工具区已从设置页移除；完全访问放行写操作、默认权限询问', async ({ tgbuddy }) => {

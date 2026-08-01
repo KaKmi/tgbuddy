@@ -6,7 +6,7 @@ import { expect, test } from './support/electron-fixture'
 
 async function createSession(page: Page): Promise<void> {
   await page.getByRole('button', { name: '+ 新会话' }).click()
-  await expect(page.getByPlaceholder(/说点什么/)).toBeEnabled()
+  await expect(page.getByPlaceholder(/给 Agent 下达任务/)).toBeEnabled()
 }
 
 async function sendAndWait(
@@ -14,7 +14,7 @@ async function sendAndWait(
   prompt: string,
   expectedReply: string | RegExp,
 ): Promise<void> {
-  const input = page.getByPlaceholder(/说点什么/)
+  const input = page.getByPlaceholder(/给 Agent 下达任务/)
   await input.fill(prompt)
   await page.getByRole('button', { name: '发送', exact: true }).click()
   await expect(page.getByText(expectedReply, { exact: typeof expectedReply === 'string' }))
@@ -89,7 +89,7 @@ test('工作区目录丢失时新 run 被阻止并给出恢复动作，目录恢
 
     // 目录丢失：run 被阻止，错误可见（不默默回退 cwd）
     await rm(workspace, { recursive: true, force: true })
-    const input = tgbuddy.page.getByPlaceholder(/说点什么/)
+    const input = tgbuddy.page.getByPlaceholder(/给 Agent 下达任务/)
     await input.fill('M2 直接回复')
     await tgbuddy.page.getByRole('button', { name: '发送', exact: true }).click()
     await expect(tgbuddy.page.getByText(/工作区目录不存在/).first()).toBeVisible()

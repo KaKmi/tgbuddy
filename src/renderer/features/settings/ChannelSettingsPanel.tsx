@@ -55,6 +55,7 @@ interface ProfileFormState {
   channelId: string
   modelId: string
   systemPrompt: string
+  skillIds?: string[]
 }
 
 interface McpFormState {
@@ -307,6 +308,7 @@ export function ChannelSettingsPanel({
             channelId: profile.channelId,
             modelId: profile.modelId,
             systemPrompt: profile.systemPrompt ?? '',
+            ...(profile.skillIds ? { skillIds: [...profile.skillIds] } : {}),
           }
         : EMPTY_PROFILE_FORM,
     )
@@ -328,6 +330,9 @@ export function ChannelSettingsPanel({
         modelId: profileForm.modelId,
         ...(profileForm.systemPrompt.trim()
           ? { systemPrompt: profileForm.systemPrompt.trim() }
+          : {}),
+        ...(profileForm.skillIds !== undefined
+          ? { skillIds: [...profileForm.skillIds] }
           : {}),
       }
       await window.tgbuddy.profile.save(input)
@@ -561,6 +566,7 @@ export function ChannelSettingsPanel({
             <ProfileEditor
               form={profileForm}
               channels={channels}
+              skillGroups={skillGroups}
               busy={busy}
               onForm={setProfileForm}
               onBack={() => {
@@ -829,7 +835,9 @@ function ModelSettings({
               <span className="settings-profile-mark">A</span>
               <div>
                 <strong>{profile.name}</strong>
-                <small>{profile.modelId} · {channel?.name ?? profile.channelId}</small>
+                <small>
+                  {profile.modelId} · {channel?.name ?? profile.channelId} · {profileSkillLabel(profile)}
+                </small>
               </div>
               <button
                 type="button"
@@ -988,6 +996,7 @@ function ProviderEditor({
 function ProfileEditor({
   form,
   channels,
+  skillGroups,
   busy,
   onForm,
   onBack,
@@ -995,18 +1004,32 @@ function ProfileEditor({
 }: {
   form: ProfileFormState
   channels: Channel[]
+  skillGroups: SkillGroupView[]
   busy: boolean
   onForm(form: ProfileFormState): void
   onBack(): void
   onSave(): void
 }) {
   const models = channels.find((channel) => channel.id === form.channelId)?.models ?? []
+  const skills = skillGroups.flatMap((group) =>
+    group.items.map((skill) => ({ ...skill, sourceLabel: group.title })),
+  )
+
+  function toggleSkill(skillId: string): void {
+    const selected = form.skillIds ?? []
+    onForm({
+      ...form,
+      skillIds: selected.includes(skillId)
+        ? selected.filter((id) => id !== skillId)
+        : [...selected, skillId],
+    })
+  }
   return (
     <SettingsContent className="settings-manager-view">
       <ManagerHeader
         backLabel="模型"
         title={form.id ? `编辑 ${form.name}` : '添加专家预设'}
-        subtitle="常用 Provider、模型与系统提示词"
+        subtitle="模型、指令与可用技能"
         onBack={onBack}
       />
       <SettingsSection title="专家">
@@ -1059,6 +1082,52 @@ function ProfileEditor({
           </label>
         </div>
       </SettingsSection>
+      <SettingsSection title="可用技能" note="只影响新的 Run；技能正文仍按需加载">
+        <div className="settings-skill-mode">
+          <button
+            type="button"
+            className={form.skillIds === undefined ? 'active' : ''}
+            onClick={() => onForm({ ...form, skillIds: undefined })}
+          >
+            <strong>自动匹配</strong>
+            <small>使用所有应用级已启用技能，由 Agent 按任务选择</small>
+          </button>
+          <button
+            type="button"
+            className={form.skillIds !== undefined ? 'active' : ''}
+            onClick={() => onForm({ ...form, skillIds: form.skillIds ?? [] })}
+          >
+            <strong>指定技能</strong>
+            <small>该专家只看见你选择的技能</small>
+          </button>
+        </div>
+        {form.skillIds !== undefined && (
+          <div className="settings-profile-skills" data-testid="profile-skill-picker">
+            {skills.map((skill) => {
+              const selected = form.skillIds?.includes(skill.id) ?? false
+              return (
+                <button
+                  type="button"
+                  key={skill.id}
+                  disabled={!skill.enabled}
+                  className={selected ? 'selected' : ''}
+                  onClick={() => toggleSkill(skill.id)}
+                >
+                  <span className="settings-skill-check">{selected ? <Check size={12} /> : null}</span>
+                  <span>
+                    <strong>{skill.title}</strong>
+                    <small>{skill.description}</small>
+                  </span>
+                  <em>{skill.enabled ? skill.sourceLabel : '应用级已关闭'}</em>
+                </button>
+              )
+            })}
+            {skills.length === 0 && (
+              <div className="settings-empty-row">还没有可用技能，可先到“能力”中安装或启用。</div>
+            )}
+          </div>
+        )}
+      </SettingsSection>
       <div className="settings-editor-actions">
         <button type="button" className="settings-secondary-button" onClick={onBack}>取消</button>
         <button
@@ -1073,6 +1142,12 @@ function ProfileEditor({
       </div>
     </SettingsContent>
   )
+}
+
+function profileSkillLabel(profile: Profile): string {
+  if (profile.skillIds === undefined) return '技能自动匹配'
+  if (profile.skillIds.length === 0) return '不使用技能'
+  return `${profile.skillIds.length} 个技能`
 }
 
 function PermissionSettings({
