@@ -95,6 +95,15 @@ UI Slice 复用现有 `window.tgbuddy` 和 Runtime 行为，不得为了对齐�
 - [x] Run: targeted 24/24、architecture、typecheck、build、Electron E2E 1/1、`probe`、packaged SQLite 13 scenarios。
 - [x] Commit: `de6fa19 feat(session): generate title after first message`。
 
+### FR05B：Provider 品牌图标预置
+
+**Files:** Create `src/renderer/features/settings/provider-brand.ts`, `ProviderBrandIcon.tsx`; Modify `ChannelSettingsPanel.tsx`; Test `tests/provider-brand.test.ts`。
+
+- [x] RED：DeepSeek/Anthropic 品牌识别与 Compatible/本地端点中性图标。
+- [x] GREEN：使用本地矢量路径，不新增网络依赖；状态点与品牌图形分离。
+- [x] Run: unit 2/2、architecture、typecheck、build、既有 Settings Electron E2E 7/7。
+- [x] Commit: `d780f91 feat(ui): add provider brand icons`。
+
 ### FR06：Composer 容器与发送闭环
 
 **Files:** Create `src/renderer/features/composer/AgentComposer.tsx`; Modify `src/renderer/App.tsx`; Test `tests/e2e/ui-composer.e2e.ts`。

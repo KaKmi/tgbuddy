@@ -47,3 +47,11 @@ Story FR05A: “LLM Session Title 生成” — complete
   Verification: RED 缺 title service；unit/targeted 24/24；architecture；typecheck；build；Electron E2E 1/1；真实 DeepSeek `probe`；packaged SQLite 13 scenarios 全过
   Review: 契约级 Slice 按用户规则做轻量 arch-design + 短静态自检；修正触发点为真实 `run_start`，无 unresolved finding
   Concerns: 跨 shared/Runtime/Kernel/SQLite/Composition Root 的原子纵向能力无法压到 6 个生产文件；拆开会产生不可运行的半契约，因此本 Slice 例外超过尺寸护栏
+
+Story FR05B: “Provider 品牌图标预置” — complete
+  Commits: d780f91
+  Files: `provider-brand.ts`, `ProviderBrandIcon.tsx`, `ChannelSettingsPanel.tsx`, `tests/provider-brand.test.ts`
+  Produces: DeepSeek/Anthropic 本地矢量品牌图形；Compatible 与本地网关中性 API 图标；独立连接状态点
+  Verification: unit 2/2；architecture；typecheck；build；Settings Electron E2E 7/7
+  Review: 按用户快速路径跳过；纯 Renderer 小 UI
+  Concerns: FR14 设置 Models 重构必须复用本组件，不再创建第二套 Provider 标识
