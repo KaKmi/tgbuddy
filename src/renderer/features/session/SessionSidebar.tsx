@@ -8,6 +8,7 @@ import type {
 import { ThemeToggle } from '../theme/ThemeToggle.tsx'
 import type { ThemeName } from '../theme/theme-state.ts'
 import { SessionMenu } from './SessionMenu.tsx'
+import { filterSessions, groupSessions } from './session-view.ts'
 
 interface SessionSidebarProps {
   sessions: SessionMeta[]
@@ -43,11 +44,7 @@ export function SessionSidebar({
 }: SessionSidebarProps) {
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const [sessionQuery, setSessionQuery] = useState('')
-  const filteredSessions = sessionQuery.trim()
-    ? sessions.filter((session) =>
-        session.title.toLowerCase().includes(sessionQuery.trim().toLowerCase()),
-      )
-    : sessions
+  const filteredSessions = filterSessions(sessions, sessionQuery)
 
   return (
     <aside
@@ -164,6 +161,8 @@ export function SessionSidebar({
                 <button
                   type="button"
                   data-testid="session-item"
+                  data-session-id={session.id}
+                  aria-current={session.id === currentSessionId ? 'true' : undefined}
                   onClick={() => void onSelectSession(session.id)}
                   className={`block w-full rounded-lg px-3 py-2 text-left transition-colors ${
                     session.id === currentSessionId ? 'bg-accent' : 'hover:bg-accent/60'
@@ -245,28 +244,4 @@ function relativeTime(timestamp: number): string {
     return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()]!
   }
   return `${date.getMonth() + 1}-${date.getDate()}`
-}
-
-function groupSessions(sessions: SessionMeta[]): { title: string; items: SessionMeta[] }[] {
-  const now = Date.now()
-  const buckets: Record<string, SessionMeta[]> = {
-    置顶: [],
-    今天: [],
-    '更早 · 7 天内': [],
-    更早: [],
-  }
-  for (const session of sessions) {
-    if (session.archived) continue
-    if (session.pinned) {
-      buckets['置顶']!.push(session)
-      continue
-    }
-    const sameDay = new Date(session.updatedAt).toDateString() === new Date(now).toDateString()
-    if (sameDay) buckets['今天']!.push(session)
-    else if (now - session.updatedAt < 7 * 86_400_000) buckets['更早 · 7 天内']!.push(session)
-    else buckets['更早']!.push(session)
-  }
-  return Object.entries(buckets)
-    .filter(([, items]) => items.length > 0)
-    .map(([title, items]) => ({ title, items }))
 }

@@ -63,6 +63,11 @@ import { useTheme } from './features/theme/ThemeToggle.tsx'
 import { AppShell } from './features/shell/AppShell.tsx'
 import { ConversationHeader } from './features/conversation/ConversationHeader.tsx'
 import { SessionSidebar } from './features/session/SessionSidebar.tsx'
+import { SessionActionDialog } from './features/session/SessionActionDialog.tsx'
+import {
+  hasUnsavedDraft,
+  type NavigationIntent,
+} from './features/session/session-view.ts'
 
 export function App() {
   const { theme, toggle: toggleTheme } = useTheme()
@@ -100,6 +105,8 @@ export function App() {
   const [mountStatus, setMountStatus] = useState<WorkspaceMountResolution>()
   // A02：输入区附件草稿（已 stage 到 BlobStore，发送前可移除）
   const [attachmentDrafts, setAttachmentDrafts] = useState<AttachmentDraft[]>([])
+  const [pendingNavigation, setPendingNavigation] = useState<NavigationIntent>()
+  const [navigationBusy, setNavigationBusy] = useState(false)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
   // A08：输入区已注入的「让 Agent 改这份」引用（切换会话时清理错误引用）
   const [editRef, setEditRef] = useState<{ sessionId: string; path: string }>()
@@ -197,6 +204,43 @@ export function App() {
     setSessions(nextSessions)
     if (currentId && !nextSessions.some((session) => session.id === currentId)) {
       setCurrentId(null)
+    }
+  }
+
+  async function executeNavigation(intent: NavigationIntent) {
+    if (intent.kind === 'new-session') return newSession()
+    if (intent.kind === 'switch-session') return selectSession(intent.sessionId)
+    return selectWorkspace(intent.workspaceId)
+  }
+
+  async function requestNavigation(intent: NavigationIntent) {
+    if (hasUnsavedDraft(input, attachmentDrafts)) {
+      setPendingNavigation(intent)
+      return
+    }
+    await executeNavigation(intent)
+  }
+
+  async function discardDraftAndContinue() {
+    if (!pendingNavigation || navigationBusy) return
+    const intent = pendingNavigation
+    const drafts = attachmentDrafts
+    setNavigationBusy(true)
+    setInput('')
+    setAttachmentDrafts([])
+    setEditRef(undefined)
+    try {
+      await Promise.all(drafts.map(async (draft) => {
+        try {
+          await window.tgbuddy.attachment.discard(draft.ref)
+        } catch (error) {
+          console.error('[草稿保护] 清理未发送附件失败：', error)
+        }
+      }))
+      await executeNavigation(intent)
+      setPendingNavigation(undefined)
+    } finally {
+      setNavigationBusy(false)
     }
   }
 
@@ -314,6 +358,16 @@ export function App() {
     requestAnimationFrame(() => resultsToggleRef.current?.focus())
   }
 
+  useEffect(() => {
+    const createOnShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'n') return
+      event.preventDefault()
+      void requestNavigation({ kind: 'new-session' })
+    }
+    window.addEventListener('keydown', createOnShortcut)
+    return () => window.removeEventListener('keydown', createOnShortcut)
+  }, [input, attachmentDrafts])
+
   return (
     <AppShell resultsOpen={resultsOpen} onCloseResults={closeResults}>
       {activeModal && (
@@ -326,6 +380,18 @@ export function App() {
         <ChannelSettingsPanel
           workspaceId={currentWorkspaceId}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {pendingNavigation && (
+        <SessionActionDialog
+          title="保留未发送内容"
+          description="当前输入或附件还没有发送。你可以留下继续编辑，或丢弃后完成刚才的导航。"
+          confirmLabel="丢弃并继续"
+          cancelLabel="留下"
+          danger
+          busy={navigationBusy}
+          onCancel={() => setPendingNavigation(undefined)}
+          onConfirm={() => void discardDraftAndContinue()}
         />
       )}
 
@@ -366,13 +432,17 @@ export function App() {
         mountStatus={mountStatus}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onNewSession={newSession}
-        onSelectSession={selectSession}
-        onSelectWorkspace={selectWorkspace}
+        onNewSession={() => requestNavigation({ kind: 'new-session' })}
+        onSelectSession={(sessionId) => requestNavigation({ kind: 'switch-session', sessionId })}
+        onSelectWorkspace={(workspaceId) => requestNavigation({ kind: 'switch-workspace', workspaceId })}
         onAddWorkspace={addWorkspace}
         onOpenSettings={() => setSettingsOpen(true)}
         onSessionsChanged={async () => {
-          setSessions(await window.tgbuddy.session.list())
+          const nextSessions = await window.tgbuddy.session.list()
+          setSessions(nextSessions)
+          if (currentId && !nextSessions.some((session) => session.id === currentId)) {
+            setCurrentId(null)
+          }
         }}
       />
       {/* ── 对话区 ────────────────────────────────────────── */}
