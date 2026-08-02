@@ -46,6 +46,11 @@ import {
   PiFileIdentityBinder,
   type FileIdentityBinding,
 } from './pi-file-identity-binder.ts'
+import {
+  PiProcessIdentityBinder,
+  type ProcessIdentityInvocation,
+  type ProcessResourceIdentity,
+} from './pi-process-identity-binder.ts'
 
 export interface PiAgentSessionProvider {
   openHarnessSession(
@@ -222,16 +227,32 @@ class PiAgentEngine implements AgentEngine {
         invocation.cwd,
         invocation.permissionCeiling.mountRevision,
       )
+      const processIdentityBinder = new PiProcessIdentityBinder()
       const authorizations = new Map<
         string,
-        | { direct: true; fileBinding?: FileIdentityBinding }
-        | { ticket: AuthorizationTicket; invocation: AuthorizedInvocation; fileBinding?: FileIdentityBinding }
+        | {
+            direct: true
+            fileBinding?: FileIdentityBinding
+            processInvocation?: ProcessIdentityInvocation
+            processBinding?: ProcessResourceIdentity
+          }
+        | {
+            ticket: AuthorizationTicket
+            invocation: AuthorizedInvocation
+            fileBinding?: FileIdentityBinding
+            processInvocation?: ProcessIdentityInvocation
+            processBinding?: ProcessResourceIdentity
+          }
       >()
       const tools = this.#tools(invocation, this.#piEnv(runEnv)).map((tool): AgentTool => ({
         ...tool,
         execute: async (toolCallId, params, toolSignal, onUpdate) => {
           const authorization = authorizations.get(toolCallId)
           await fileIdentityBinder.verify(authorization?.fileBinding)
+          await processIdentityBinder.verify(
+            authorization?.processInvocation,
+            authorization?.processBinding,
+          )
           if (!authorization || 'direct' in authorization) {
             return tool.execute(toolCallId, params, toolSignal, onUpdate)
           }
@@ -281,17 +302,25 @@ class PiAgentEngine implements AgentEngine {
           return { block: true, reason: decision.reason ?? '用户拒绝了授权' }
         }
         if (decision.action === 'allow') {
+          const processInvocation = decision.invocation as ProcessIdentityInvocation | undefined
           authorizations.set(event.toolCallId, {
             direct: true,
             fileBinding: decision.invocation
               ? await fileIdentityBinder.bind(decision.invocation)
               : undefined,
+            processInvocation,
+            processBinding: processInvocation
+              ? await processIdentityBinder.bind(processInvocation)
+              : undefined,
           })
         } else if (decision.action === 'authorize' || decision.action === 'approval_required') {
           const current = authorizedInvocation(invocation, decision.invocation)
+          const processInvocation = decision.invocation as ProcessIdentityInvocation
           authorizations.set(event.toolCallId, {
             invocation: current,
             fileBinding: await fileIdentityBinder.bind(decision.invocation),
+            processInvocation,
+            processBinding: await processIdentityBinder.bind(processInvocation),
             ticket: authorizationTicket(
               event.toolCallId,
               decision.action === 'approval_required' ? decision.decisionId : undefined,
