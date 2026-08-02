@@ -186,6 +186,16 @@ export {
   type RiskAssessment,
   type RiskClassifier,
 } from './permissions/risk-classifier.ts'
+export {
+  authorizationCeilingHash,
+  createRunAuthorizationGate,
+  AuthorizationGateError,
+  type AuthorizationTicket,
+  type AuthorizedInvocation,
+  type ExecutionLease,
+  type OperationHandle,
+  type RunAuthorizationGate,
+} from './permissions/run-authorization-gate.ts'
 export { PendingRequests } from './pending/pending-requests.ts'
 export {
   InteractionResponseConflictError,

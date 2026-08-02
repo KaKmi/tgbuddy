@@ -9,6 +9,7 @@ export type PermissionExecutionState =
   | 'execution_claimed'
   | 'completed'
   | 'failed'
+  | 'revoked'
 
 export type InteractionDecisionCommit =
   | {

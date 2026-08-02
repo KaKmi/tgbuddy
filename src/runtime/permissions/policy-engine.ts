@@ -37,7 +37,7 @@ export interface PolicyEngineDependencies {
   ask(
     input: PermissionAskInput,
     signal: AbortSignal,
-  ): Promise<{ allowed: boolean; reason?: string }>
+  ): Promise<{ allowed: boolean; reason?: string; decisionId?: string }>
   /** Task 4 新决策链；短期可缺仅为旧测试/迁移入口。 */
   normalizer?: InvocationNormalizer
   classifier?: RiskClassifier
@@ -337,6 +337,7 @@ async function evaluateRiskPolicy(
     risk,
     allowed: outcome.allowed,
     invocation,
+    ...(outcome.decisionId ? { decisionId: outcome.decisionId } : {}),
     ...(outcome.reason ? { reason: outcome.reason } : {}),
   }
 }

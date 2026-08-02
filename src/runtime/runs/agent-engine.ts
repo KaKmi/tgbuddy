@@ -71,6 +71,7 @@ export type ToolPolicyDecision =
       risk: 'R2' | 'R3' | 'R4'
       allowed: boolean
       invocation: ResolvedInvocation
+      decisionId?: string
       reason?: string
     }
   | { action: 'deny'; reason: ToolNonSuccessReason | string; risk?: PermissionRiskLevel }

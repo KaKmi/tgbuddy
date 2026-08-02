@@ -175,8 +175,9 @@ export async function runAppDatabaseScenario(
           '018_app_profiles_skill_ids.sql',
           '019_app_permission_v2.sql',
           '020_app_interaction_journal.sql',
+          '021_app_authorization_claims.sql',
         ]),
-      'app migration 必须按顺序包含当前 001–020（已删除的 008 除外）',
+      'app migration 必须按顺序包含当前 001–021（已删除的 008 除外）',
     )
     assertions++
 
@@ -188,6 +189,7 @@ export async function runAppDatabaseScenario(
         JSON.stringify([
           'app_artifacts',
           'app_attachments',
+          'app_authorization_claims',
           'app_blob_refs',
           'app_channels',
           'app_interaction_decisions',

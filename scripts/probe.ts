@@ -25,6 +25,7 @@ import {
 } from '../src/kernel/pi/pi-agent-engine.ts'
 import { PiRunExecutionEnvFactory } from '../src/kernel/pi/pi-execution-env.ts'
 import type { AgentInvocation } from '../src/runtime/index.ts'
+import { createRunAuthorizationGate } from '../src/runtime/index.ts'
 import { deepseekChannel } from '../src/shared/channel-presets.ts'
 
 const API_KEY = process.env.DEEPSEEK_API_KEY ?? process.env.TGBUDDY_API_KEY
@@ -93,6 +94,7 @@ const getTimeTool: AgentTool = {
 }
 
 const agentEngine = createPiAgentEngine({
+  authorizationGate: createRunAuthorizationGate(),
   sessions: {
     async openHarnessSession(sessionId) {
       return sessionId === probeSessionId ? harnessSession : undefined

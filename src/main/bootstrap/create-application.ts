@@ -18,6 +18,7 @@ import {
   createPolicyEngine,
   createInvocationNormalizer,
   createRiskClassifier,
+  createRunAuthorizationGate,
   PermissionRuleIndex,
   createProfileService,
   createSessionCommands,
@@ -406,6 +407,7 @@ export async function createApplication(
     reportInterruptedRunRecovery(recovery)
     agentRuntime = createLegacyRuntime({
       agentEngine: createPiAgentEngine({
+        authorizationGate: createRunAuthorizationGate(),
         sessions: createdMessageStore,
         envFactory: new PiRunExecutionEnvFactory(),
         // A02：用户消息落库后把附件 ref 挂到 app_attachments（按 entry_id）

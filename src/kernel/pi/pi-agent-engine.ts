@@ -36,6 +36,12 @@ import {
   estimateToolTokens,
 } from './pi-context-usage.ts'
 import { buildModels } from './pi-models.ts'
+import {
+  authorizationCeilingHash,
+  type AuthorizationTicket,
+  type AuthorizedInvocation,
+  type RunAuthorizationGate,
+} from '../../runtime/ports/run-authorization-gate.ts'
 
 export interface PiAgentSessionProvider {
   openHarnessSession(
@@ -50,6 +56,7 @@ export interface CreatePiAgentEngineOptions {
   envFactory: RunExecutionEnvFactory
   tools(invocation: AgentInvocation, env: ExecutionEnv): AgentTool[]
   toolPolicy: ToolPolicy
+  authorizationGate: RunAuthorizationGate
   /**
    * A02：用户消息持久化后把附件 ref 写入 app_attachments（按 entry_id）。
    * 附件是应用元数据，不进 pi 消息本体；失败时只记诊断，不阻断 Run。
@@ -154,6 +161,7 @@ class PiAgentEngine implements AgentEngine {
   readonly #tools: CreatePiAgentEngineOptions['tools']
   readonly #envFactory: RunExecutionEnvFactory
   readonly #toolPolicy: ToolPolicy
+  readonly #authorizationGate: RunAuthorizationGate
   readonly #persistAttachments: CreatePiAgentEngineOptions['persistAttachments']
   readonly #loadAttachment: CreatePiAgentEngineOptions['loadAttachment']
   readonly #storeToolOutput: CreatePiAgentEngineOptions['storeToolOutput']
@@ -166,6 +174,7 @@ class PiAgentEngine implements AgentEngine {
     this.#tools = options.tools
     this.#envFactory = options.envFactory
     this.#toolPolicy = options.toolPolicy
+    this.#authorizationGate = options.authorizationGate
     this.#persistAttachments = options.persistAttachments
     this.#loadAttachment = options.loadAttachment
     this.#storeToolOutput = options.storeToolOutput
@@ -205,7 +214,29 @@ class PiAgentEngine implements AgentEngine {
       mountPath: invocation.cwd,
     })
     try {
-      const tools = this.#tools(invocation, this.#piEnv(runEnv))
+      const authorizations = new Map<
+        string,
+        | { direct: true }
+        | { ticket: AuthorizationTicket; invocation: AuthorizedInvocation }
+      >()
+      const tools = this.#tools(invocation, this.#piEnv(runEnv)).map((tool): AgentTool => ({
+        ...tool,
+        execute: async (toolCallId, params, toolSignal, onUpdate) => {
+          const authorization = authorizations.get(toolCallId)
+          if (!authorization || 'direct' in authorization) {
+            return tool.execute(toolCallId, params, toolSignal, onUpdate)
+          }
+          const handle = await this.#authorizationGate.tryBeginExecution(
+            authorization.ticket,
+            authorization.invocation,
+            () => ({
+              status: 'running',
+              result: Promise.resolve(tool.execute(toolCallId, params, toolSignal, onUpdate)),
+            }),
+          )
+          return handle.result
+        },
+      }))
       const harness = new AgentHarness({
         session,
         models,
@@ -239,6 +270,19 @@ class PiAgentEngine implements AgentEngine {
         }
         if (decision.action === 'approval_required' && !decision.allowed) {
           return { block: true, reason: decision.reason ?? '用户拒绝了授权' }
+        }
+        if (decision.action === 'allow') {
+          authorizations.set(event.toolCallId, { direct: true })
+        } else if (decision.action === 'authorize' || decision.action === 'approval_required') {
+          const current = authorizedInvocation(invocation, decision.invocation)
+          authorizations.set(event.toolCallId, {
+            invocation: current,
+            ticket: authorizationTicket(
+              event.toolCallId,
+              decision.action === 'approval_required' ? decision.decisionId : undefined,
+              current,
+            ),
+          })
         }
         return undefined
       })
@@ -625,6 +669,46 @@ function toolPolicyReasonText(reason: ToolNonSuccessReason | string): string {
   }
   if (reason.kind === 'execution') return `工具执行失败：${reason.code}`
   return reason.code === 'forbidden' ? '系统策略禁止该操作' : '用户拒绝了授权'
+}
+
+function authorizedInvocation(
+  run: AgentInvocation,
+  invocation: { fingerprint: string; resourceIdentityHash: string },
+): AuthorizedInvocation {
+  return {
+    invocationFingerprint: invocation.fingerprint,
+    resourceIdentityHash: invocation.resourceIdentityHash,
+    rootRunId: run.subject.rootRunId,
+    agentRunId: run.subject.agentRunId,
+    runGeneration: 1,
+    authorizationEpoch: 1,
+    ceilingHash: authorizationCeilingHash(run.permissionCeiling),
+    mountRevision: run.permissionCeiling.mountRevision,
+    policyRevision: run.permissionCeiling.policyVersion,
+    ruleRevision: 1,
+  }
+}
+
+function authorizationTicket(
+  toolCallId: string,
+  decisionId: string | undefined,
+  current: AuthorizedInvocation,
+): AuthorizationTicket {
+  return {
+    ticketId: `${current.agentRunId}:${toolCallId}:${current.invocationFingerprint}`,
+    decisionId: decisionId ?? `automatic:${current.agentRunId}:${toolCallId}`,
+    rootRunId: current.rootRunId,
+    agentRunId: current.agentRunId,
+    runGeneration: current.runGeneration,
+    authorizationEpoch: current.authorizationEpoch,
+    invocationFingerprint: current.invocationFingerprint,
+    resourceIdentityHash: current.resourceIdentityHash,
+    ceilingHash: current.ceilingHash,
+    mountRevision: current.mountRevision,
+    policyRevision: current.policyRevision,
+    ruleRevision: current.ruleRevision,
+    expiresAt: Date.now() + 5 * 60_000,
+  }
 }
 
 export function createPiAgentEngine(

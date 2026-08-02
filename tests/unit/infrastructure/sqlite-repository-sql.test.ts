@@ -84,4 +84,14 @@ describe('Permission v2 SQLite 契约', () => {
     expect(migration).toContain('CREATE TABLE app_permission_audit')
     expect(migration).toContain('execution_state TEXT')
   })
+
+  test('authorization claim 持久化单次执行状态', () => {
+    const migration = readFileSync(
+      join(import.meta.dir, '..', '..', '..', 'src', 'infrastructure', 'sqlite', 'migrations', '021_app_authorization_claims.sql'),
+      'utf8',
+    )
+    expect(migration).toContain('ticket_id TEXT PRIMARY KEY')
+    expect(migration).toContain("'execution_claimed'")
+    expect(migration).toContain("'revoked'")
+  })
 })
