@@ -12,6 +12,18 @@ afterEach(async () => {
 })
 
 describe('文件授权资源身份', () => {
+  test('搜索工作区根目录可以绑定并核验', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tgbuddy-file-auth-'))
+    roots.push(root)
+    const binder = await PiFileIdentityBinder.create(root, 'mount-1')
+    const binding = await binder.bind({
+      kind: 'file',
+      file: { paths: [{ canonicalPath: root }] },
+    })
+
+    await expect(binder.verify(binding)).resolves.toBeUndefined()
+  })
+
   test('授权后替换父目录会拒绝执行', async () => {
     const root = await mkdtemp(join(tmpdir(), 'tgbuddy-file-auth-'))
     roots.push(root)
