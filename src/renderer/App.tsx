@@ -16,12 +16,7 @@ import {
   currentMessagesAtom,
   currentSessionIdAtom,
   currentStreamAtom,
-  currentPermissionsAtom,
-  currentPlansAtom,
-  currentAskUserAtom,
   currentMarkersAtom,
-  modalPermissionRequestAtom,
-  pendingPermissionCountAtom,
   type ToolActivity,
   messagesBySessionAtom,
   queuedPromptsAtom,
@@ -34,11 +29,8 @@ import {
 import { roleOf, type SessionMessage } from '../shared/types/message.ts'
 import type { SessionMeta } from '../shared/ipc.ts'
 import type { WorkspaceMountResolution } from '../shared/ipc.ts'
-import { PermissionBanner } from './components/PermissionBanner.tsx'
-import { PermissionModal } from './components/PermissionModal.tsx'
 import { ToolCard } from './components/ToolCard.tsx'
-import { PlanApproval } from './components/PlanApproval.tsx'
-import { AskUserCard } from './components/AskUserCard.tsx'
+import { ActionDock } from './features/interactions/ActionDock.tsx'
 import { CompactionDivider } from './components/CompactionDivider.tsx'
 import { CompactionStatus } from './components/CompactionStatus.tsx'
 import { ChannelSettingsPanel } from './features/settings/ChannelSettingsPanel.tsx'
@@ -77,20 +69,6 @@ export function App() {
   const [queuedPrompts, setQueuedPrompts] = useAtom(queuedPromptsAtom)
   const messages = useAtomValue(currentMessagesAtom)
   const stream = useAtomValue(currentStreamAtom)
-  const permissions = useAtomValue(currentPermissionsAtom)
-  const modalRequest = useAtomValue(modalPermissionRequestAtom)
-  const pendingPermissionCount = useAtomValue(pendingPermissionCountAtom)
-  // 用户手动收起模态时，请求退化为 inline 卡片继续可答，不能丢。
-  const [dismissedModalId, setDismissedModalId] = useState<string | null>(null)
-  const activeModal =
-    modalRequest && modalRequest.requestId !== dismissedModalId
-      ? modalRequest
-      : undefined
-  const inlinePermissions = permissions.filter(
-    (request) => request.requestId !== activeModal?.requestId,
-  )
-  const plans = useAtomValue(currentPlansAtom)
-  const questions = useAtomValue(currentAskUserAtom)
   const markers = useAtomValue(currentMarkersAtom)
   const currentSession = sessions.find((x) => x.id === currentId)
   const mode: PermissionMode = currentSession?.permissionMode ?? 'auto'
@@ -252,14 +230,6 @@ export function App() {
     setWorkspaces(await window.tgbuddy.workspace.list())
   }
 
-  function jumpToPendingPermission() {
-    const first = inlinePermissions[0]
-    if (!first) return
-    document
-      .getElementById(`permission-card-${first.requestId}`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-
   async function send() {
     const text = input.trim()
     if ((!text && attachmentDrafts.length === 0) || stream.running || queuedPrompt) return
@@ -376,12 +346,6 @@ export function App() {
 
   return (
     <AppShell resultsOpen={resultsOpen} onCloseResults={closeResults}>
-      {activeModal && (
-        <PermissionModal
-          request={activeModal}
-          onClose={() => setDismissedModalId(activeModal.requestId)}
-        />
-      )}
       {settingsOpen && (
         <ChannelSettingsPanel
           theme={theme}
@@ -400,28 +364,6 @@ export function App() {
           onCancel={() => setPendingNavigation(undefined)}
           onConfirm={() => void discardDraftAndContinue()}
         />
-      )}
-
-      {/* 底部常驻授权队列提示：解决 inline 卡片被划过去的问题 */}
-      {pendingPermissionCount > 0 && (
-        <div
-          className="fixed left-1/2 z-20 flex translate-x-[-50%] items-center gap-[9px] rounded-full border border-status-pending/25 bg-status-pending/10 px-2.5 py-[7px] text-[11px] text-status-pending shadow-[0_12px_30px_rgba(34,32,27,.12)]"
-          style={{
-            bottom: 153,
-          }}
-        >
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-status-pending" />
-          <span>
-            {pendingPermissionCount} 个授权请求等待处理
-          </span>
-          <button
-            type="button"
-            onClick={jumpToPendingPermission}
-            className="rounded-[6px] bg-card/60 px-2 py-[3px] text-[10.5px] text-inherit hover:bg-card"
-          >
-            跳到该处
-          </button>
-        </div>
       )}
 
       {/* ── 侧边栏 ────────────────────────────────────────── */}
@@ -508,22 +450,6 @@ export function App() {
                 />
               ))}
 
-              {/* 授权请求 —— inline 卡片，不打断心流 */}
-              {inlinePermissions.map((p) => (
-                <div key={p.requestId} id={`permission-card-${p.requestId}`}>
-                  <PermissionBanner request={p} />
-                </div>
-              ))}
-
-              {/* 计划待审批 */}
-              {plans.map((p) => (
-                <PlanApproval key={p.requestId} request={p} />
-              ))}
-
-              {questions.map((request) => (
-                <AskUserCard key={request.requestId} request={request} />
-              ))}
-
               {/* ★ 内核错误必须显示。不显示的话认证失败看起来就是"模型不说话" */}
               {stream.error && (
                 <div className="rounded-[9px] border border-status-error/30 bg-status-error/10 px-3 py-2 text-[12.5px] text-status-error">
@@ -545,6 +471,7 @@ export function App() {
           data-testid="attachment-input"
           onChange={(event) => void onPickAttachments(event.target.files)}
         />
+        <ActionDock sessionId={currentId ?? undefined} />
         <AgentComposer
           sessionId={currentId ?? undefined}
           mode={mode}

@@ -22,6 +22,7 @@ import {
   groupArtifacts,
   type ArtifactFilter,
 } from './results-view.ts'
+import { TaskWorkbench } from '../delegation/TaskWorkbench.tsx'
 
 const FILTERS: { id: ArtifactFilter; label: string }[] = [
   { id: 'all', label: '全部' },
@@ -53,9 +54,10 @@ export function ResultsPanel({
 }) {
   const [artifacts, setArtifacts] = useState<ArtifactRef[]>([])
   const [filter, setFilter] = useState<ArtifactFilter>('all')
-  const [section, setSection] = useState<'artifacts' | 'workspace'>('artifacts')
+  const [section, setSection] = useState<'artifacts' | 'workspace' | 'tasks'>('artifacts')
   const [selectedId, setSelectedId] = useState<string>()
   const [runStartedAt, setRunStartedAt] = useState<number>()
+  const [rootRunId, setRootRunId] = useState<string>()
   const [preview, setPreview] = useState<ArtifactPreviewResult>()
   const [viewerOpen, setViewerOpen] = useState(false)
   const [workspaceQuery, setWorkspaceQuery] = useState('')
@@ -68,10 +70,11 @@ export function ResultsPanel({
     ])
     setArtifacts(list)
     const latest = runs.reduce(
-      (max, run) => (run.createdAt > max ? run.createdAt : max),
-      0,
+      (current, run) => (!current || run.createdAt > current.createdAt ? run : current),
+      undefined as (typeof runs)[number] | undefined,
     )
-    setRunStartedAt(latest > 0 ? latest : undefined)
+    setRunStartedAt(latest?.createdAt)
+    setRootRunId(latest ? (latest.rootRunId ?? latest.id) : undefined)
   }
 
   useEffect(() => {
@@ -81,6 +84,7 @@ export function ResultsPanel({
     setFilter('all')
     setSection('artifacts')
     setRunStartedAt(undefined)
+    setRootRunId(undefined)
     if (!sessionId) return
     void refreshArtifacts()
   }, [sessionId, active])
@@ -132,6 +136,13 @@ export function ResultsPanel({
           >
             工作区
           </button>
+          <button
+            type="button"
+            onClick={() => setSection('tasks')}
+            className={`rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold ${section === 'tasks' ? 'bg-accent' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'}`}
+          >
+            任务
+          </button>
           <span className="ml-1 text-[10.5px] text-muted-foreground/70">
             {artifacts.length} 项
           </span>
@@ -163,7 +174,9 @@ export function ResultsPanel({
         })}
       </div>}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {section === 'workspace' ? (
+        {section === 'tasks' ? (
+          <TaskWorkbench rootRunId={rootRunId} />
+        ) : section === 'workspace' ? (
           <WorkspaceFiles
             artifacts={artifacts}
             selectedId={selectedId}
