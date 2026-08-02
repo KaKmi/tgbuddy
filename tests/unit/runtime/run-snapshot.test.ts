@@ -9,6 +9,24 @@ function invocation(overrides: Partial<AgentInvocation> = {}): AgentInvocation {
   return {
     sessionId: 'session-1',
     text: 'hi',
+    subject: {
+      rootSessionId: 'session-1',
+      executionSessionId: 'session-1',
+      rootRunId: 'run-1',
+      agentRunId: 'run-1',
+      role: 'root',
+    },
+    permissionCeiling: {
+      schemaVersion: 1,
+      policyVersion: 'permission-v2',
+      mode: 'auto',
+      rootSessionId: 'session-1',
+      workspaceId: 'ws-1',
+      mountRevision: 'mount-1',
+      allowedToolIds: ['read', 'pg.query'],
+      maxAutoRisk: 'R3',
+      role: 'root',
+    },
     workspaceId: 'ws-1',
     cwd: 'C:\\work',
     channel: {
@@ -90,6 +108,7 @@ describe('CapabilitySnapshot', () => {
       { serverId: 'mcp-1', name: 'postgres', tools: ['pg.query'] },
     ])
     expect(snapshot.usage.totalTokens).toBe(0)
+    expect(snapshot.permission).toEqual(invocation().permissionCeiling)
   })
 
   test('设置变更后重建快照不影响历史 snapshot（值对象）', () => {

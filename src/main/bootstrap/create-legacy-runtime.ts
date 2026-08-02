@@ -339,6 +339,9 @@ async function createAgentInvocation(
   const enabledSkills = resolveProfileSkills(allEnabledSkills, selection?.skillIds)
   // C12：Run 启动时冻结工具快照（含 MCP 与内置），作为能力账本来源。
   const frozenTools = toolRegistry.snapshot()
+  if (!input.identity) {
+    throw new Error('Run 身份未预留，拒绝启动 Agent')
+  }
   const profileSnapshot = selection?.profileId
     ? (() => {
         const profile = profiles.get(selection.profileId!)
@@ -356,6 +359,18 @@ async function createAgentInvocation(
   return {
     sessionId: input.sessionId,
     text: input.text,
+    subject: input.identity,
+    permissionCeiling: {
+      schemaVersion: 1,
+      policyVersion: 'permission-v2',
+      mode,
+      rootSessionId: input.identity.rootSessionId,
+      workspaceId: meta.workspaceId,
+      mountRevision: String(mount.mount.resolvedAt),
+      allowedToolIds: frozenTools.map((tool) => tool.id),
+      maxAutoRisk: mode === 'plan' ? 'R1' : 'R3',
+      role: input.identity.role,
+    },
     ...(input.attachments && input.attachments.length > 0
       ? { attachments: input.attachments }
       : {}),

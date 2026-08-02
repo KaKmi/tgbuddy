@@ -28,6 +28,18 @@ export interface RunMcpSnapshot {
   tools: string[]
 }
 
+export interface PermissionCeilingSnapshot {
+  readonly schemaVersion: 1
+  readonly policyVersion: string
+  readonly mode: 'plan' | 'auto' | 'bypass'
+  readonly rootSessionId: string
+  readonly workspaceId: string
+  readonly mountRevision: string
+  readonly allowedToolIds: readonly string[]
+  readonly maxAutoRisk: 'R1' | 'R3'
+  readonly role: 'root' | 'explorer' | 'worker'
+}
+
 /** 分类 token/cost 账本：按模型调用逐轮相加。 */
 export interface RunUsageLedger {
   inputTokens: number
@@ -45,6 +57,7 @@ export interface CapabilitySnapshot {
   tools: RunToolSnapshot[]
   skills: RunSkillSnapshot[]
   mcp: RunMcpSnapshot[]
+  permission: PermissionCeilingSnapshot
   usage: RunUsageLedger
 }
 

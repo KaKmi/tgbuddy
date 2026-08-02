@@ -3,6 +3,7 @@ import type {
   StreamFrame,
 } from '../../shared/contracts/events.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
+import type { RunIdentity } from '../../shared/contracts/run.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
 import type {
   AgentEngine,
@@ -159,7 +160,23 @@ class DefaultRunCoordinator implements RunCoordinator {
         { type: 'session_updated', session: runningSession },
         emit,
       )
-      const sourceInvocation = await this.#createInvocation(input)
+      const identity = this.#resolveIdentity(input, run)
+      runRecordId = identity.agentRunId
+      if (this.#runs) {
+        this.#runs.create({
+          id: runRecordId,
+          sessionId: run.sessionId,
+          workspaceId: input.lineage?.workspaceId,
+          rootRunId: identity.rootRunId,
+          agentRunId: identity.agentRunId,
+          ...(identity.parentToolCallId
+            ? { parentToolCallId: identity.parentToolCallId }
+            : {}),
+          createdAt: this.#now(),
+          status: 'running',
+        })
+      }
+      const sourceInvocation = await this.#createInvocation({ ...input, identity })
       const invocation: AgentInvocation = this.#context
         ? {
             ...sourceInvocation,
@@ -172,30 +189,15 @@ class DefaultRunCoordinator implements RunCoordinator {
               }),
           }
         : sourceInvocation
-      if (this.#runs && this.#createRunId) {
-        runRecordId = this.#createRunId()
-        this.#runs.create({
-          id: runRecordId,
-          sessionId: run.sessionId,
-          createdAt: this.#now(),
-          ...(input.lineage?.workspaceId
-            ? { workspaceId: input.lineage.workspaceId }
-            : {}),
-          ...(input.lineage?.rootRunId
-            ? { rootRunId: input.lineage.rootRunId }
-            : {}),
-          ...(input.lineage?.agentRunId
-            ? { agentRunId: input.lineage.agentRunId }
-            : {}),
-          ...(input.lineage?.parentToolCallId
-            ? { parentToolCallId: input.lineage.parentToolCallId }
-            : {}),
-          status: 'running',
-          snapshot: {
-            ...buildCapabilitySnapshot(invocation),
-            usage: { ...EMPTY_USAGE_LEDGER },
-          },
-        })
+      if (this.#runs) {
+        const record = this.#runs.get(runRecordId)
+        if (record) {
+          this.#runs.update({
+            ...record,
+            workspaceId: invocation.workspaceId,
+            snapshot: buildCapabilitySnapshot(invocation),
+          })
+        }
       }
       if (run.signal.aborted) {
         terminalEvent = { type: 'run_end', stopReason: 'aborted' }
@@ -310,6 +312,18 @@ class DefaultRunCoordinator implements RunCoordinator {
       }
       if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
       this.#context?.runSettled(run.sessionId)
+    }
+  }
+
+  #resolveIdentity(input: StartRunInput, run: ActiveRun): RunIdentity {
+    if (input.identity) return input.identity
+    const runId = this.#createRunId?.() ?? `${run.sessionId}:${run.runId}`
+    return {
+      rootSessionId: run.sessionId,
+      executionSessionId: run.sessionId,
+      rootRunId: runId,
+      agentRunId: runId,
+      role: 'root',
     }
   }
 

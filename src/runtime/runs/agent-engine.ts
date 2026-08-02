@@ -2,9 +2,10 @@ import type { Channel } from '../../shared/contracts/channel.ts'
 import type { AgentEvent } from '../../shared/contracts/events.ts'
 import type { SkillManifest } from '../../shared/contracts/skill.ts'
 import type { RunProfileSnapshot } from '../../shared/contracts/run-snapshot.ts'
+import type { PermissionCeilingSnapshot } from '../../shared/contracts/run-snapshot.ts'
 import type { ToolDescriptor } from '../../shared/contracts/tool.ts'
 import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
-import type { RunLineage } from '../../shared/contracts/run.ts'
+import type { PermissionSubject, RunLineage } from '../../shared/contracts/run.ts'
 
 /**
  * 一次 Run 交给内核时的不可变快照。
@@ -14,6 +15,8 @@ import type { RunLineage } from '../../shared/contracts/run.ts'
 export interface AgentInvocation {
   sessionId: string
   text: string
+  subject: PermissionSubject
+  permissionCeiling: PermissionCeilingSnapshot
   /** 本次 Run 绑定的工作区，S03 起用于创建 per-run ExecutionEnv */
   workspaceId: string
   /** 本次 Run 绑定的工作目录；工具只能使用这份不可变快照。 */

@@ -49,6 +49,24 @@ const sessionRepository = new InMemorySessionRepo()
 const harnessSession = await sessionRepository.create({ id: probeSessionId })
 const engineInvocation: Omit<AgentInvocation, 'text'> = {
   sessionId: probeSessionId,
+  subject: {
+    rootSessionId: probeSessionId,
+    executionSessionId: probeSessionId,
+    rootRunId: 'probe-run',
+    agentRunId: 'probe-run',
+    role: 'root',
+  },
+  permissionCeiling: {
+    schemaVersion: 1,
+    policyVersion: 'permission-v2',
+    mode: 'auto',
+    rootSessionId: probeSessionId,
+    workspaceId: 'probe-workspace',
+    mountRevision: 'probe',
+    allowedToolIds: ['get_current_time'],
+    maxAutoRisk: 'R3',
+    role: 'root',
+  },
   workspaceId: 'probe-workspace',
   cwd: process.cwd(),
   channel,

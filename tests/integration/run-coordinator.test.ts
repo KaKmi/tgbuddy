@@ -9,11 +9,33 @@ import type {
   AgentEvent,
   StreamFrame,
 } from '../../src/shared/contracts/events.ts'
+import type { RunIdentity } from '../../src/shared/contracts/run.ts'
+import type { PermissionCeilingSnapshot } from '../../src/shared/contracts/run-snapshot.ts'
 
-function invocation(sessionId: string, text: string): AgentInvocation {
+function permissionCeiling(rootSessionId: string): PermissionCeilingSnapshot {
+  return {
+    schemaVersion: 1,
+    policyVersion: 'permission-v2',
+    mode: 'auto',
+    rootSessionId,
+    workspaceId: 'ws-1',
+    mountRevision: 'mount-1',
+    allowedToolIds: ['read'],
+    maxAutoRisk: 'R3',
+    role: 'root',
+  }
+}
+
+function invocation(
+  sessionId: string,
+  text: string,
+  identity: RunIdentity,
+): AgentInvocation {
   return {
     sessionId,
     text,
+    subject: identity,
+    permissionCeiling: permissionCeiling(identity.rootSessionId),
     workspaceId: 'ws-1',
     cwd: 'C:\\fixture',
     channel: {
@@ -35,6 +57,62 @@ function invocation(sessionId: string, text: string): AgentInvocation {
 }
 
 describe('RunCoordinator + fake AgentEngine', () => {
+  test('root 在 createInvocation 和首次 provider 前已有稳定 identity 与 ceiling', async () => {
+    const runs = new MemoryRunRepository()
+    const seen: string[] = []
+    const engine: AgentEngine = {
+      async *run(value) {
+        expect(runs.get('run-root')?.rootRunId).toBe('run-root')
+        expect(value.subject).toMatchObject({ rootRunId: 'run-root', agentRunId: 'run-root' })
+        expect(runs.get('run-root')?.snapshot?.permission.rootSessionId).toBe('session-1')
+        seen.push('provider')
+        yield { type: 'run_end', stopReason: 'stop' }
+      },
+      async dispose() {},
+    }
+    const coordinator = createRunCoordinator({
+      now: () => 1,
+      engine,
+      runs,
+      createRunId: () => 'run-root',
+      createInvocation: async (input) => {
+        expect(input.identity).toMatchObject({
+          rootRunId: 'run-root',
+          agentRunId: 'run-root',
+          role: 'root',
+        })
+        seen.push('invocation')
+        return invocation(input.sessionId, input.text, input.identity!)
+      },
+      lifecycle: {
+        started: (sessionId) => Promise.resolve({
+          id: sessionId,
+          title: '测试',
+          status: 'running',
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+        settled: ({ sessionId, status }) => Promise.resolve({
+          id: sessionId,
+          title: '测试',
+          status,
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+      },
+    })
+
+    await coordinator.start({ sessionId: 'session-1', text: '分析' }, () => {})
+
+    expect(seen).toEqual(['invocation', 'provider'])
+    expect(runs.get('run-root')).toMatchObject({
+      id: 'run-root',
+      rootRunId: 'run-root',
+      agentRunId: 'run-root',
+      snapshot: { permission: { rootSessionId: 'session-1' } },
+    })
+  })
+
   test('保持文本流事件顺序并补齐 sessionId/runId/agent channel', async () => {
     const emitted: AgentEvent[] = [
       { type: 'run_start' },
@@ -86,7 +164,7 @@ describe('RunCoordinator + fake AgentEngine', () => {
       now: () => 1,
       engine,
       createInvocation: (input) =>
-        Promise.resolve(invocation(input.sessionId, input.text)),
+        Promise.resolve(invocation(input.sessionId, input.text, input.identity!)),
       lifecycle: {
         started: (sessionId) => Promise.resolve({
           id: sessionId,
@@ -227,7 +305,7 @@ describe('RunCoordinator + fake AgentEngine', () => {
       createRunId: () => 'run-1',
       createInvocation: (input) =>
         Promise.resolve({
-          ...invocation(input.sessionId, input.text),
+          ...invocation(input.sessionId, input.text, input.identity!),
           tools: [
             {
               id: 'read',
@@ -298,7 +376,7 @@ describe('RunCoordinator + fake AgentEngine', () => {
       runs,
       createRunId: () => 'run-2',
       createInvocation: (input) =>
-        Promise.resolve(invocation(input.sessionId, input.text)),
+        Promise.resolve(invocation(input.sessionId, input.text, input.identity!)),
       lifecycle: {
         started: (sessionId) =>
           Promise.resolve({ id: sessionId, title: 't', createdAt: 1, updatedAt: 2 }),

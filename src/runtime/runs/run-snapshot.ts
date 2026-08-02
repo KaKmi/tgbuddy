@@ -62,6 +62,10 @@ export function buildCapabilitySnapshot(
     mcpByServer.set(tool.owner, entry)
   }
   return {
+    permission: {
+      ...invocation.permissionCeiling,
+      allowedToolIds: [...invocation.permissionCeiling.allowedToolIds],
+    },
     ...(invocation.profile ? { profile: invocation.profile } : {}),
     channel: {
       id: invocation.channel.id,
