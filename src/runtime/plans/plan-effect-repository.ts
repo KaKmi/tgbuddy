@@ -4,6 +4,7 @@ export interface PlanEffectRepository {
   add(grant: PlanEffectGrant): void
   list(rootRunId: string): PlanEffectGrant[]
   removePlan(rootRunId: string, planId: string): void
+  removeRoot(rootRunId: string): void
 }
 
 export class MemoryPlanEffectRepository implements PlanEffectRepository {
@@ -24,6 +25,12 @@ export class MemoryPlanEffectRepository implements PlanEffectRepository {
       if (grant.rootRunId === rootRunId && grant.planId === planId) {
         this.#grants.delete(effectId)
       }
+    }
+  }
+
+  removeRoot(rootRunId: string): void {
+    for (const [effectId, grant] of this.#grants) {
+      if (grant.rootRunId === rootRunId) this.#grants.delete(effectId)
     }
   }
 }

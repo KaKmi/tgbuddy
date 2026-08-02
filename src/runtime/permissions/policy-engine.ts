@@ -367,7 +367,7 @@ function findPlanEffect(
       )
     }
     if (grant.matcher.match === 'command') {
-      return invocation.shell?.command.startsWith(grant.matcher.pattern) ?? false
+      return invocation.shell?.command.trim() === grant.matcher.pattern.trim()
     }
     if (grant.matcher.match === 'method') {
       return `${invocation.mcp?.serverId}.${invocation.mcp?.method}` === grant.matcher.pattern

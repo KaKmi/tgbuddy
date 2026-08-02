@@ -387,6 +387,9 @@ export async function createApplication(
     },
     registry: humanInteractions,
     resolveSource: interactionSource,
+    revokeEffects(source) {
+      planEffects.removeRoot(source.rootRunId)
+    },
     commitEffects({ request, phase, source }) {
       const workspaceId = sessionRepository.get(request.sessionId)?.workspaceId
       if (!workspaceId) throw new Error('plan_effect_workspace_required')

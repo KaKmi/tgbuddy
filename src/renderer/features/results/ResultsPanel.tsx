@@ -58,7 +58,10 @@ export function ResultsPanel({
   const [section, setSection] = useState<'artifacts' | 'workspace' | 'tasks'>('artifacts')
   const [selectedId, setSelectedId] = useState<string>()
   const [runStartedAt, setRunStartedAt] = useState<number>()
-  const [tasks, setTasks] = useState<DelegationTask[]>([])
+  const [taskProjection, setTaskProjection] = useState<{
+    sessionId: string
+    tasks: DelegationTask[]
+  }>()
   const [preview, setPreview] = useState<ArtifactPreviewResult>()
   const [viewerOpen, setViewerOpen] = useState(false)
   const [workspaceQuery, setWorkspaceQuery] = useState('')
@@ -88,7 +91,7 @@ export function ResultsPanel({
       currentTaskSessionRef.current !== targetSessionId
       || latestTaskRequestRef.current !== requestId
     ) return
-    setTasks(nextTasks)
+    setTaskProjection({ sessionId: targetSessionId, tasks: nextTasks })
   }
 
   useEffect(() => {
@@ -98,7 +101,7 @@ export function ResultsPanel({
     setFilter('all')
     setSection('artifacts')
     setRunStartedAt(undefined)
-    setTasks([])
+    setTaskProjection(undefined)
     if (!sessionId) return
     void Promise.all([refreshArtifacts(), refreshTasks()])
   }, [sessionId])
@@ -134,6 +137,9 @@ export function ResultsPanel({
 
   const groups = groupArtifacts(filterArtifacts(artifacts, filter), runStartedAt)
   const selected = artifacts.find((artifact) => artifact.id === selectedId)
+  const tasks = taskProjection && taskProjection.sessionId === sessionId
+    ? taskProjection.tasks
+    : []
 
   useEffect(() => {
     if (artifacts.length === 0) return
@@ -204,7 +210,12 @@ export function ResultsPanel({
       </div>}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {section === 'tasks' ? (
-          <TaskWorkbench sessionId={sessionId} tasks={tasks} onRefreshTasks={refreshTasks} />
+          <TaskWorkbench
+            key={sessionId ?? 'no-session'}
+            sessionId={sessionId}
+            tasks={tasks}
+            onRefreshTasks={refreshTasks}
+          />
         ) : section === 'workspace' ? (
           <WorkspaceFiles
             artifacts={artifacts}

@@ -36,6 +36,7 @@ export interface CreatePlanAskBrokerOptions {
   emitRequest(request: PlanRequest): void
   registry?: HumanInteractionRegistry
   resolveSource?(sessionId: string): EventSource
+  revokeEffects?(source: EventSource): void
   commitEffects?(input: {
     request: PlanRequest
     phase: Extract<PlanningPhase, { status: 'plan_pending' }>
@@ -65,6 +66,7 @@ export function createPlanAskBroker(
       phases.set(input.sessionId, phase)
       requestPhase.set(requestId, phase)
       const source = options.resolveSource?.(input.sessionId) ?? fallbackSource(input.sessionId)
+      options.revokeEffects?.(source)
       requestSource.set(requestId, source)
       const request: PlanRequest = {
           requestId,
