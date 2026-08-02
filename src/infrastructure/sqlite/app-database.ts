@@ -21,6 +21,7 @@ import appProfilesSkillIdsSql from './migrations/018_app_profiles_skill_ids.sql'
 import appPermissionV2Sql from './migrations/019_app_permission_v2.sql'
 import appInteractionJournalSql from './migrations/020_app_interaction_journal.sql'
 import appAuthorizationClaimsSql from './migrations/021_app_authorization_claims.sql'
+import appSessionVisibilitySql from './migrations/022_app_session_visibility.sql'
 
 interface SqliteModule {
   DatabaseSync: typeof import('node:sqlite').DatabaseSync
@@ -120,6 +121,10 @@ const APP_MIGRATIONS: readonly AppMigration[] = [
   {
     id: '021_app_authorization_claims.sql',
     sql: appAuthorizationClaimsSql,
+  },
+  {
+    id: '022_app_session_visibility.sql',
+    sql: appSessionVisibilitySql,
   },
 ]
 

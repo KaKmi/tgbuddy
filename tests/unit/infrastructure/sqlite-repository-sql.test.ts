@@ -27,7 +27,7 @@ describe('SqliteSessionRepository SQL 一致性', () => {
     const columns = countItems(insert[1]!)
     const placeholders = countItems(insert[2]!)
     expect(columns).toBe(placeholders)
-    expect(columns).toBe(20)
+    expect(columns).toBe(22)
   })
 
   test('UPDATE SET 列数加 WHERE id 与参数数量一致', () => {
@@ -37,7 +37,7 @@ describe('SqliteSessionRepository SQL 一致性', () => {
     if (!update) return
     const setColumns = countItems(update[1]!)
     // run(...sessionValues(session).slice(1), session.id)
-    expect(setColumns + 1).toBe(20)
+    expect(setColumns + 1).toBe(22)
   })
 
   test('sessionValues 与 SELECT 列一一对应', () => {
@@ -93,5 +93,14 @@ describe('Permission v2 SQLite 契约', () => {
     expect(migration).toContain('ticket_id TEXT PRIMARY KEY')
     expect(migration).toContain("'execution_claimed'")
     expect(migration).toContain("'revoked'")
+  })
+
+  test('internal Session 有独立可见性字段与父任务关联', () => {
+    const migration = readFileSync(
+      join(import.meta.dir, '..', '..', '..', 'src', 'infrastructure', 'sqlite', 'migrations', '022_app_session_visibility.sql'),
+      'utf8',
+    )
+    expect(migration).toContain("DEFAULT 'top_level'")
+    expect(migration).toContain('parent_task_id TEXT')
   })
 })

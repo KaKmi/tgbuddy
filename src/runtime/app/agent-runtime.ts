@@ -53,6 +53,8 @@ export interface SessionCommands {
     channelId?: string
     modelId?: string
     profileId?: string
+    visibility?: SessionMeta['visibility']
+    parentTaskId?: string
   }): Promise<SessionMeta>
   delete(sessionId: string): Promise<void>
   messages(sessionId: string): Promise<SessionMessage[]>

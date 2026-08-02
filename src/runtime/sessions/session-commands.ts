@@ -41,9 +41,11 @@ export function createSessionCommands(
   return {
     list: () => {
       const workspaceId = currentWorkspaceId()
-      return workspaceId
-        ? options.repository.list(workspaceId)
-        : options.repository.list()
+      const listTopLevel = options.repository.listTopLevel?.bind(options.repository)
+      const sessions = listTopLevel
+        ? listTopLevel(workspaceId)
+        : options.repository.list(workspaceId).filter((session) => session.visibility !== 'internal')
+      return sessions
     },
     async create(input) {
       const now = options.now()
@@ -52,6 +54,8 @@ export function createSessionCommands(
         id: options.createId(),
         title: input.title ?? '新会话',
         titleSource: input.title ? 'user' : 'default',
+        visibility: input.visibility ?? 'top_level',
+        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
         ...(workspaceId ? { workspaceId } : {}),
         ...(input.channelId ? { channelId: input.channelId } : {}),
         ...(input.modelId ? { modelId: input.modelId } : {}),

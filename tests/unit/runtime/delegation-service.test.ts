@@ -39,6 +39,7 @@ function harness(options: {
   parentModelId?: string
 }) {
   const created: string[] = []
+  const createInputs: Array<{ visibility?: string; parentTaskId?: string }> = []
   const started: Array<{ sessionId: string; text: string; lineage?: unknown }> = []
   const stopped: string[] = []
   const modeUpdates: Array<{ sessionId: string; mode?: string }> = []
@@ -65,8 +66,9 @@ function harness(options: {
     },
   ]
   const sessions = {
-    create: async () => {
+    create: async (input: { visibility?: string; parentTaskId?: string }) => {
       if (options.failCreate) throw new Error('创建失败')
+      createInputs.push(input)
       const id = `child-${created.length}`
       created.push(id)
       return { id }
@@ -111,12 +113,12 @@ function harness(options: {
     createId: () => 'child-0',
     now: () => 1,
   })
-  return { service, created, started, stopped, modeUpdates, metaUpdates }
+  return { service, created, createInputs, started, stopped, modeUpdates, metaUpdates }
 }
 
 describe('DelegationService（D02）', () => {
   test('成功：创建 child 会话、启动带 lineage 的 run、返回摘要', async () => {
-    const { service, created, started } = harness({
+    const { service, created, createInputs, started } = harness({
       runningRootRunId: 'root-1',
       frames: [assistantFrame('child-0', '探索完成：找到 3 个候选文件')],
     })
@@ -131,6 +133,10 @@ describe('DelegationService（D02）', () => {
     expect(result.ok).toBe(true)
     expect(result.text).toContain('探索完成：找到 3 个候选文件')
     expect(created).toEqual(['child-0'])
+    expect(createInputs[0]).toMatchObject({
+      visibility: 'internal',
+      parentTaskId: 'tool-1',
+    })
     expect(started[0]).toMatchObject({
       text: '探索一下',
       lineage: {

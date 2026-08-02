@@ -55,7 +55,11 @@ export function createDelegationService(
 
       let childSessionId: string
       try {
-      const meta = await options.sessions.create({ title: '子任务' })
+      const meta = await options.sessions.create({
+        title: '子任务',
+        visibility: 'internal',
+        parentTaskId: input.parentToolCallId,
+      })
       childSessionId = meta.id
       } catch (error) {
         return {
