@@ -242,6 +242,11 @@ function shellCommandHeads(tokens: string[]): string[] {
   let forwarding = false
   const transparentForwarders = new Set(['builtin', 'call', 'command', 'env', 'sudo'])
   for (const token of tokens) {
+    if (token === '$(') {
+      expectHead = true
+      forwarding = false
+      continue
+    }
     if (['&&', '||', '|', ';', '&'].includes(token)) {
       expectHead = true
       forwarding = false

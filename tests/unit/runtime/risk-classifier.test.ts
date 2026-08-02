@@ -39,7 +39,7 @@ function completeInvocation(
 }
 
 function shell(command: string): CompleteInvocation {
-  const tokens = command.match(/"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|&&|\|\||>>|[|;&><`]|[^\s|;&><`]+/g) ?? []
+  const tokens = command.match(/"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\$\(|&&|\|\||>>|[|;&><`]|[^\s|;&><`]+/g) ?? []
   return completeInvocation('bash', {
     kind: 'shell',
     args: { command },
@@ -143,6 +143,8 @@ describe('RiskClassifier', () => {
       'cmd /c call format C:',
       'DUMMY=1 wsl --mount \\\\.\\PHYSICALDRIVE0',
       'env DUMMY=1 command wsl --mount \\\\.\\PHYSICALDRIVE0',
+      'echo $(wsl --mount \\\\.\\PHYSICALDRIVE0)',
+      'echo $(format C:)',
       'C:\\Windows\\System32\\format.com C:',
       '"C:\\Temp Folder\\format.com" C:',
     ]) {
