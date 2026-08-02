@@ -387,6 +387,29 @@ export async function createApplication(
     },
     registry: humanInteractions,
     resolveSource: interactionSource,
+    commitEffects({ request, phase, source }) {
+      const workspaceId = sessionRepository.get(request.sessionId)?.workspaceId
+      if (!workspaceId) throw new Error('plan_effect_workspace_required')
+      const mount = workspaceService.mountStatus(workspaceId)
+      if (!mount.ok) throw new Error('plan_effect_workspace_unavailable')
+      request.effects.forEach((effect, index) => {
+        planEffects.add({
+          rootRunId: source.rootRunId,
+          planId: phase.planId,
+          planRevision: phase.planRevision,
+          effectId: `${phase.planId}:effect:${index}`,
+          subjectTemplate: { kind: 'root_agent', agentRunId: source.subjectId },
+          maxRisk: effect.maxRisk,
+          matcher: {
+            tool: effect.tool,
+            match: effect.match,
+            pattern: effect.match === 'path'
+              ? resolve(mount.mount.path, effect.pattern)
+              : effect.pattern,
+          },
+        })
+      })
+    },
   })
   // S10：ask_user 的结构化问题同样由 Runtime broker 持有。
   const askUserBroker = createAskUserBroker({
@@ -562,8 +585,8 @@ export async function createApplication(
                 },
               })
             },
-            requestApproval: (plan, signal) =>
-              planAskBroker.requestApproval({ sessionId, plan }, signal),
+            requestApproval: (plan, effects, signal) =>
+              planAskBroker.requestApproval({ sessionId, plan, effects }, signal),
           }))
           if (enabled.has('ask_user')) {
             tools.push(buildAskUserTool({

@@ -4,38 +4,60 @@ import {
   type PlanAskBroker,
 } from '../../../src/runtime/index.ts'
 import type { PlanRequest } from '../../../src/shared/contracts/permission.ts'
+import { MemoryPlanEffectRepository } from '../../../src/runtime/plans/plan-effect-repository.ts'
 
 function harness(): {
   broker: PlanAskBroker
   emitted: PlanRequest[]
+  effects: MemoryPlanEffectRepository
 } {
   const emitted: PlanRequest[] = []
   let sequence = 0
+  const effects = new MemoryPlanEffectRepository()
   const broker = createPlanAskBroker({
     createId: () => `plan-${++sequence}`,
     emitRequest(request) {
       emitted.push(request)
     },
+    resolveSource: () => ({
+      rootRunId: 'root-1', runId: 'agent-1', sessionId: 'session-1', subjectId: 'agent-1',
+    }),
+    commitEffects({ request, phase, source }) {
+      request.effects.forEach((effect, index) => effects.add({
+        rootRunId: source.rootRunId,
+        planId: phase.planId,
+        planRevision: phase.planRevision,
+        effectId: `${phase.planId}:${index}`,
+        subjectTemplate: { kind: 'root_agent', agentRunId: source.subjectId },
+        maxRisk: effect.maxRisk,
+        matcher: effect,
+      }))
+    },
   })
-  return { broker, emitted }
+  return { broker, emitted, effects }
 }
 
 describe('PlanAskBroker', () => {
   test('requestApproval 登记并推送，pending 快照可恢复（重载）', async () => {
-    const { broker, emitted } = harness()
+    const { broker, emitted, effects } = harness()
     const result = broker.requestApproval(
-      { sessionId: 'session-1', plan: '# 计划' },
+    { sessionId: 'session-1', plan: '# 计划', effects: [{ tool: 'write', match: 'path', pattern: 'C:\\work\\a.ts', maxRisk: 'R3' }] },
       new AbortController().signal,
     )
 
     expect(emitted).toEqual([
-      { requestId: 'plan-1', sessionId: 'session-1', plan: '# 计划' },
+      { requestId: 'plan-1', sessionId: 'session-1', plan: '# 计划', effects: [{ tool: 'write', match: 'path', pattern: 'C:\\work\\a.ts', maxRisk: 'R3' }] },
     ])
     expect(broker.pending()).toHaveLength(1)
 
     broker.respond({ requestId: 'plan-1', approved: true })
     await expect(result).resolves.toEqual({ approved: true })
     expect(broker.pending()).toEqual([])
+    expect(effects.list('root-1')).toMatchObject([{
+      planId: 'plan-1',
+      subjectTemplate: { kind: 'root_agent', agentRunId: 'agent-1' },
+      matcher: { tool: 'write', match: 'path', pattern: 'C:\\work\\a.ts' },
+    }])
   })
 
   test('approve/reject：批准放行，拒绝带意见返回', async () => {
@@ -71,6 +93,31 @@ describe('PlanAskBroker', () => {
     expect(broker.respond({ requestId: 'plan-1', approved: true })).toBe(true)
     await expect(result).resolves.toEqual({ approved: true })
     expect(broker.respond({ requestId: 'plan-1', approved: false })).toBe(false)
+  })
+
+  test('effect 持久化失败时不结算批准请求', () => {
+    const broker = createPlanAskBroker({
+      createId: () => 'plan-failed',
+      emitRequest: () => {},
+      resolveSource: () => ({
+        rootRunId: 'root-1', runId: 'agent-1', sessionId: 'session-1', subjectId: 'agent-1',
+      }),
+      commitEffects: () => {
+        throw new Error('模拟 effect 持久化失败')
+      },
+    })
+    void broker.requestApproval({
+      sessionId: 'session-1',
+      plan: '写入文件',
+      effects: [{ tool: 'write', match: 'path', pattern: 'C:\\work\\a.ts', maxRisk: 'R3' }],
+    })
+
+    expect(() => broker.respond({ requestId: 'plan-failed', approved: true }))
+      .toThrow('模拟 effect 持久化失败')
+    expect(broker.pending()).toHaveLength(1)
+    expect(broker.phase('session-1')).toEqual({
+      status: 'plan_pending', planId: 'plan-failed', planRevision: 1,
+    })
   })
 
   test('stop（AbortSignal）与 clearSession 释放挂起审批', async () => {

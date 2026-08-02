@@ -363,7 +363,7 @@ function findPlanEffect(
     if (grant.matcher.match === 'tool') return grant.matcher.pattern === input.toolName
     if (grant.matcher.match === 'path') {
       return invocation.targets.some((target) =>
-        target.kind === 'path' && target.value.startsWith(grant.matcher.pattern)
+        target.kind === 'path' && planPathMatches(grant.matcher.pattern, target.value)
       )
     }
     if (grant.matcher.match === 'command') {
@@ -377,4 +377,15 @@ function findPlanEffect(
       target.kind === targetKind && target.value === grant.matcher.pattern
     )
   })
+}
+
+function planPathMatches(pattern: string, actual: string): boolean {
+  const normalize = (value: string): string => value.replace(/\\/g, '/').replace(/\/+$/, '')
+  const expected = normalize(pattern)
+  const received = normalize(actual)
+  if (expected.endsWith('/**')) {
+    const directory = expected.slice(0, -3)
+    return received === directory || received.startsWith(`${directory}/`)
+  }
+  return received === expected
 }

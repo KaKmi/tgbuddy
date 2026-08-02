@@ -13,7 +13,7 @@
 
 import { Type } from '@earendil-works/pi-ai'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import type { PermissionMode } from '../../shared/contracts/permission.ts'
+import type { PermissionMode, PlanEffectProposal } from '../../shared/contracts/permission.ts'
 
 export interface PlanModeHooks {
   getMode: () => PermissionMode
@@ -25,6 +25,7 @@ export interface PlanModeHooks {
    */
   requestApproval: (
     plan: string,
+    effects: PlanEffectProposal[],
     signal?: AbortSignal,
   ) => Promise<{ approved: boolean; reason?: string }>
 }
@@ -38,15 +39,24 @@ function exitPlanMode(hooks: PlanModeHooks): AgentTool {
     name: 'exit_plan_mode',
     label: '提交计划',
     description:
-      '调研完成后提交计划给用户审批。批准后自动退出计划模式，可以开始执行；' +
-      '被拒绝时按用户的意见修改计划再提交。',
+      '调研完成后直接提交计划和结构化副作用清单给用户审批，批准前不要尝试写入。' +
+      '批准后保持计划模式，只执行清单内获批效果；被拒绝时按用户意见修改后再提交。',
     parameters: Type.Object({
       plan: Type.String({
         description: '完整计划，markdown 格式。要具体到会改哪些文件、执行什么命令',
       }),
+      effects: Type.Array(Type.Object({
+        tool: Type.String({ description: '将执行的 Tool 名称' }),
+        match: Type.Union([
+          Type.Literal('tool'), Type.Literal('path'), Type.Literal('command'),
+          Type.Literal('method'), Type.Literal('origin'), Type.Literal('account'),
+        ]),
+        pattern: Type.String({ description: '精确目标；路径优先使用相对当前 Workspace 的路径' }),
+        maxRisk: Type.Union([Type.Literal('R2'), Type.Literal('R3')]),
+      }), { minItems: 1 }),
     }),
     execute: async (_id, params, signal) => {
-      const { plan } = params as { plan: string }
+      const { plan, effects } = params as { plan: string; effects: PlanEffectProposal[] }
 
       if (hooks.getMode() !== 'plan') {
         return {
@@ -56,7 +66,7 @@ function exitPlanMode(hooks: PlanModeHooks): AgentTool {
       }
 
       // ★ 挂起等用户审批。和权限确认同构：这个 Promise 由 IPC 回调 resolve
-      const { approved, reason } = await hooks.requestApproval(plan, signal)
+      const { approved, reason } = await hooks.requestApproval(plan, effects, signal)
 
       if (!approved) {
         // 不退出计划模式 —— 用户拒绝意味着计划要改，不是可以开工了

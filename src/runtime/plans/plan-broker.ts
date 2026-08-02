@@ -3,6 +3,7 @@ import type {
   PlanRequest,
   PlanResponse,
   PlanningPhase,
+  PlanEffectProposal,
 } from '../../shared/contracts/permission.ts'
 import { PendingRequests } from '../pending/pending-requests.ts'
 import type { HumanInteractionRegistry } from '../pending/human-interaction-registry.ts'
@@ -17,7 +18,7 @@ import type { EventSource } from '../../shared/contracts/interaction.ts'
  */
 export interface PlanAskBroker {
   requestApproval(
-    input: { sessionId: string; plan: string },
+    input: { sessionId: string; plan: string; effects?: PlanEffectProposal[] },
     signal?: AbortSignal,
   ): Promise<PlanApproval>
   /**
@@ -35,6 +36,11 @@ export interface CreatePlanAskBrokerOptions {
   emitRequest(request: PlanRequest): void
   registry?: HumanInteractionRegistry
   resolveSource?(sessionId: string): EventSource
+  commitEffects?(input: {
+    request: PlanRequest
+    phase: Extract<PlanningPhase, { status: 'plan_pending' }>
+    source: EventSource
+  }): void
 }
 
 export function createPlanAskBroker(
@@ -46,6 +52,7 @@ export function createPlanAskBroker(
   )
   const phases = new Map<string, PlanningPhase>()
   const requestPhase = new Map<string, Extract<PlanningPhase, { status: 'plan_pending' }>>()
+  const requestSource = new Map<string, EventSource>()
 
   return {
     requestApproval(input, signal) {
@@ -57,10 +64,13 @@ export function createPlanAskBroker(
       }
       phases.set(input.sessionId, phase)
       requestPhase.set(requestId, phase)
+      const source = options.resolveSource?.(input.sessionId) ?? fallbackSource(input.sessionId)
+      requestSource.set(requestId, source)
       const request: PlanRequest = {
           requestId,
           sessionId: input.sessionId,
           plan: input.plan,
+          effects: input.effects ?? [],
       }
       signal?.addEventListener('abort', () => options.registry?.complete(requestId), { once: true })
       return pending.suspend(request, (next) => {
@@ -68,7 +78,7 @@ export function createPlanAskBroker(
         options.registry.register({
           id: requestId,
           kind: 'plan',
-          source: options.resolveSource?.(input.sessionId) ?? fallbackSource(input.sessionId),
+          source,
           payload: next,
           activate: () => options.emitRequest(next),
         })
@@ -76,12 +86,16 @@ export function createPlanAskBroker(
     },
     respond(response) {
       const request = pending.list().find((item) => item.requestId === response.requestId)
+      const phase = requestPhase.get(response.requestId)
+      const source = requestSource.get(response.requestId)
+      if (response.approved && request && phase && source) {
+        options.commitEffects?.({ request, phase, source })
+      }
       const settled = pending.respond(response.requestId, {
         approved: response.approved,
         ...(response.reason ? { reason: response.reason } : {}),
       })
       if (settled) options.registry?.complete(response.requestId)
-      const phase = requestPhase.get(response.requestId)
       if (settled !== undefined && request && phase) {
         phases.set(request.sessionId, response.approved
           ? {
@@ -92,6 +106,7 @@ export function createPlanAskBroker(
             }
           : { status: 'planning' })
         requestPhase.delete(response.requestId)
+        requestSource.delete(response.requestId)
       }
       return settled !== undefined
     },

@@ -223,6 +223,15 @@ function PlanApprovalCard({ request, onRespond }: { request: PlanRequest; onResp
     <div className="rounded-[14px] border bg-card px-4 py-3.5 shadow-[0_12px_32px_rgba(30,28,24,.09)]">
       <div className="flex items-center justify-between gap-3"><strong className="text-[12.5px]">计划已准备好</strong><span className="text-[10.5px] text-muted-foreground">批准后开始执行</span></div>
       <p className="mt-2 rounded-[9px] bg-muted px-3 py-2 text-[11.5px] leading-relaxed text-foreground/75">{planSummary(request.plan)}</p>
+      <div className="mt-2 space-y-1">
+        {request.effects.map((effect, index) => (
+          <div key={`${effect.tool}:${effect.match}:${effect.pattern}:${index}`} className="flex items-center gap-2 rounded-[8px] bg-muted/70 px-2.5 py-1.5 text-[10.5px] text-muted-foreground">
+            <code>{effect.tool}</code>
+            <span className="truncate">{effect.pattern}</span>
+            <span className="ml-auto shrink-0">{effect.maxRisk}</span>
+          </div>
+        ))}
+      </div>
       <button onClick={() => setExpanded(!expanded)} className="mt-1.5 text-[10.8px] text-muted-foreground hover:text-foreground">{expanded ? '收起完整计划' : '查看完整计划'}</button>
       {expanded && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-[9px] bg-muted p-3 text-[10.5px] leading-[1.65]">{request.plan}</pre>}
       {revising && <textarea autoFocus value={reason} onChange={(event) => setReason(event.target.value)} placeholder="需要怎么修改？" className="mt-2 min-h-16 w-full resize-none rounded-[9px] border bg-background px-3 py-2 text-[11.5px]" />}

@@ -207,8 +207,23 @@ async function handleRequest(
         streamToolCall(
           response,
           'exit_plan_mode',
-          { plan: '1. 修改 m2-write.txt\n2. 验证内容' },
+          {
+            plan: '1. 修改 m2-write.txt\n2. 验证内容',
+            effects: [{
+              tool: 'write',
+              match: 'path',
+              pattern: 'm2-write.txt',
+              maxRisk: 'R3',
+            }],
+          },
           'call_e2e_plan',
+        )
+      } else if (toolResults === 1) {
+        streamToolCall(
+          response,
+          'write',
+          { path: 'm2-write.txt', content: 'M2 计划批准后的写入内容' },
+          'call_e2e_plan_write',
         )
       } else {
         await streamText(response, 'M2 计划完成')
