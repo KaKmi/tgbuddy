@@ -196,6 +196,10 @@ export {
   type OperationHandle,
   type RunAuthorizationGate,
 } from './permissions/run-authorization-gate.ts'
+export {
+  createInvocationIdentityBinder,
+  InvocationIdentityChangedError,
+} from './permissions/invocation-identity-binder.ts'
 export { PendingRequests } from './pending/pending-requests.ts'
 export {
   InteractionResponseConflictError,

@@ -34,6 +34,8 @@ export interface McpManager {
   disconnect(serverId: string): Promise<void>
   status(serverId: string): McpServerStatus
   statuses(): McpServerStatus[]
+  /** 当前连接、配置与方法 schema 的稳定身份；未连接返回 undefined。 */
+  identity(serverId: string, method: string): string | undefined
   /** 应用退出时断开全部连接并清理注册的工具 */
   dispose(): Promise<void>
   /** C11：调用已连接服务的工具方法；未连接/断线一律抛错 */
@@ -50,6 +52,8 @@ interface ConnectionState {
   state: McpServerState
   error?: string
   lastConnectedAt?: number
+  identityRevision?: number
+  toolSchemas?: Map<string, unknown>
 }
 
 const DEFAULT_CONNECT_TIMEOUT_MS = 15_000
@@ -66,6 +70,7 @@ export function createMcpManager(
   const serverTools = new Map<string, string[]>()
   const connecting = new Map<string, Promise<McpServerStatus>>()
   const timeoutMs = options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS
+  let identityRevision = 0
 
   const toStatus = (serverId: string, state: ConnectionState): McpServerStatus => ({
     serverId,
@@ -147,6 +152,8 @@ export function createMcpManager(
         serverTools,
       )
       state.state = 'connected'
+      state.identityRevision = ++identityRevision
+      state.toolSchemas = new Map(tools.map((tool) => [tool.name, tool.inputSchema]))
       state.lastConnectedAt = options.now()
       return toStatus(serverId, state)
     } catch (error) {
@@ -234,6 +241,22 @@ export function createMcpManager(
     status: statusOf,
     statuses() {
       return options.repository.list().map((config) => statusOf(config.id))
+    },
+    identity(serverId, method) {
+      const state = states.get(serverId)
+      const config = options.repository.get(serverId)
+      if (!state?.transport || state.state !== 'connected' || !config) return undefined
+      return JSON.stringify({
+        serverId,
+        serverRevision: config.updatedAt,
+        method,
+        schema: state.toolSchemas?.get(method) ?? null,
+        transport: config.transport,
+        command: config.command ?? null,
+        args: config.args ?? [],
+        url: config.url ?? null,
+        connectionRevision: state.identityRevision,
+      })
     },
     async call(serverId, method, args, signal) {
       const state = states.get(serverId)

@@ -6,6 +6,8 @@ export interface BuildMcpToolOptions {
   method: string
   label: string
   description: string
+  expectedIdentity?: string
+  assertIdentity?(expected: string): void
   call(
     args: Record<string, unknown>,
     signal: AbortSignal | undefined,
@@ -24,6 +26,12 @@ export function buildMcpTool(options: BuildMcpToolOptions): AgentTool {
     parameters: Type.Record(Type.String(), Type.Unknown()),
     execute: async (_id, params, signal) => {
       const args = (params ?? {}) as Record<string, unknown>
+      if (!options.expectedIdentity || !options.assertIdentity) {
+        const error = new Error('MCP 工具缺少授权身份绑定')
+        Object.assign(error, { code: 'authorization_binding_missing' })
+        throw error
+      }
+      options.assertIdentity(options.expectedIdentity)
       // 结构化错误（isError）与断线由调用方（McpManager）转成 throw。
       const text = await options.call(args, signal)
       return {

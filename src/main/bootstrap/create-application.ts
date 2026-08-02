@@ -17,6 +17,7 @@ import {
   createPermissionAskBroker,
   createPolicyEngine,
   createInvocationNormalizer,
+  createInvocationIdentityBinder,
   createRiskClassifier,
   createRunAuthorizationGate,
   PermissionRuleIndex,
@@ -299,6 +300,7 @@ export async function createApplication(
     },
   })
   const riskClassifier = createRiskClassifier({ policyVersion: 'permission-v2' })
+  const invocationIdentityBinder = createInvocationIdentityBinder<string>()
   // S06：授权请求由 Runtime broker 持有，主进程只负责把请求推给渲染进程。
   // 旧 Main permission-service 的 pending 注册表不再接新请求（S11 删除）。
   const permissionAskBroker = createPermissionAskBroker({
@@ -548,6 +550,9 @@ export async function createApplication(
                 method,
                 label: descriptor.label,
                 description: descriptor.description,
+                expectedIdentity: mcp.identity(owner, method),
+                assertIdentity: (expected) =>
+                  invocationIdentityBinder.assert(expected, mcp.identity(owner, method)),
                 call: (args, signal) =>
                   mcp.call(owner, method, args, signal),
               }),

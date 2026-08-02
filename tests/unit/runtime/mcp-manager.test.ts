@@ -255,6 +255,7 @@ describe('McpManager', () => {
     manager.save(serverInput({ id: 'mcp-1', name: '改名' }))
     expect(transports[0]?.disconnected).toBe(true)
     expect(manager.status('mcp-1').state).toBe('off')
+    expect(manager.identity('mcp-1', 'query')).toBeUndefined()
   })
 
   test('连接成功后发现的工具进入 ToolRegistry（server.method 命名）', async () => {

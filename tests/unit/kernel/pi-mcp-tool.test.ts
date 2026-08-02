@@ -8,6 +8,8 @@ describe('MCP 工具（pi adapter）', () => {
       method: 'query',
       label: 'query',
       description: '查询只读库',
+      expectedIdentity: 'identity-1',
+      assertIdentity: () => {},
       call: async (args) => `rows:${String(args.sql ?? '')}`,
     })
     const result = await tool.execute(
@@ -25,6 +27,8 @@ describe('MCP 工具（pi adapter）', () => {
       method: 'exec',
       label: 'exec',
       description: '执行写语句',
+      expectedIdentity: 'identity-1',
+      assertIdentity: () => {},
       call: async () => {
         throw new Error('服务端报错')
       },
@@ -41,6 +45,8 @@ describe('MCP 工具（pi adapter）', () => {
       method: 'query',
       label: 'query',
       description: '查询',
+      expectedIdentity: 'identity-1',
+      assertIdentity: () => {},
       call: async (_args, signal) => {
         receivedSignal = signal
         return 'ok'
