@@ -15,6 +15,7 @@ export interface HumanInteractionRequest {
   source: EventSource
   active: boolean
   queuePosition: number
+  payload: unknown
 }
 
 export interface DelegationAttention {

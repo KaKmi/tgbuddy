@@ -69,6 +69,7 @@ export function createPlanAskBroker(
           id: requestId,
           kind: 'plan',
           source: options.resolveSource?.(input.sessionId) ?? fallbackSource(input.sessionId),
+          payload: next,
           activate: () => options.emitRequest(next),
         })
       }, signal)

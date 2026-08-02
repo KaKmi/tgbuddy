@@ -6,6 +6,8 @@ export {
   type AskUserCommands,
   type CapabilityCommands,
   type ContextCommands,
+  type InteractionCommands,
+  type DelegationCommands,
   type PermissionCommands,
   type PlanCommands,
   type RunCommands,

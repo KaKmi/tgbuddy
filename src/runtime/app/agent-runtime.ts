@@ -28,6 +28,8 @@ import type {
 import type { SessionMessage } from '../../shared/contracts/message.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
+import type { HumanInteractionRequest } from '../../shared/contracts/interaction.ts'
+import type { DelegationTask } from '../../shared/contracts/delegation.ts'
 import type { SessionTitleService } from '../sessions/session-title-service.ts'
 import type {
   Workspace,
@@ -103,6 +105,18 @@ export interface AskUserCommands {
   pending(): AskUserRequest[]
 }
 
+export interface InteractionCommands {
+  pending(rootRunId?: string): HumanInteractionRequest[]
+  respond(input: { requestId: string; response: unknown; expectedRevision: number }): Promise<void>
+}
+
+export interface DelegationCommands {
+  list(rootRunId: string): DelegationTask[]
+  messages(taskId: string): Promise<SessionMessage[]>
+  stop(taskId: string): Promise<void>
+  retry(taskId: string): Promise<DelegationTask>
+}
+
 export interface ContextCommands {
   start(sessionId: string): void
   defer(sessionId: string): void
@@ -146,6 +160,8 @@ export interface AgentRuntime {
   permissions: PermissionCommands
   plans: PlanCommands
   questions: AskUserCommands
+  interactions: InteractionCommands
+  delegations: DelegationCommands
   context: ContextCommands
   artifacts: ArtifactQueries
   capabilities: CapabilityCommands
@@ -169,6 +185,8 @@ export interface AgentRuntimeDependencies {
   }
   plans: PlanCommands
   questions: AskUserCommands
+  interactions: InteractionCommands
+  delegations: DelegationCommands
   context: {
     start(
       sessionId: string,
@@ -296,6 +314,8 @@ export function createAgentRuntime(
       },
       pending: dependencies.questions.pending,
     },
+    interactions: dependencies.interactions,
+    delegations: dependencies.delegations,
     context: {
       start(sessionId) {
         void dependencies.context.start(

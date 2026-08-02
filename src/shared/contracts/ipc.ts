@@ -32,6 +32,8 @@ import type { AttachmentRef } from './attachment.ts'
 import type { BlobRef } from './blob.ts'
 import type { ArtifactPreviewResult, ArtifactRef } from './artifact.ts'
 import type { SessionMeta } from './session.ts'
+import type { HumanInteractionRequest } from './interaction.ts'
+import type { DelegationTask } from './delegation.ts'
 import type {
   Workspace,
   WorkspaceMountResolution,
@@ -101,6 +103,13 @@ export const IPC = {
   // 用户问答
   ASK_USER_RESPOND: 'ask-user:respond',
   ASK_USER_PENDING: 'ask-user:pending',
+
+  INTERACTION_PENDING: 'interaction:pending',
+  INTERACTION_RESPOND: 'interaction:respond',
+  DELEGATION_LIST: 'delegation:list',
+  DELEGATION_MESSAGES: 'delegation:messages',
+  DELEGATION_STOP: 'delegation:stop',
+  DELEGATION_RETRY: 'delegation:retry',
 
   // 渠道
   CHANNEL_LIST: 'channel:list',
@@ -218,6 +227,15 @@ export interface IpcCommandMap {
   'compaction:cancel': IpcCommand<string, void>
   'ask-user:respond': IpcCommand<AskUserResponse, void>
   'ask-user:pending': IpcCommand<undefined, AskUserRequest[]>
+  'interaction:pending': IpcCommand<{ rootRunId?: string }, HumanInteractionRequest[]>
+  'interaction:respond': IpcCommand<
+    { requestId: string; response: unknown; expectedRevision: number },
+    void
+  >
+  'delegation:list': IpcCommand<{ rootRunId: string }, DelegationTask[]>
+  'delegation:messages': IpcCommand<{ taskId: string }, SessionMessage[]>
+  'delegation:stop': IpcCommand<{ taskId: string }, void>
+  'delegation:retry': IpcCommand<{ taskId: string }, DelegationTask>
   'channel:list': IpcCommand<undefined, Channel[]>
   'channel:save': IpcCommand<ChannelSaveInput, void>
   'channel:delete': IpcCommand<string, void>
@@ -321,6 +339,16 @@ export interface TgBuddyAPI {
   askUser: {
     respond(res: IpcRequest<'ask-user:respond'>): Promise<IpcResponse<'ask-user:respond'>>
     pending(): Promise<IpcResponse<'ask-user:pending'>>
+  }
+  interaction: {
+    pending(rootRunId?: string): Promise<IpcResponse<'interaction:pending'>>
+    respond(input: IpcRequest<'interaction:respond'>): Promise<IpcResponse<'interaction:respond'>>
+  }
+  delegation: {
+    list(rootRunId: string): Promise<IpcResponse<'delegation:list'>>
+    messages(taskId: string): Promise<IpcResponse<'delegation:messages'>>
+    stop(taskId: string): Promise<IpcResponse<'delegation:stop'>>
+    retry(taskId: string): Promise<IpcResponse<'delegation:retry'>>
   }
   compaction: {
     start(

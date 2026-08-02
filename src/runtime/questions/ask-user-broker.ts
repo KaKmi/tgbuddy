@@ -59,6 +59,7 @@ export function createAskUserBroker(
           id: request.requestId,
           kind: 'ask_user',
           source: options.resolveSource?.(input.sessionId) ?? fallbackSource(input.sessionId),
+          payload: next,
           activate: () => options.emitRequest(next),
         })
       }, signal)

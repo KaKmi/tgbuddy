@@ -5,7 +5,7 @@
  * 具体 service、repository 和 kernel 只能由 Composition Root 装配。
  */
 
-import { dialog, ipcMain, type BrowserWindow } from 'electron'
+import { dialog, ipcMain, type BrowserWindow, type WebContents } from 'electron'
 import type { AgentRuntime } from '../runtime/index.ts'
 import type { AttachmentRef } from '../shared/contracts/attachment.ts'
 import type { ArtifactPreviewResult } from '../shared/contracts/artifact.ts'
@@ -268,6 +268,52 @@ export function registerIpc(
   )
 
   ipcMain.handle(
+    IPC.INTERACTION_PENDING,
+    (event, input: IpcRequest<'interaction:pending'>): IpcResponse<'interaction:pending'> => {
+      assertTrustedSender(event.sender, getWindow())
+      return agentRuntime.interactions.pending(input?.rootRunId)
+    },
+  )
+  ipcMain.handle(
+    IPC.INTERACTION_RESPOND,
+    async (event, input: IpcRequest<'interaction:respond'>): Promise<IpcResponse<'interaction:respond'>> => {
+      assertTrustedSender(event.sender, getWindow())
+      if (!input || typeof input.requestId !== 'string' || input.requestId.length === 0) {
+        throw new Error('interaction_request_invalid')
+      }
+      await agentRuntime.interactions.respond(input)
+    },
+  )
+  ipcMain.handle(
+    IPC.DELEGATION_LIST,
+    (event, input: IpcRequest<'delegation:list'>): IpcResponse<'delegation:list'> => {
+      assertTrustedSender(event.sender, getWindow())
+      return agentRuntime.delegations.list(input.rootRunId)
+    },
+  )
+  ipcMain.handle(
+    IPC.DELEGATION_MESSAGES,
+    (event, input: IpcRequest<'delegation:messages'>): Promise<IpcResponse<'delegation:messages'>> => {
+      assertTrustedSender(event.sender, getWindow())
+      return agentRuntime.delegations.messages(input.taskId)
+    },
+  )
+  ipcMain.handle(
+    IPC.DELEGATION_STOP,
+    async (event, input: IpcRequest<'delegation:stop'>): Promise<IpcResponse<'delegation:stop'>> => {
+      assertTrustedSender(event.sender, getWindow())
+      await agentRuntime.delegations.stop(input.taskId)
+    },
+  )
+  ipcMain.handle(
+    IPC.DELEGATION_RETRY,
+    (event, input: IpcRequest<'delegation:retry'>): Promise<IpcResponse<'delegation:retry'>> => {
+      assertTrustedSender(event.sender, getWindow())
+      return agentRuntime.delegations.retry(input.taskId)
+    },
+  )
+
+  ipcMain.handle(
     IPC.COMPACTION_START,
     (
       _event,
@@ -407,4 +453,15 @@ export function registerIpc(
   })
 
   return unsubscribe
+}
+
+function assertTrustedSender(
+  sender: WebContents,
+  window: BrowserWindow | null,
+): void {
+  if (!window || window.isDestroyed() || sender !== window.webContents) {
+    const error = new Error('IPC 请求来源不可信')
+    Object.assign(error, { code: 'ipc_sender_forbidden' })
+    throw error
+  }
 }

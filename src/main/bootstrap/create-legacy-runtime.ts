@@ -27,6 +27,8 @@ import {
   type DelegationService,
   type DelegationRepository,
   type RootRunSupervisor,
+  createHumanInteractionRegistry,
+  type HumanInteractionRegistry,
   mountFailureMessage,
   resolveModelSelection,
   resolveProfileSkills,
@@ -79,6 +81,7 @@ export interface CreateLegacyRuntimeOptions {
   runs?: RunRepository
   delegations?: DelegationRepository
   rootRunSupervisor?: RootRunSupervisor
+  interactions?: HumanInteractionRegistry
   /** A05：Artifact 索引（结果区列表数据源） */
   artifacts?: ArtifactRepository
   /** A09：会话删除后清理无引用 Blob */
@@ -94,6 +97,7 @@ export interface CreateLegacyRuntimeOptions {
 export function createLegacyRuntime(
   options: CreateLegacyRuntimeOptions,
 ): AgentRuntime {
+  const interactions = options.interactions ?? createHumanInteractionRegistry()
   const context = createContextService({
     sessions: options.sessions,
     history: options.history,
@@ -207,6 +211,51 @@ export function createLegacyRuntime(
     },
     artifacts: {
       list: (sessionId) => options.artifacts?.bySession(sessionId) ?? [],
+    },
+    interactions: {
+      pending: (rootRunId) => interactions.listPending(rootRunId),
+      async respond(input) {
+        if (input.expectedRevision !== 1) throw new Error('interaction_revision_conflict')
+        const pending = interactions.listPending().find((item) => item.id === input.requestId)
+        if (!pending) throw new Error('interaction_not_found')
+        const response = isRecord(input.response) ? input.response : {}
+        if (pending.kind === 'permission') {
+          await options.permissions.respond({
+            requestId: input.requestId,
+            allowed: response.allowed === true,
+            ...(isRecord(response.grant) ? { grant: response.grant as never } : {}),
+            ...(typeof response.reason === 'string' ? { reason: response.reason } : {}),
+          })
+        } else if (pending.kind === 'plan') {
+          options.plans.respond({
+            requestId: input.requestId,
+            approved: response.approved === true,
+            ...(typeof response.reason === 'string' ? { reason: response.reason } : {}),
+          })
+        } else {
+          options.questions.respond({
+            requestId: input.requestId,
+            answers: Array.isArray(response.answers) ? response.answers as never : [],
+          })
+        }
+      },
+    },
+    delegations: {
+      list: (rootRunId) => options.delegations?.listByRoot(rootRunId) ?? [],
+      messages: async (taskId) => {
+        const task = options.delegations?.get(taskId)
+        if (!task) throw new Error('delegation_not_found')
+        return options.sessions.messages(task.childSessionId)
+      },
+      async stop(taskId) {
+        const task = options.delegations?.get(taskId)
+        if (!task) throw new Error('delegation_not_found')
+        runs.stop(task.childSessionId)
+        await options.rootRunSupervisor?.stopTask(task.rootRunId, task.id)
+      },
+      async retry() {
+        throw new Error('delegation_retry_requires_new_run')
+      },
     },
     capabilities: {
       list: () => [],
@@ -405,6 +454,10 @@ async function createAgentInvocation(
     systemPrompt:
       buildSystemPrompt(workspaceDir, mode, enabledSkills, selection?.systemPrompt),
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 export function buildSystemPrompt(

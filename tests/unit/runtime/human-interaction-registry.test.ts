@@ -42,6 +42,7 @@ function entry(
       subjectId,
       ...(taskId ? { taskId } : {}),
     },
+    payload: { id },
     activate,
   }
 }

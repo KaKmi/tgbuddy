@@ -164,6 +164,7 @@ export function createPermissionAskBroker(
           id: request.requestId,
           kind: 'permission',
           source,
+          payload: next,
           activate: () => options.emitRequest(next),
         })
       }, signal)

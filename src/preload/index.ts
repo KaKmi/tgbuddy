@@ -82,6 +82,16 @@ const api = {
     respond: (res) => ipcRenderer.invoke(IPC.ASK_USER_RESPOND, res),
     pending: () => ipcRenderer.invoke(IPC.ASK_USER_PENDING),
   },
+  interaction: {
+    pending: (rootRunId) => ipcRenderer.invoke(IPC.INTERACTION_PENDING, { rootRunId }),
+    respond: (input) => ipcRenderer.invoke(IPC.INTERACTION_RESPOND, input),
+  },
+  delegation: {
+    list: (rootRunId) => ipcRenderer.invoke(IPC.DELEGATION_LIST, { rootRunId }),
+    messages: (taskId) => ipcRenderer.invoke(IPC.DELEGATION_MESSAGES, { taskId }),
+    stop: (taskId) => ipcRenderer.invoke(IPC.DELEGATION_STOP, { taskId }),
+    retry: (taskId) => ipcRenderer.invoke(IPC.DELEGATION_RETRY, { taskId }),
+  },
   compaction: {
     start: (sessionId) => ipcRenderer.invoke(IPC.COMPACTION_START, sessionId),
     defer: (sessionId) => ipcRenderer.invoke(IPC.COMPACTION_DEFER, sessionId),

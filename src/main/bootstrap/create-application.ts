@@ -642,6 +642,7 @@ export async function createApplication(
       runs,
       delegations: delegationTasks,
       rootRunSupervisor,
+      interactions: humanInteractions,
       delegationRef,
       createRunId: createId,
       toolRegistry,

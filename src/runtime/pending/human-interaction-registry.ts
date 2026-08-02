@@ -9,6 +9,7 @@ interface RegistryEntry {
   id: string
   kind: HumanInteractionKind
   source: EventSource
+  payload: unknown
   activate(): void
 }
 
@@ -66,6 +67,7 @@ export function createHumanInteractionRegistry(maxPending = 8): HumanInteraction
         source: entry.source,
         active: index === 0,
         queuePosition: index,
+        payload: entry.payload,
       })))
     },
     attention(taskId) {

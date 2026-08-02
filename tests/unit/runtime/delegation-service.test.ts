@@ -243,7 +243,7 @@ describe('DelegationService（D02）', () => {
       parentToolCallId: 't1',
     })
 
-    expect(metaUpdates.at(-1)).toEqual({
+    expect(metaUpdates.find((update) => update.patch.permissionMode)).toEqual({
       sessionId: 'child-0',
       patch: {
         permissionMode: 'auto',
