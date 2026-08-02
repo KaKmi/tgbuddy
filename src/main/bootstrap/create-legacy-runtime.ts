@@ -242,6 +242,7 @@ export function createLegacyRuntime(
     },
     delegations: {
       list: (rootRunId) => options.delegations?.listByRoot(rootRunId) ?? [],
+      listSession: (rootSessionId) => options.delegations?.listBySession(rootSessionId) ?? [],
       messages: async (taskId) => {
         const task = options.delegations?.get(taskId)
         if (!task) throw new Error('delegation_not_found')
