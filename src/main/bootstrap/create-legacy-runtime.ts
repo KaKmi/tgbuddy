@@ -26,6 +26,7 @@ import {
   type BlobCleanup,
   type DelegationService,
   type DelegationRepository,
+  type RootRunSupervisor,
   mountFailureMessage,
   resolveModelSelection,
   resolveProfileSkills,
@@ -77,6 +78,7 @@ export interface CreateLegacyRuntimeOptions {
   /** C12：Run 账本持久化（能力快照 + token/cost） */
   runs?: RunRepository
   delegations?: DelegationRepository
+  rootRunSupervisor?: RootRunSupervisor
   /** A05：Artifact 索引（结果区列表数据源） */
   artifacts?: ArtifactRepository
   /** A09：会话删除后清理无引用 Blob */
@@ -153,6 +155,7 @@ export function createLegacyRuntime(
       coordinator: runs,
       runs: options.runs,
       tasks: options.delegations,
+      supervisor: options.rootRunSupervisor,
       createId: options.createRunId ?? (() => `child-${Date.now()}`),
       now: Date.now,
     })

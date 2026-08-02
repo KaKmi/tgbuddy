@@ -15,6 +15,7 @@ export interface DelegationRepository {
   create(task: DelegationTask): DelegationTask
   get(taskId: string): DelegationTask | undefined
   listByRoot(rootRunId: string): DelegationTask[]
+  listActive(): DelegationTask[]
   compareAndSet(
     taskId: string,
     expectedVersion: number,
@@ -40,6 +41,12 @@ export class MemoryDelegationRepository implements DelegationRepository {
     return [...this.#tasks.values()]
       .filter((task) => task.rootRunId === rootRunId)
       .sort((left, right) => left.createdAt - right.createdAt)
+      .map((task) => structuredClone(task))
+  }
+
+  listActive(): DelegationTask[] {
+    return [...this.#tasks.values()]
+      .filter((task) => ['queued', 'starting', 'running', 'stopping'].includes(task.status))
       .map((task) => structuredClone(task))
   }
 

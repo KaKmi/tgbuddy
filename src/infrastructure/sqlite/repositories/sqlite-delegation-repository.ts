@@ -56,6 +56,16 @@ export class SqliteDelegationRepository implements DelegationRepository {
     ).map(rowToTask))
   }
 
+  listActive(): DelegationTask[] {
+    return this.appDatabase.use((database) => (
+      database.prepare(
+        `SELECT ${COLUMNS} FROM app_delegation_tasks
+         WHERE status IN ('queued', 'starting', 'running', 'stopping')
+         ORDER BY created_at ASC, id ASC`,
+      ).all() as unknown as DelegationRow[]
+    ).map(rowToTask))
+  }
+
   compareAndSet(taskId: string, expectedVersion: number, patch: Partial<DelegationTask>): DelegationTask {
     const current = this.#require(taskId)
     if (current.version !== expectedVersion) throw new DelegationVersionConflictError(taskId)

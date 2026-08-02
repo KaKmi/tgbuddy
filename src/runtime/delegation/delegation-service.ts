@@ -8,6 +8,7 @@ import {
   MemoryDelegationRepository,
   type DelegationRepository,
 } from './delegation-repository.ts'
+import type { RootRunSupervisor } from '../runs/root-run-supervisor.ts'
 
 export interface DelegationService {
   /**
@@ -33,6 +34,7 @@ export interface CreateDelegationServiceOptions {
   coordinator: RunCoordinator
   runs?: RunRepository
   tasks?: DelegationRepository
+  supervisor?: RootRunSupervisor
   createId(): string
   now(): number
 }
@@ -54,6 +56,7 @@ export function createDelegationService(
         ?.listBySession(input.parentSessionId)
         .find((record) => record.status === 'running')
       const rootRunId = running?.rootRunId ?? running?.id ?? input.parentToolCallId
+      options.supervisor?.startRoot(rootRunId)
       rootByParentSession.set(input.parentSessionId, rootRunId)
       const children = childrenByRoot.get(rootRunId) ?? []
       const durable = taskRepository.listByRoot(rootRunId)
@@ -130,6 +133,7 @@ export function createDelegationService(
         status: 'starting',
         updatedAt: options.now(),
       })
+      options.supervisor?.startChild(rootRunId, task.id)
       childrenByRoot.set(rootRunId, [...children, childSessionId])
 
       const summary: string[] = []
@@ -199,6 +203,7 @@ export function createDelegationService(
     stopCascade(parentSessionId) {
       const rootRunId = rootByParentSession.get(parentSessionId)
       if (!rootRunId) return
+      void options.supervisor?.stopRoot(rootRunId)
       for (const childSessionId of childrenByRoot.get(rootRunId) ?? []) {
         options.coordinator.stop(childSessionId)
       }

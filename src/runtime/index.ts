@@ -272,6 +272,11 @@ export {
   type RunSettlement,
 } from './runs/run-coordinator.ts'
 export {
+  createRootRunSupervisor,
+  RootRunBudgetError,
+  type RootRunSupervisor,
+} from './runs/root-run-supervisor.ts'
+export {
   recoverInterruptedRuns,
   type InterruptedRunRecoveryReport,
   type RecoverInterruptedRunsOptions,

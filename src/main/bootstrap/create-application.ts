@@ -20,6 +20,7 @@ import {
   createInvocationIdentityBinder,
   createRiskClassifier,
   createRunAuthorizationGate,
+  createRootRunSupervisor,
   PermissionRuleIndex,
   createProfileService,
   createSessionCommands,
@@ -144,6 +145,16 @@ export async function createApplication(
   // C12：每个 Run 持久化能力快照与 token/cost 账本。
   const runs = new SqliteRunRepository(appDatabase)
   const delegationTasks = new SqliteDelegationRepository(appDatabase)
+  const authorizationGate = createRunAuthorizationGate()
+  const rootRunSupervisor = createRootRunSupervisor({
+    tasks: delegationTasks,
+    authorizationGate,
+    now: Date.now,
+  })
+  const interruptedDelegations = rootRunSupervisor.recover()
+  if (interruptedDelegations > 0) {
+    console.info(`[delegation] 已恢复 ${interruptedDelegations} 个中断子任务`)
+  }
   // A01/A02：内容寻址 BlobStore（附件/长输出/产物），物理文件在 userData/blobs。
   const blobStore = createNodeFsBlobStore({
     root: join(options.legacyDataDir, 'blobs'),
@@ -411,7 +422,7 @@ export async function createApplication(
     reportInterruptedRunRecovery(recovery)
     agentRuntime = createLegacyRuntime({
       agentEngine: createPiAgentEngine({
-        authorizationGate: createRunAuthorizationGate(),
+        authorizationGate,
         sessions: createdMessageStore,
         envFactory: new PiRunExecutionEnvFactory(),
         // A02：用户消息落库后把附件 ref 挂到 app_attachments（按 entry_id）
@@ -609,6 +620,7 @@ export async function createApplication(
       mcp,
       runs,
       delegations: delegationTasks,
+      rootRunSupervisor,
       delegationRef,
       createRunId: createId,
       toolRegistry,
