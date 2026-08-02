@@ -58,6 +58,7 @@ export function ResultsPanel({
   const [selectedId, setSelectedId] = useState<string>()
   const [runStartedAt, setRunStartedAt] = useState<number>()
   const [rootRunId, setRootRunId] = useState<string>()
+  const [taskCount, setTaskCount] = useState(0)
   const [preview, setPreview] = useState<ArtifactPreviewResult>()
   const [viewerOpen, setViewerOpen] = useState(false)
   const [workspaceQuery, setWorkspaceQuery] = useState('')
@@ -85,6 +86,7 @@ export function ResultsPanel({
     setSection('artifacts')
     setRunStartedAt(undefined)
     setRootRunId(undefined)
+    setTaskCount(0)
     if (!sessionId) return
     void refreshArtifacts()
   }, [sessionId, active])
@@ -141,10 +143,10 @@ export function ResultsPanel({
             onClick={() => setSection('tasks')}
             className={`rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold ${section === 'tasks' ? 'bg-accent' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'}`}
           >
-            任务
+            子智能体
           </button>
-          <span className="ml-1 text-[10.5px] text-muted-foreground/70">
-            {artifacts.length} 项
+          <span data-testid="results-section-count" className="ml-1 text-[10.5px] text-muted-foreground/70">
+            {section === 'tasks' ? taskCount : artifacts.length} 项
           </span>
         </div>
         <button
@@ -175,7 +177,7 @@ export function ResultsPanel({
       </div>}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {section === 'tasks' ? (
-          <TaskWorkbench rootRunId={rootRunId} />
+          <TaskWorkbench rootRunId={rootRunId} onCountChange={setTaskCount} />
         ) : section === 'workspace' ? (
           <WorkspaceFiles
             artifacts={artifacts}

@@ -6,7 +6,13 @@ import { roleOf, type SessionMessage } from '../../../shared/types/message.ts'
 
 const ACTIVE_STATUSES = new Set<DelegationTaskStatus>(['queued', 'starting', 'running', 'stopping'])
 
-export function TaskWorkbench({ rootRunId }: { rootRunId?: string }) {
+export function TaskWorkbench({
+  rootRunId,
+  onCountChange,
+}: {
+  rootRunId?: string
+  onCountChange?(count: number): void
+}) {
   const [tasks, setTasks] = useState<DelegationTask[]>([])
   const [interactions, setInteractions] = useState<HumanInteractionRequest[]>([])
   const [selectedId, setSelectedId] = useState<string>()
@@ -43,6 +49,10 @@ export function TaskWorkbench({ rootRunId }: { rootRunId?: string }) {
 
   const groups = useMemo(() => groupTasks(tasks), [tasks])
   const attention = interactions.find((item) => item.source.taskId === selectedId)
+
+  useEffect(() => {
+    onCountChange?.(tasks.length)
+  }, [onCountChange, tasks.length])
 
   if (!rootRunId) return <TaskEmptyState message="当前会话还没有可展示的运行任务" />
   if (tasks.length === 0) return <TaskEmptyState message="主 Agent 分派任务后，子 Agent 会显示在这里" />
@@ -158,19 +168,26 @@ function TaskMessage({ message }: { message: SessionMessage }) {
 
 function messageText(message: SessionMessage): string {
   const value = message as unknown as Record<string, unknown>
-  if (typeof value.content === 'string') return value.content
-  if (Array.isArray(value.content)) {
-    return value.content.map((part) => {
-      if (typeof part === 'string') return part
-      if (part && typeof part === 'object') {
-        const record = part as Record<string, unknown>
-        if (typeof record.text === 'string') return record.text
-        if (typeof record.name === 'string') return `调用工具：${record.name}`
-      }
-      return ''
-    }).filter(Boolean).join('\n')
-  }
-  return JSON.stringify(message, null, 2)
+  const kernelMessage = value.kind === 'kernel' && isRecord(value.message)
+    ? value.message
+    : value
+  return contentText(kernelMessage.content) || '（无可展示内容）'
+}
+
+function contentText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content.map((part) => {
+    if (typeof part === 'string') return part
+    if (!isRecord(part)) return ''
+    if (typeof part.text === 'string') return part.text
+    if (typeof part.name === 'string') return `调用工具：${part.name}`
+    return ''
+  }).filter(Boolean).join('\n')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 function messageKey(message: SessionMessage, index: number): string {

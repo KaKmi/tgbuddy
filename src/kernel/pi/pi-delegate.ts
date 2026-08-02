@@ -6,7 +6,7 @@ export interface DelegateHooks {
   delegate(
     task: string,
     toolCallId: string,
-    options: { role: 'explorer' | 'worker'; delegationIntentId?: string },
+    options: { name?: string; role: 'explorer' | 'worker'; delegationIntentId?: string },
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; text: string }>
 }
@@ -21,8 +21,11 @@ export function buildDelegateTool(hooks: DelegateHooks): AgentTool {
       + '适合探索代码库、独立调研、可拆分的子任务；'
       + '简单任务直接自己做，不要委派。',
     parameters: Type.Object({
+      name: Type.Optional(Type.String({
+        description: '用于界面识别的简短名称，例如“架构侦察员”或“测试执行员”',
+      })),
       task: Type.String({
-        description: '子任务描述，包含要收集什么、返回什么格式',
+        description: '子任务描述，必须包含目标、范围和返回格式',
       }),
       role: Type.Optional(Type.Union([
         Type.Literal('explorer'),
@@ -31,7 +34,8 @@ export function buildDelegateTool(hooks: DelegateHooks): AgentTool {
       delegationIntentId: Type.Optional(Type.String()),
     }),
     execute: async (toolCallId, params, signal) => {
-      const { task, role = 'explorer', delegationIntentId } = params as {
+      const { name, task, role = 'explorer', delegationIntentId } = params as {
+        name?: string
         task: string
         role?: 'explorer' | 'worker'
         delegationIntentId?: string
@@ -39,7 +43,11 @@ export function buildDelegateTool(hooks: DelegateHooks): AgentTool {
       const result = await hooks.delegate(
         task,
         toolCallId,
-        { role, ...(delegationIntentId ? { delegationIntentId } : {}) },
+        {
+          ...(name ? { name } : {}),
+          role,
+          ...(delegationIntentId ? { delegationIntentId } : {}),
+        },
         signal,
       )
       if (!result.ok) {
@@ -55,7 +63,11 @@ export function buildDelegateTool(hooks: DelegateHooks): AgentTool {
       }
       return {
         content: [{ type: 'text', text: result.text }],
-        details: { action: 'execute', delegated: true },
+        details: {
+          action: 'execute',
+          delegated: true,
+          delegation: { name: name ?? '', role },
+        },
       }
     },
   }

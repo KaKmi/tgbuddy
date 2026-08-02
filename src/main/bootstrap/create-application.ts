@@ -4,6 +4,7 @@ import { realpath, readdir, stat, unlink } from 'node:fs/promises'
 import {
   basename,
   dirname,
+  isAbsolute,
   join,
   resolve,
 } from 'node:path'
@@ -283,17 +284,19 @@ export async function createApplication(
   })
   const invocationNormalizer = createInvocationNormalizer({
     policyVersion: 'permission-v2',
-    async resolvePath(path) {
-      const absolute = resolve(path)
+    async resolvePath(path, input) {
+      const workspaceId = input.permissionCeiling?.workspaceId
+        ?? sessionRepository.get(input.sessionId)?.workspaceId
+      if (!workspaceId) throw new Error('workspace_required')
+      const mount = workspaceService.mountStatus(workspaceId)
+      if (!mount.ok) throw new Error('workspace_mount_required')
+      const workspaceRoot = resolve(mount.mount.path)
+      const absolute = isAbsolute(path) ? resolve(path) : resolve(workspaceRoot, path)
       const canonical = await realpath(absolute).catch(() => absolute)
       const info = await stat(canonical).catch(() => undefined)
-      const workspaceScope = workspaceService.list().some((workspace) => {
-        const root = workspace.mount?.path
-        if (!root) return false
-        const key = resolve(root).toLowerCase()
-        const target = canonical.toLowerCase()
-        return target === key || target.startsWith(`${key}\\`)
-      })
+      const key = workspaceRoot.toLowerCase()
+      const target = canonical.toLowerCase()
+      const workspaceScope = target === key || target.startsWith(`${key}\\`)
       return {
         kind: info ? (info.isDirectory() ? 'directory' : 'file') : 'missing',
         canonicalPath: canonical,
@@ -511,6 +514,7 @@ export async function createApplication(
                   delegationRef.service!.delegate({
                     parentSessionId: invocation.sessionId,
                     workspaceId: invocation.workspaceId,
+                    ...(delegateOptions.name ? { name: delegateOptions.name } : {}),
                     task,
                     parentToolCallId: toolCallId,
                     role: delegateOptions.role,

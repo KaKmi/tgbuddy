@@ -26,13 +26,13 @@ test('计划模式完整闭环：进入调研 → 提交计划 → 批准后执�
 
   // 计划模式下模型调研后提交计划 → 审批卡
   await expect(tgbuddy.page.getByRole('button', { name: '计划模式', exact: true })).toBeVisible()
-  await expect(tgbuddy.page.getByText('计划待审批')).toBeVisible()
+  await expect(tgbuddy.page.getByText('计划已准备好')).toBeVisible()
   await expect(tgbuddy.page.getByText('修改 m2-write.txt')).toBeVisible()
 
   await tgbuddy.page.getByRole('button', { name: '批准并执行', exact: true }).click()
   await expect(tgbuddy.page.getByText('M2 计划完成', { exact: true })).toBeVisible()
-  // 批准后退出计划模式
-  await expect(tgbuddy.page.getByRole('button', { name: '默认权限', exact: true })).toBeVisible()
+  // 批准后保留计划模式，仅允许执行本次获批计划内的效果。
+  await expect(tgbuddy.page.getByRole('button', { name: '计划模式', exact: true })).toBeVisible()
 })
 
 test('计划模式下写操作被拒绝并给出原因，切回默认权限后恢复', async ({ tgbuddy }) => {
@@ -40,13 +40,13 @@ test('计划模式下写操作被拒绝并给出原因，切回默认权限后�
   await switchMode(tgbuddy.page, '默认权限', '计划模式')
 
   await send(tgbuddy.page, 'M2 写入')
-  await expect(tgbuddy.page.getByText(/计划模式下不允许执行写操作/)).toBeVisible()
+  await expect(tgbuddy.page.getByText('计划模式下不允许执行该操作')).toBeVisible()
   await expect(tgbuddy.page.getByRole('button', { name: '发送', exact: true })).toBeVisible()
 
   await switchMode(tgbuddy.page, '计划模式', '默认权限')
   await send(tgbuddy.page, 'M2 写入')
-  await expect(tgbuddy.page.getByText('请求执行 write')).toBeVisible()
-  await tgbuddy.page.getByRole('button', { name: '允许', exact: true }).click()
+  await expect(tgbuddy.page.getByTestId('action-dock')).toContainText('允许执行 write？')
+  await tgbuddy.page.getByRole('button', { name: '允许一次', exact: true }).click()
   // 计划模式下的写被拒也会让 fake server 回一条完成文本，历史里会有多条，取最后一条
   await expect(
     tgbuddy.page.getByText('M2 写入完成', { exact: true }).last(),
@@ -57,22 +57,11 @@ test('ask_user 结构化问题可回答并回到原任务', async ({ tgbuddy }) 
   await createSession(tgbuddy.page)
   await send(tgbuddy.page, 'M2 提问')
 
-  await expect(tgbuddy.page.getByText('需要你的补充')).toBeVisible()
   await expect(tgbuddy.page.getByText('这次修改的目标是什么？')).toBeVisible()
+  await tgbuddy.page.getByRole('button', { name: /修 bug/ }).click()
+  await tgbuddy.page.getByRole('button', { name: '下一个', exact: true }).click()
   await expect(tgbuddy.page.getByText('影响范围？')).toBeVisible()
-
-  // 第一题直接点选选项（修 bug），选中后不依赖「其他答案」输入框即可提交
-  await tgbuddy.page
-    .locator('fieldset')
-    .nth(0)
-    .getByRole('radio')
-    .first()
-    .check()
-  await tgbuddy.page
-    .locator('fieldset')
-    .nth(1)
-    .getByPlaceholder('其他答案…')
-    .fill('单文件')
+  await tgbuddy.page.getByRole('button', { name: /单文件/ }).click()
   await expect(
     tgbuddy.page.getByRole('button', { name: '提交回答', exact: true }),
   ).toBeEnabled()

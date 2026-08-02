@@ -451,8 +451,13 @@ async function createAgentInvocation(
       ? { policySessionId: input.lineage.parentSessionId }
       : {}),
     ...(profileSnapshot ? { profile: profileSnapshot } : {}),
-    systemPrompt:
-      buildSystemPrompt(workspaceDir, mode, enabledSkills, selection?.systemPrompt),
+    systemPrompt: buildSystemPrompt(
+      workspaceDir,
+      mode,
+      enabledSkills,
+      selection?.systemPrompt,
+      input.identity.role,
+    ),
   }
 }
 
@@ -465,12 +470,24 @@ export function buildSystemPrompt(
   mode: PermissionMode,
   skills: ReturnType<SkillCatalog['list']> = [],
   profileInstructions?: string,
+  role: 'root' | 'explorer' | 'worker' = 'root',
 ): string {
   return [
     '你是 TgBuddy 的 Agent 助手。回答简洁准确，中文优先。',
     '',
     '## 工作区',
     `当前工作目录：${workspaceDir}`,
+    '',
+    '## Agent 职责',
+    ...(role === 'root'
+      ? [
+          '你是主 Agent。委派时为每个子 Agent 提供可辨识的简短 name，并在 task 中写清目标、范围和返回格式。',
+          '子 Agent 结果会作为 delegate_to_agent 工具结果返回；收到后必须继续综合成面向用户的最终回答，不能只说“正在整理”或原样转贴。',
+        ]
+      : [
+          `你是由主 Agent 委派的${role === 'explorer' ? '探索' : '执行'}子 Agent，只完成当前子任务，不再委派。`,
+          '最终回答必须直接给出具体结论、证据和约定格式，供主 Agent 综合；不要用“信息已足够”“正在整理”等过程性话术代替结果。',
+        ]),
     ...(profileInstructions
       ? [
           '',

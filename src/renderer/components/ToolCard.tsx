@@ -106,9 +106,14 @@ export function ToolCard({ name, args, status, result, elapsedMs, reason }: Tool
   const [loadingOutput, setLoadingOutput] = useState(false)
   const s = ST[status]
   const reasonDescription = reason ? describeToolNonSuccess(reason) : undefined
+  const isDelegation = name === 'delegate_to_agent'
+  const delegationName = typeof args.name === 'string' && args.name.trim()
+    ? args.name.trim()
+    : args.role === 'worker' ? '执行子智能体' : '探索子智能体'
 
   return (
     <div
+      data-testid={isDelegation ? 'delegation-tool-card' : 'tool-card'}
       className="mb-[3px] max-w-[720px] overflow-hidden border shadow-[0_1px_2px_rgba(30,28,24,.04)]"
       style={{
         borderRadius: 11,
@@ -138,12 +143,12 @@ export function ToolCard({ name, args, status, result, elapsedMs, reason }: Tool
             >
               {name}
             </span>
-            {result?.delegated && (
+            {isDelegation && (
               <span
-                className="flex-none rounded px-1.5 py-0.5 text-[10.5px]"
+                className="max-w-[140px] flex-none truncate rounded px-1.5 py-0.5 text-[10.5px]"
                 style={{ background: 'rgba(176,162,224,.16)', color: '#b0a2e0' }}
               >
-                子智能体
+                {delegationName}
               </span>
             )}
 
@@ -173,13 +178,29 @@ export function ToolCard({ name, args, status, result, elapsedMs, reason }: Tool
 
           {open && (
             <div className="space-y-[9px] px-3 pb-3 pl-[39px]">
-              <Field label="参数">
-                <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 font-mono text-[10.8px] leading-[1.7] text-muted-foreground">
-                  {JSON.stringify(args, null, 2)}
-                </pre>
-              </Field>
+              {isDelegation ? (
+                <Field label="任务">
+                  <div className="rounded-lg bg-muted px-3 py-2.5 text-[11px] leading-[1.7] text-muted-foreground">
+                    <div className="mb-1.5 flex items-center gap-1.5">
+                      <span className="font-medium text-foreground/80">{delegationName}</span>
+                      <span className="rounded bg-background/70 px-1.5 py-0.5 text-[9.5px]">
+                        {args.role === 'worker' ? '执行 Agent' : '探索 Agent'}
+                      </span>
+                    </div>
+                    <div className="max-h-28 overflow-auto whitespace-pre-wrap">
+                      {typeof args.task === 'string' ? args.task : '未提供任务描述'}
+                    </div>
+                  </div>
+                </Field>
+              ) : (
+                <Field label="参数">
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 font-mono text-[10.8px] leading-[1.7] text-muted-foreground">
+                    {JSON.stringify(args, null, 2)}
+                  </pre>
+                </Field>
+              )}
               {result && (
-                <Field label={result.isError ? '错误' : '输出'}>
+                <Field label={result.isError ? '错误' : isDelegation ? '结果' : '输出'}>
                   <pre
                     className={cn(
                       'max-h-52 overflow-auto whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 font-mono text-[10.8px] leading-[1.7]',
@@ -334,6 +355,12 @@ function describe(name: string, args: Record<string, unknown>): string {
     }
     case 'bash':
       return typeof args.command === 'string' ? args.command : '执行命令'
+    case 'delegate_to_agent': {
+      const role = args.role === 'worker' ? '执行' : '探索'
+      const task = typeof args.task === 'string' ? args.task.trim() : ''
+      const summary = task.split(/[。！？\n]/)[0]?.slice(0, 42)
+      return `${role} · ${summary || '等待任务描述'}`
+    }
     default:
       return path ?? (typeof args.command === 'string' ? args.command : name)
   }

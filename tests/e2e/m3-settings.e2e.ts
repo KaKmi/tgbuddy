@@ -132,7 +132,7 @@ test('工具区已从设置页移除；完全访问放行写操作、默认权�
   // 切回默认权限：写操作恢复逐次询问
   await switchMode(page, '完全访问', '默认权限')
   await send(page, 'M2 写入')
-  await expect(page.getByText('请求执行 write')).toBeVisible()
+  await expect(page.getByTestId('action-dock')).toContainText('允许执行 write？')
 })
 
 test('C07：内置技能出现在设置列表并可切换开关', async ({ tgbuddy }) => {
@@ -175,8 +175,8 @@ test('C09/C10/C11：MCP 连接、工具发现与真实调用闭环', async ({ tg
 
   await createSession(page)
   await send(page, 'M3 MCP')
-  await expect(page.getByText('请求执行 echo.echo')).toBeVisible()
-  await page.getByRole('button', { name: '允许', exact: true }).click()
+  await expect(page.getByTestId('action-dock')).toContainText('允许执行 echo.echo？')
+  await page.getByRole('button', { name: '允许一次', exact: true }).click()
   // 真实工具卡出现且无失败/已拒绝徽标；模型收到回显后完成回复
   const toolCard = page.getByRole('button', { name: /echo\.echo/ }).first()
   await expect(toolCard).toBeVisible()

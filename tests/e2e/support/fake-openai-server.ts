@@ -108,6 +108,46 @@ async function handleRequest(
       }, 8_000)
       return
     }
+    if (prompt.includes('E2E 子任务：检查架构')) {
+      await streamText(response, '架构证据：Runtime、IPC、Renderer 三层职责已经确认。')
+      return
+    }
+    if (prompt.includes('E2E 子任务：检查测试')) {
+      await streamText(response, '测试证据：Playwright Electron 覆盖主流程，测试文件位于 tests/e2e。')
+      return
+    }
+    if (prompt.includes('E2E 双委托')) {
+      const toolResults = messages.filter((message) => message.role === 'tool').length
+      if (toolResults === 0) {
+        streamToolCall(
+          response,
+          'delegate_to_agent',
+          {
+            name: '架构侦察员',
+            task: 'E2E 子任务：检查架构。返回具体模块分层和一句可引用的架构结论。',
+            role: 'explorer',
+          },
+          'call_e2e_delegate_architecture',
+        )
+      } else if (toolResults === 1) {
+        streamToolCall(
+          response,
+          'delegate_to_agent',
+          {
+            name: '测试侦察员',
+            task: 'E2E 子任务：检查测试。返回测试框架、目录和一句可引用的覆盖结论。',
+            role: 'explorer',
+          },
+          'call_e2e_delegate_tests',
+        )
+      } else {
+        await streamText(
+          response,
+          '主 Agent 综合完成：项目采用 Runtime、IPC、Renderer 分层，并由 Playwright Electron 覆盖 tests/e2e 主流程。',
+        )
+      }
+      return
+    }
     if (prompt.includes('工具读取')) {
       if (lastMessage?.role === 'tool') {
         await streamText(response, '工具读取完成')

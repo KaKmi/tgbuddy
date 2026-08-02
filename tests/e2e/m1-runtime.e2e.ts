@@ -88,7 +88,7 @@ test('达到阈值会自动压缩，并在压缩后发送排队消息', async ({
     .toBeVisible()
   await expect(tgbuddy.page.getByText(/上下文接近上限，\d 秒后自动压缩/)).toBeVisible()
   await input.fill('排队消息')
-  await tgbuddy.page.getByRole('button', { name: '排队', exact: true }).click()
+  await tgbuddy.page.getByRole('button', { name: '排队发送', exact: true }).click()
   await expect(tgbuddy.page.getByText('已排队，压缩完成后自动发送')).toBeVisible()
   await expect(tgbuddy.page.getByText('排队消息已在压缩后执行', { exact: true }))
     .toBeVisible({ timeout: 20_000 })

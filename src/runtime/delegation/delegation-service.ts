@@ -18,6 +18,7 @@ export interface DelegationService {
   delegate(input: {
     parentSessionId: string
     workspaceId: string
+    name?: string
     task: string
     parentToolCallId: string
     role?: 'explorer' | 'worker'
@@ -73,15 +74,17 @@ export function createDelegationService(
         return { ok: false, text: '已有子智能体正在执行，请等待完成后再委派' }
       }
       activeRoots.add(rootRunId)
+      const role = input.role ?? 'explorer'
+      const agentName = delegationName(input.name, role, input.task)
 
       let childSessionId: string
       try {
-      const meta = await options.sessions.create({
-        title: '子任务',
-        visibility: 'internal',
-        parentTaskId: input.parentToolCallId,
-      })
-      childSessionId = meta.id
+        const meta = await options.sessions.create({
+          title: agentName,
+          visibility: 'internal',
+          parentTaskId: input.parentToolCallId,
+        })
+        childSessionId = meta.id
       } catch (error) {
         activeRoots.delete(rootRunId)
         return {
@@ -107,7 +110,6 @@ export function createDelegationService(
       }
       const now = options.now()
       const taskId = `${rootRunId}:${input.parentToolCallId}`
-      const role = input.role ?? 'explorer'
       const childCeiling = deriveChildCeiling(
         input.parentCeiling ?? fallbackCeiling(input.parentSessionId, input.workspaceId),
         role,
@@ -119,7 +121,7 @@ export function createDelegationService(
         childSessionId,
         ...(input.delegationIntentId ? { parentTaskId: input.delegationIntentId } : {}),
         role,
-        title: input.task.slice(0, 80),
+        title: agentName,
         task: input.task,
         status: 'queued',
         version: 0,
@@ -198,7 +200,7 @@ export function createDelegationService(
       })
       activeRoots.delete(rootRunId)
       return last
-        ? { ok: true, text: `子智能体结果：\n${last}` }
+        ? { ok: true, text: `子智能体「${agentName}」完成：\n${last}` }
         : { ok: false, text: '子智能体没有返回结果' }
     },
     stopCascade(parentSessionId) {
@@ -210,6 +212,18 @@ export function createDelegationService(
       }
     },
   }
+}
+
+function delegationName(
+  name: string | undefined,
+  role: 'explorer' | 'worker',
+  task: string,
+): string {
+  const normalized = name?.trim().replace(/\s+/g, ' ')
+  if (normalized) return normalized.slice(0, 32)
+  const subject = task.split(/[。！？\n]/)[0]?.trim().slice(0, 18)
+  if (subject) return `${subject}${role === 'explorer' ? '探索' : '执行'}`
+  return role === 'explorer' ? '探索子智能体' : '执行子智能体'
 }
 
 function deriveChildCeiling(

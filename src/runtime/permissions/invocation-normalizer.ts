@@ -89,7 +89,7 @@ export interface InvocationNormalizer {
 }
 
 export interface InvocationNormalizerDependencies {
-  resolvePath(path: string): Promise<ResolvedPathIdentity>
+  resolvePath(path: string, input: ToolPolicyInput): Promise<ResolvedPathIdentity>
   policyVersion: string
   shellDialect?: ResolvedShellInvocation['dialect']
   /** Shell ticket 必须绑定真实 cwd、mount 与 ExecutionEnv；缺失时 normalization fail closed。 */
@@ -191,7 +191,7 @@ async function normalizeFile(
 
   let paths: ResolvedPathIdentity[]
   try {
-    paths = await Promise.all(rawPaths.map((path) => dependencies.resolvePath(path)))
+    paths = await Promise.all(rawPaths.map((path) => dependencies.resolvePath(path, input)))
   } catch {
     return { status: 'incomplete', reason: 'path_resolution_failed' }
   }

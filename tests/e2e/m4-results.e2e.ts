@@ -36,8 +36,8 @@ test('M4：write 产物出现在结果区，可预览并用系统打开', async 
   await createSession(page)
   await send(page, 'M2 写入')
 
-  await page.getByText('请求执行 write').waitFor({ timeout: 10000 })
-  await page.getByRole('button', { name: '允许', exact: true }).click()
+  await page.getByTestId('action-dock').getByText('允许执行 write？').waitFor({ timeout: 10000 })
+  await page.getByRole('button', { name: '允许一次', exact: true }).click()
   await page.getByText('M2 写入完成', { exact: true }).last().waitFor({ timeout: 15000 })
 
   // 结果区出现产物

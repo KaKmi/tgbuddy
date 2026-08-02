@@ -36,15 +36,16 @@ test('写工具默认询问：允许后执行成功，拒绝后工具落为已�
 
     // 允许：inline 授权卡 → 工具执行 → 模型收到结果后回复
     await send(tgbuddy.page, 'M2 写入')
-    await expect(tgbuddy.page.getByText('请求执行 write')).toBeVisible()
-    await tgbuddy.page.getByRole('button', { name: '允许', exact: true }).click()
+    await expect(tgbuddy.page.getByTestId('action-dock')).toContainText('允许执行 write？')
+    await tgbuddy.page.getByRole('button', { name: '允许一次', exact: true }).click()
     await expect(tgbuddy.page.getByText('M2 写入完成', { exact: true })).toBeVisible()
     expect(existsSync(join(workspace, 'm2-write.txt'))).toBe(true)
 
     // 拒绝：工具不执行，卡片落为已拒绝，发送恢复可用
     await send(tgbuddy.page, 'M2 写入')
-    await expect(tgbuddy.page.getByText('请求执行 write')).toBeVisible()
-    await tgbuddy.page.getByRole('button', { name: '拒绝', exact: true }).click()
+    await expect(tgbuddy.page.getByTestId('action-dock')).toContainText('允许执行 write？')
+    await tgbuddy.page.getByRole('button', { name: '拒绝并说明', exact: true }).click()
+    await tgbuddy.page.getByRole('button', { name: '确认拒绝', exact: true }).click()
     // 拒绝的耐用证据：用户理由透传给策略层并回给模型（不再拿到结果）
     await expect(tgbuddy.page.getByText(/用户拒绝了该操作/)).toBeVisible()
     await expect(tgbuddy.page.getByRole('button', { name: '发送', exact: true })).toBeVisible()
@@ -61,12 +62,12 @@ test('高危不可逆操作升级为模态确认，且不提供「总是允许�
     await writeFile(join(workspace, 'm2-delete.txt'), '要删除的内容', 'utf8')
 
     await send(tgbuddy.page, 'M2 删除')
-    await expect(tgbuddy.page.getByText('确认删除文件？')).toBeVisible()
-    await expect(tgbuddy.page.getByText('高危 · 不可逆', { exact: true })).toBeVisible()
+    await expect(tgbuddy.page.getByTestId('action-dock')).toContainText('允许执行 delete？')
+    await expect(tgbuddy.page.getByText('高危 · 每次确认', { exact: true })).toBeVisible()
     // neverPersist：模态里不允许保存规则
-    await expect(tgbuddy.page.getByText('总是允许（可选）')).toHaveCount(0)
+    await expect(tgbuddy.page.getByRole('button', { name: '按范围允许' })).toHaveCount(0)
 
-    await tgbuddy.page.getByRole('button', { name: '允许执行', exact: true }).click()
+    await tgbuddy.page.getByRole('button', { name: '允许一次', exact: true }).click()
     await expect(tgbuddy.page.getByText('M2 删除完成', { exact: true })).toBeVisible()
     expect(existsSync(join(workspace, 'm2-delete.txt'))).toBe(false)
   } finally {
@@ -82,9 +83,9 @@ test('「总是允许」规则跨重启生效：授权一次后不再询问', as
 
     // 授权时勾选候选粒度（默认本项目 scope）
     await send(tgbuddy.page, 'M2 写入')
-    await expect(tgbuddy.page.getByText('请求执行 write')).toBeVisible()
-    await tgbuddy.page.locator('input[name^="grant-"]').first().check()
-    await tgbuddy.page.getByRole('button', { name: '允许', exact: true }).click()
+    await expect(tgbuddy.page.getByTestId('action-dock')).toContainText('允许执行 write？')
+    await tgbuddy.page.getByRole('button', { name: '按范围允许' }).click()
+    await tgbuddy.page.getByRole('button', { name: '本工作区', exact: true }).click()
     await expect(tgbuddy.page.getByText('M2 写入完成', { exact: true })).toBeVisible()
 
     // 重启：规则从 SQLite 恢复，同路径写不再询问。
@@ -95,7 +96,7 @@ test('「总是允许」规则跨重启生效：授权一次后不再询问', as
     await switchToWorkspace(tgbuddy.page, workspace)
     await tgbuddy.page.getByTestId('session-item').click()
     await send(tgbuddy.page, 'M2 写入')
-    await expect(tgbuddy.page.getByText('请求执行 write')).toHaveCount(0)
+    await expect(tgbuddy.page.getByTestId('action-dock')).toHaveCount(0)
     // 重启后历史消息也会渲染，取最后一条（本次 Run 的完成文本）
     await expect(
       tgbuddy.page.getByText('M2 写入完成', { exact: true }).last(),
