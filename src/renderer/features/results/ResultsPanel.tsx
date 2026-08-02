@@ -4,7 +4,6 @@ import {
   Code2,
   Eye,
   ExternalLink,
-  File,
   FileImage,
   FileText,
   Folder,
@@ -534,16 +533,7 @@ const EMPTY_HINTS = [
 
 function ResultsEmptyState() {
   return (
-    <div className="flex flex-col gap-4 px-4 pb-5 pt-1.5">
-      <section className="flex flex-col gap-[7px] rounded-xl bg-card/65 p-3.5 shadow-[inset_0_0_0_1px_hsl(var(--border))]">
-        <span className="grid h-[30px] w-[30px] place-items-center rounded-[9px] bg-muted text-muted-foreground">
-          <File className="h-4 w-4" strokeWidth={1.7} />
-        </span>
-        <strong className="text-[13px] font-medium text-foreground/90">这次任务的产物会出现在这里</strong>
-        <p className="m-0 text-[12px] leading-[1.75] text-muted-foreground">
-          左边保留 Agent 的执行过程；这里只收纳它写出的文件、生成的图片和改动过的代码。
-        </p>
-      </section>
+    <div className="flex flex-col px-4 pb-5 pt-1.5">
       <section className="flex flex-col gap-2">
         <span className="pl-0.5 text-[11px] font-medium tracking-[.07em] text-muted-foreground/70">会自动收纳</span>
         {EMPTY_HINTS.map(({ icon: Icon, label, description }) => (

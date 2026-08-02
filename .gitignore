@@ -11,3 +11,5 @@ dist/
 /designs/
 /.ship/
 /design-qa.md
+tmp
+output

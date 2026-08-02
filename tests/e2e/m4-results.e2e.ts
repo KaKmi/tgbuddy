@@ -12,6 +12,14 @@ async function send(page: Page, prompt: string): Promise<void> {
   await page.getByRole('button', { name: '发送', exact: true }).click()
 }
 
+test('结果区空状态不显示冗余说明卡', async ({ tgbuddy }) => {
+  const page = tgbuddy.page
+  await createSession(page)
+
+  await expect(page.getByText('这次任务的产物会出现在这里', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('会自动收纳', { exact: true })).toBeVisible()
+})
+
 test('M4：附件选择 → chip → 发送后消息回显附件', async ({ tgbuddy }) => {
   const page = tgbuddy.page
   await createSession(page)
