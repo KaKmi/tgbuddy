@@ -176,6 +176,11 @@ export {
   type ResolvedInvocation,
 } from './permissions/invocation-normalizer.ts'
 export {
+  PermissionRuleIndex,
+  validateGrantOwner,
+  type PermissionRuleSnapshot,
+} from './permissions/permission-rule-index.ts'
+export {
   createRiskClassifier,
   type PermissionRiskLevel,
   type RiskAssessment,

@@ -16,6 +16,7 @@ import type {
 import type { PermissionRuleRepository } from './permission-rule-repository.ts'
 import type { PlanEffectRepository } from '../plans/plan-effect-repository.ts'
 import type { PlanEffectGrant } from '../../shared/contracts/permission.ts'
+import type { PermissionRuleIndex } from './permission-rule-index.ts'
 import type { InvocationNormalizer, ResolvedInvocation } from './invocation-normalizer.ts'
 import type { PermissionRiskLevel, RiskClassifier } from './risk-classifier.ts'
 
@@ -41,6 +42,7 @@ export interface PolicyEngineDependencies {
   normalizer?: InvocationNormalizer
   classifier?: RiskClassifier
   planEffects?: PlanEffectRepository
+  ruleIndex?: PermissionRuleIndex
 }
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search', 'skill'])
@@ -96,6 +98,16 @@ function matchRule(
     }
     case 'method':
       return toolName === rule.pattern
+    case 'command': {
+      const command = typeof args.command === 'string' ? args.command : ''
+      const expected = rule.pattern.trim().split(/\s+/)
+      const actual = command.trim().split(/\s+/)
+      return expected.every((token, index) => actual[index] === token)
+    }
+    case 'origin':
+      return ['url', 'origin', 'endpoint'].some((key) => args[key] === rule.pattern)
+    case 'account':
+      return args.accountId === rule.pattern
   }
 }
 
@@ -247,8 +259,10 @@ async function evaluateRiskPolicy(
   }
 
   const workspaceId = dependencies.getWorkspaceId(input.sessionId)
-  const hit = dependencies.rules.list().find((rule) =>
-    ruleIsValid(rule, input.sessionId, workspaceId)
+  const rules = dependencies.ruleIndex?.current().rules ?? dependencies.rules.list()
+  const hit = rules.find((rule) =>
+    rule.enabled !== false
+    && ruleIsValid(rule, input.sessionId, workspaceId)
     && matchRule(rule, input.toolName, input.args)
   )
   if (hit?.action === 'deny') {

@@ -21,6 +21,9 @@ export type RuleMatch =
   | 'prefix'
   /** 连接器的「服务.方法」，如 `postgres-read.select` */
   | 'method'
+  | 'command'
+  | 'origin'
+  | 'account'
 
 /** 有效期。默认 project —— 换工作区自动失效 */
 export type RuleScope = 'agent_run' | 'delegation' | 'session' | 'project' | 'global'
@@ -51,6 +54,12 @@ export interface PermissionRule {
   createdAt: number
   /** 命中次数，设置页展示用 */
   hits: number
+  revision?: number
+  enabled?: boolean
+  needsReview?: boolean
+  createdBySubject?: string
+  maxApplicableScope?: RuleScope
+  lastHitAt?: number
 }
 
 /** 危险等级。决定 UI 用 inline 卡片还是升级为模态 */

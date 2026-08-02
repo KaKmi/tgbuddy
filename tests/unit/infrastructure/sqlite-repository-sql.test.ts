@@ -62,3 +62,16 @@ describe('SqliteSessionRepository SQL 一致性', () => {
     expect(migration).toContain("DEFAULT ''")
   })
 })
+
+describe('Permission v2 SQLite 契约', () => {
+  test('迁移禁用 legacy prefix，并持久化 plan effects', () => {
+    const migration = readFileSync(
+      join(import.meta.dir, '..', '..', '..', 'src', 'infrastructure', 'sqlite', 'migrations', '019_app_permission_v2.sql'),
+      'utf8',
+    )
+    expect(migration).toContain("CASE WHEN match = 'prefix' THEN 0 ELSE 1 END")
+    expect(migration).toContain('CREATE TABLE app_plan_effects')
+    expect(migration).toContain('plan_revision INTEGER NOT NULL')
+    expect(migration).toContain('subject_json TEXT NOT NULL')
+  })
+})

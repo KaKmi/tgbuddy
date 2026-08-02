@@ -173,8 +173,9 @@ export async function runAppDatabaseScenario(
           '016_app_runs_lineage.sql',
           '017_app_sessions_title_source.sql',
           '018_app_profiles_skill_ids.sql',
+          '019_app_permission_v2.sql',
         ]),
-      'app migration 必须按顺序包含当前 001–018（已删除的 008 除外）',
+      'app migration 必须按顺序包含当前 001–019（已删除的 008 除外）',
     )
     assertions++
 
@@ -190,6 +191,7 @@ export async function runAppDatabaseScenario(
           'app_channels',
           'app_mcp_servers',
           'app_permission_rules',
+          'app_plan_effects',
           'app_profiles',
           'app_runs',
           'app_schema_migrations',

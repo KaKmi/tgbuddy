@@ -15,6 +15,12 @@ interface PermissionRuleRow {
   reason: string | null
   created_at: number
   hits: number
+  revision: number
+  enabled: number
+  needs_review: number
+  created_by_subject: string
+  max_applicable_scope: PermissionRule['scope']
+  last_hit_at: number | null
 }
 
 const SELECT_COLUMNS = `
@@ -29,7 +35,13 @@ const SELECT_COLUMNS = `
   source,
   reason,
   created_at,
-  hits
+  hits,
+  revision,
+  enabled,
+  needs_review,
+  created_by_subject,
+  max_applicable_scope,
+  last_hit_at
 `
 
 function rowToRule(row: PermissionRuleRow): PermissionRule {
@@ -46,6 +58,12 @@ function rowToRule(row: PermissionRuleRow): PermissionRule {
     ...(row.reason ? { reason: row.reason } : {}),
     createdAt: row.created_at,
     hits: row.hits,
+    revision: row.revision,
+    enabled: row.enabled === 1,
+    needsReview: row.needs_review === 1,
+    ...(row.created_by_subject ? { createdBySubject: row.created_by_subject } : {}),
+    maxApplicableScope: row.max_applicable_scope,
+    ...(row.last_hit_at !== null ? { lastHitAt: row.last_hit_at } : {}),
   }
 }
 
@@ -74,9 +92,10 @@ export class SqlitePermissionRuleRepository implements PermissionRuleRepository 
       database
         .prepare(
           `INSERT INTO app_permission_rules (
-             id, tool, match, pattern, action, scope, never_persist,
-             owner_id, source, reason, created_at, hits
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+             id, tool, match, pattern, matcher_json, action, scope, never_persist,
+             owner_id, source, reason, revision, enabled, needs_review,
+             created_by_subject, max_applicable_scope, created_at, hits, last_hit_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
            ON CONFLICT (tool, match, pattern, scope, owner_id) DO NOTHING`,
         )
         .run(
@@ -84,13 +103,20 @@ export class SqlitePermissionRuleRepository implements PermissionRuleRepository 
           rule.tool,
           rule.match,
           rule.pattern,
+          JSON.stringify({ match: rule.match, pattern: rule.pattern }),
           rule.action ?? 'allow',
           rule.scope,
           rule.neverPersist ? 1 : 0,
           rule.ownerId ?? '',
           rule.source ?? 'user',
           rule.reason ?? null,
+          rule.revision ?? 1,
+          rule.enabled === false ? 0 : 1,
+          rule.needsReview ? 1 : 0,
+          rule.createdBySubject ?? '',
+          rule.maxApplicableScope ?? rule.scope,
           Date.now(),
+          rule.lastHitAt ?? null,
         )
     })
   }

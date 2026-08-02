@@ -4,6 +4,8 @@ import {
   createPolicyEngine,
   MemoryPermissionRuleRepository,
   type PermissionAskBroker,
+  PermissionRuleIndex,
+  validateGrantOwner,
 } from '../../../src/runtime/index.ts'
 import type {
   PermissionRequest,
@@ -86,6 +88,60 @@ function createGrantHarness(
 }
 
 describe('MemoryPermissionRuleRepository', () => {
+  test('command matcher 按 token 边界匹配，child 不能创建 project rule', () => {
+    const rule: PermissionRule = {
+      id: 'command-1',
+      tool: 'bash',
+      match: 'command',
+      pattern: 'git status',
+      scope: 'project',
+      ownerId: 'ws-1',
+      neverPersist: false,
+      createdAt: 1,
+      hits: 0,
+    }
+    const index = new PermissionRuleIndex({ revision: 1, rules: [rule] })
+    const subject = {
+      rootSessionId: 'session-1',
+      executionSessionId: 'session-1',
+      rootRunId: 'run-1',
+      agentRunId: 'run-1',
+      role: 'root' as const,
+    }
+    const invocation = (tokens: string[]) => ({
+      sessionId: 'session-1',
+      toolCallId: 'tool-1',
+      toolName: 'bash',
+      args: { command: tokens.join(' ') },
+      kind: 'shell' as const,
+      targets: [{ kind: 'service' as const, value: 'shell' }],
+      fingerprint: 'fp',
+      resourceIdentityHash: 'resource',
+      shell: {
+        command: tokens.join(' '),
+        dialect: 'auto' as const,
+        tokens,
+        compound: false,
+        redirected: false,
+        hasCommandSubstitution: false,
+        wrapper: false,
+        canonicalCwd: 'C:\\work',
+        workspaceId: 'ws-1',
+        mountRevision: 'mount-1',
+        executionEnvIdentityHash: 'env-1',
+      },
+    })
+
+    expect(index.match(invocation(['git', 'status', '--short']), subject)).toMatchObject({
+      id: 'command-1',
+    })
+    expect(index.match(invocation(['git', 'statusx']), subject)).toBeUndefined()
+    expect(() => validateGrantOwner(
+      { ...subject, role: 'worker' },
+      { scope: 'project', ownerId: 'ws-1' },
+    )).toThrow('子智能体只能创建 agent_run 或 delegation 范围规则')
+  })
+
   test('add 补齐 createdAt/hits，remove 按 id 删除', () => {
     const repo = new MemoryPermissionRuleRepository()
     repo.add({

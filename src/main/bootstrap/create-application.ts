@@ -18,6 +18,7 @@ import {
   createPolicyEngine,
   createInvocationNormalizer,
   createRiskClassifier,
+  PermissionRuleIndex,
   createProfileService,
   createSessionCommands,
   createSessionTitleService,
@@ -35,6 +36,7 @@ import {
   SqliteChannelRepository,
   SqliteMcpConfigRepository,
   SqlitePermissionRuleRepository,
+  SqlitePlanEffectRepository,
   SqliteProfileRepository,
   SqliteRunRepository,
   SqliteSessionRepository,
@@ -105,6 +107,11 @@ export async function createApplication(
   const workspaceRepository = new SqliteWorkspaceRepository(appDatabase)
   // S07：用户「总是允许」规则是资产，落 SQLite 跨重启保留。
   const permissionRules = new SqlitePermissionRuleRepository(appDatabase)
+  const permissionRuleIndex = new PermissionRuleIndex({
+    revision: 1,
+    rules: permissionRules.list(),
+  })
+  const planEffects = new SqlitePlanEffectRepository(appDatabase)
   const channelRepository = new SqliteChannelRepository(appDatabase)
   const profileRepository = new SqliteProfileRepository(appDatabase)
   // C01：渠道密钥只经 SecretStore 保存；SQLite 只存 secret ref。
@@ -311,6 +318,11 @@ export async function createApplication(
               : undefined,
         reason: '授权卡「总是允许」',
         source: 'user',
+      })
+      const currentRules = permissionRuleIndex.current()
+      permissionRuleIndex.replaceCommitted({
+        revision: currentRules.revision + 1,
+        rules: permissionRules.list(),
       })
     },
   })
@@ -542,6 +554,8 @@ export async function createApplication(
           ask: (input, signal) => permissionAskBroker.ask(input, signal),
           normalizer: invocationNormalizer,
           classifier: riskClassifier,
+          ruleIndex: permissionRuleIndex,
+          planEffects,
         }),
       }),
       contextCompactor: createPiContextCompactor(),
