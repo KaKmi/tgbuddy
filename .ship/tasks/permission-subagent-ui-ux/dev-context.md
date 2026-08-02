@@ -25,3 +25,12 @@
 - `tests/tool-activity.test.ts`、`tests/unit/kernel/pi-agent-engine.test.ts`：分别覆盖 renderer projection 与 pi event adapter。
 
 后续 Story 开始编码前，继续在本文件追加该 Story 的 1–3 个完整模式引用和消费/产出边界。
+
+## Story 2 模式证据
+
+- `src/runtime/runs/agent-engine.ts`：`ToolPolicyInput` 是现有 kernel → Runtime 权限边界；Normalizer 直接消费该 DTO，不把 pi 类型或 Renderer 状态带入 Runtime。
+- `src/runtime/permissions/policy-engine.ts`：现有只读 Shell、系统禁区、MCP 和文件启发式都集中在 Policy；本 Story 先抽出纯 normalization/classification owner，Task 4 再删除旧决策分支的双 owner。
+- `src/kernel/pi/pi-builtin-tools.ts`：内置文件工具的真实参数形状为 `path`、`paths[]`、`pattern + dir`，delete 进入回收站且批量阈值为 50；分类器据此区分 R1、R2 与批量 R4。
+- `docs/design/009-permission-human-interaction.md` 与 `docs/design/011-permission-subagent-architecture.md`：风险矩阵固定为 R0 控制、R1 只读、R2 工作区内可逆、R3 越界/联网/外部副作用、R4 不可逆/敏感、F 禁止；完整未知为 R4，分类器异常不是 unknown。
+
+边界：本 Story 产出纯函数与完整 evidence，不接入真实 Policy 执行；`RuleScope` 扩为五级时，legacy UI 仍只暴露 session/project/global，短期 Policy 对 agent_run/delegation 旧规则 fail closed，Task 4/6 接管真实 subject 与 matcher。
