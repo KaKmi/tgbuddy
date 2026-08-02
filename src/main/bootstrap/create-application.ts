@@ -21,6 +21,7 @@ import {
   createRiskClassifier,
   createRunAuthorizationGate,
   createRootRunSupervisor,
+  createHumanInteractionRegistry,
   PermissionRuleIndex,
   createProfileService,
   createSessionCommands,
@@ -154,6 +155,20 @@ export async function createApplication(
   const interruptedDelegations = rootRunSupervisor.recover()
   if (interruptedDelegations > 0) {
     console.info(`[delegation] 已恢复 ${interruptedDelegations} 个中断子任务`)
+  }
+  const humanInteractions = createHumanInteractionRegistry()
+  const interactionSource = (sessionId: string, toolCallId?: string) => {
+    const session = sessionRepository.get(sessionId)
+    const task = session?.parentTaskId ? delegationTasks.get(session.parentTaskId) : undefined
+    const running = runs.listBySession(sessionId).find((run) => run.status === 'running')
+    return {
+      rootRunId: task?.rootRunId ?? running?.rootRunId ?? running?.id ?? sessionId,
+      runId: running?.agentRunId ?? running?.id ?? sessionId,
+      sessionId,
+      subjectId: running?.agentRunId ?? running?.id ?? sessionId,
+      ...(task ? { taskId: task.id } : {}),
+      ...(toolCallId ? { toolCallId } : {}),
+    }
   }
   // A01/A02：内容寻址 BlobStore（附件/长输出/产物），物理文件在 userData/blobs。
   const blobStore = createNodeFsBlobStore({
@@ -331,6 +346,8 @@ export async function createApplication(
       })
     },
     decisionWriter: interactionDecisionWriter,
+    registry: humanInteractions,
+    resolveSource: interactionSource,
     buildRule(request, grant) {
       return {
         id: createId(),
@@ -365,6 +382,8 @@ export async function createApplication(
         },
       })
     },
+    registry: humanInteractions,
+    resolveSource: interactionSource,
   })
   // S10：ask_user 的结构化问题同样由 Runtime broker 持有。
   const askUserBroker = createAskUserBroker({
@@ -381,6 +400,8 @@ export async function createApplication(
         },
       })
     },
+    registry: humanInteractions,
+    resolveSource: interactionSource,
   })
 
   let messageStore: ReturnType<typeof createPiSessionStore> | undefined

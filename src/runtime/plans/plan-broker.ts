@@ -5,6 +5,8 @@ import type {
   PlanningPhase,
 } from '../../shared/contracts/permission.ts'
 import { PendingRequests } from '../pending/pending-requests.ts'
+import type { HumanInteractionRegistry } from '../pending/human-interaction-registry.ts'
+import type { EventSource } from '../../shared/contracts/interaction.ts'
 
 /**
  * 计划审批 broker —— 与权限询问共用同一 pending registry 机制。
@@ -31,6 +33,8 @@ export interface CreatePlanAskBrokerOptions {
   createId(): string
   /** 登记后再推送；推送失败必须让调用方可见，不能留下悬挂记录 */
   emitRequest(request: PlanRequest): void
+  registry?: HumanInteractionRegistry
+  resolveSource?(sessionId: string): EventSource
 }
 
 export function createPlanAskBroker(
@@ -53,15 +57,21 @@ export function createPlanAskBroker(
       }
       phases.set(input.sessionId, phase)
       requestPhase.set(requestId, phase)
-      return pending.suspend(
-        {
+      const request: PlanRequest = {
           requestId,
           sessionId: input.sessionId,
           plan: input.plan,
-        },
-        options.emitRequest,
-        signal,
-      )
+      }
+      signal?.addEventListener('abort', () => options.registry?.complete(requestId), { once: true })
+      return pending.suspend(request, (next) => {
+        if (!options.registry) return options.emitRequest(next)
+        options.registry.register({
+          id: requestId,
+          kind: 'plan',
+          source: options.resolveSource?.(input.sessionId) ?? fallbackSource(input.sessionId),
+          activate: () => options.emitRequest(next),
+        })
+      }, signal)
     },
     respond(response) {
       const request = pending.list().find((item) => item.requestId === response.requestId)
@@ -69,6 +79,7 @@ export function createPlanAskBroker(
         approved: response.approved,
         ...(response.reason ? { reason: response.reason } : {}),
       })
+      if (settled) options.registry?.complete(response.requestId)
       const phase = requestPhase.get(response.requestId)
       if (settled !== undefined && request && phase) {
         phases.set(request.sessionId, response.approved
@@ -87,7 +98,12 @@ export function createPlanAskBroker(
     phase: (sessionId) => phases.get(sessionId) ?? { status: 'planning' },
     clearSession: (sessionId) => {
       pending.clearSession(sessionId)
+      options.registry?.cancelBySession(sessionId)
       phases.delete(sessionId)
     },
   }
+}
+
+function fallbackSource(sessionId: string): EventSource {
+  return { rootRunId: sessionId, runId: sessionId, sessionId, subjectId: sessionId }
 }

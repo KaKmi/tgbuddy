@@ -5,6 +5,8 @@ import type {
   AskUserResponse,
 } from '../../shared/contracts/permission.ts'
 import { PendingRequests } from '../pending/pending-requests.ts'
+import type { HumanInteractionRegistry } from '../pending/human-interaction-registry.ts'
+import type { EventSource } from '../../shared/contracts/interaction.ts'
 
 /**
  * 用户问答 broker —— 与 permission/plan 共用同一 pending registry 机制，
@@ -31,6 +33,8 @@ export interface CreateAskUserBrokerOptions {
   createId(): string
   /** 登记后再推送；推送失败必须让调用方可见，不能留下悬挂记录 */
   emitRequest(request: AskUserRequest): void
+  registry?: HumanInteractionRegistry
+  resolveSource?(sessionId: string): EventSource
 }
 
 export function createAskUserBroker(
@@ -43,20 +47,35 @@ export function createAskUserBroker(
 
   return {
     requestAnswers(input, signal) {
-      return pending.suspend(
-        {
+      const request: AskUserRequest = {
           requestId: options.createId(),
           sessionId: input.sessionId,
           questions: input.questions,
-        },
-        options.emitRequest,
-        signal,
-      )
+      }
+      signal?.addEventListener('abort', () => options.registry?.complete(request.requestId), { once: true })
+      return pending.suspend(request, (next) => {
+        if (!options.registry) return options.emitRequest(next)
+        options.registry.register({
+          id: request.requestId,
+          kind: 'ask_user',
+          source: options.resolveSource?.(input.sessionId) ?? fallbackSource(input.sessionId),
+          activate: () => options.emitRequest(next),
+        })
+      }, signal)
     },
     respond(response) {
-      return pending.respond(response.requestId, response.answers) !== undefined
+      const settled = pending.respond(response.requestId, response.answers) !== undefined
+      if (settled) options.registry?.complete(response.requestId)
+      return settled
     },
     pending: () => pending.list(),
-    clearSession: (sessionId) => pending.clearSession(sessionId),
+    clearSession: (sessionId) => {
+      pending.clearSession(sessionId)
+      options.registry?.cancelBySession(sessionId)
+    },
   }
+}
+
+function fallbackSource(sessionId: string): EventSource {
+  return { rootRunId: sessionId, runId: sessionId, sessionId, subjectId: sessionId }
 }

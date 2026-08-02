@@ -207,6 +207,11 @@ export {
 } from './permissions/invocation-identity-binder.ts'
 export { PendingRequests } from './pending/pending-requests.ts'
 export {
+  createHumanInteractionRegistry,
+  HumanInteractionRegistryError,
+  type HumanInteractionRegistry,
+} from './pending/human-interaction-registry.ts'
+export {
   InteractionResponseConflictError,
   interactionResponseHash,
   type InteractionDecisionCommit,

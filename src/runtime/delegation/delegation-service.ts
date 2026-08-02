@@ -133,6 +133,7 @@ export function createDelegationService(
         status: 'starting',
         updatedAt: options.now(),
       })
+      options.sessions.updateMeta(childSessionId, { parentTaskId: task.id })
       options.supervisor?.startChild(rootRunId, task.id)
       childrenByRoot.set(rootRunId, [...children, childSessionId])
 

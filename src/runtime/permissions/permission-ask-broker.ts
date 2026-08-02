@@ -14,6 +14,8 @@ import {
   type InteractionDecisionWriter,
 } from '../pending/interaction-decision-writer.ts'
 import type { PermissionRule } from '../../shared/contracts/permission.ts'
+import type { HumanInteractionRegistry } from '../pending/human-interaction-registry.ts'
+import type { EventSource } from '../../shared/contracts/interaction.ts'
 
 /**
  * 授权询问 broker —— 请求由 Runtime registry 持有，IPC 只按 requestId 响应。
@@ -55,6 +57,8 @@ export interface CreatePermissionAskBrokerOptions {
     grant: NonNullable<PermissionResponse['grant']>,
   ): Omit<PermissionRule, 'createdAt' | 'hits'>
   decisionWriter?: InteractionDecisionWriter
+  registry?: HumanInteractionRegistry
+  resolveSource?(sessionId: string, toolCallId?: string): EventSource
 }
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search'])
@@ -142,7 +146,27 @@ export function createPermissionAskBroker(
         neverPersist,
         suggestedGrants: neverPersist ? [] : suggestGrants(toolName, args),
       }
-      return pending.suspend(request, options.emitRequest, signal)
+      const source = input.subject
+        ? {
+            rootRunId: input.subject.rootRunId,
+            runId: input.subject.agentRunId,
+            sessionId: input.sessionId,
+            subjectId: input.subject.agentRunId,
+            ...(input.subject.delegationId ? { taskId: input.subject.delegationId } : {}),
+            toolCallId: input.toolCallId,
+          }
+        : options.resolveSource?.(input.sessionId, input.toolCallId)
+          ?? fallbackSource(input.sessionId, input.toolCallId)
+      signal.addEventListener('abort', () => options.registry?.complete(request.requestId), { once: true })
+      return pending.suspend(request, (next) => {
+        if (!options.registry) return options.emitRequest(next)
+        options.registry.register({
+          id: request.requestId,
+          kind: 'permission',
+          source,
+          activate: () => options.emitRequest(next),
+        })
+      }, signal)
     },
     async respond(response) {
       const request = pending.get(response.requestId)
@@ -179,9 +203,23 @@ export function createPermissionAskBroker(
         ...(options.decisionWriter ? { decisionId: receipt.decisionId } : {}),
         ...(response.reason ? { reason: response.reason } : {}),
       })
+      options.registry?.complete(response.requestId)
       return receipt
     },
     pending: () => pending.list(),
-    clearSession: (sessionId) => pending.clearSession(sessionId),
+    clearSession: (sessionId) => {
+      pending.clearSession(sessionId)
+      options.registry?.cancelBySession(sessionId)
+    },
+  }
+}
+
+function fallbackSource(sessionId: string, toolCallId?: string): EventSource {
+  return {
+    rootRunId: sessionId,
+    runId: sessionId,
+    sessionId,
+    subjectId: sessionId,
+    ...(toolCallId ? { toolCallId } : {}),
   }
 }

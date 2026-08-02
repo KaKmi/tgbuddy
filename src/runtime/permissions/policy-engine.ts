@@ -26,6 +26,7 @@ export interface PermissionAskInput {
   toolCallId: string
   toolName: string
   args: Record<string, unknown>
+  subject?: ToolPolicyInput['subject']
 }
 
 export interface PolicyEngineDependencies {
@@ -331,6 +332,7 @@ async function evaluateRiskPolicy(
     toolCallId: input.toolCallId,
     toolName: input.toolName,
     args: input.args,
+    subject: input.subject,
   }, signal)
   return {
     action: 'approval_required',
