@@ -21,3 +21,18 @@ Story 3: “稳定 Run 身份与不可变 PermissionCeilingSnapshot” — compl
   Produces: `PermissionSubject`、`RunIdentity`、`PermissionCeilingSnapshot`；root Run 在 `createInvocation` 和 Provider 前预留/持久化身份；权限上限进入 capability snapshot。
   Verification: targeted 9/9；`bun run check:architecture`；`bun run typecheck`；`bun run build`。
   Review: 按“先跑通完整闭环”策略，逐 Story 仅做主路径门槛，集中 review/QA 放到权限与子 Agent 闭环完成后。
+
+Story 4: “Policy 风险矩阵与三种模式” — complete
+  Commit: 39db5e8
+  Produces: 生产 Policy 接入 normalization/classification；auto/plan/bypass 按 R0–R4/F 决策；完全访问 R4 仍询问、F 拒绝。
+  Verification: targeted 25/25；architecture/typecheck/probe/build PASS。
+
+Story 5: “PlanningPhase、Explorer/Worker 与 PlanEffectGrant” — complete
+  Commit: a569e79
+  Produces: `PlanningPhase`、`PlanEffectGrant`、Memory repository；planning 只放行只读/Explorer；计划批准不再切换 auto。
+  Verification: targeted 23/23；architecture/typecheck/probe/build PASS。
+
+Story 6: “版本化 PermissionRuleIndex 与持久化 PlanEffectGrant” — complete
+  Commit: f3dcc35
+  Produces: migration 019；`PermissionRuleIndex`；command token boundary matcher；SQLite PlanEffect repository；legacy prefix 禁用待复核。
+  Verification: targeted 29/29；packaged SQLite spike；architecture/typecheck PASS。
