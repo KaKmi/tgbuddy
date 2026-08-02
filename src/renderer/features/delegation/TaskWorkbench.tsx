@@ -1,5 +1,5 @@
 import { Bot, CircleStop, LoaderCircle, Search, Wrench } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DelegationTask, DelegationTaskStatus } from '../../../shared/contracts/delegation.ts'
 import type { HumanInteractionRequest } from '../../../shared/contracts/interaction.ts'
 import { roleOf, type SessionMessage } from '../../../shared/types/message.ts'
@@ -19,6 +19,7 @@ export function TaskWorkbench({
   const [selectedId, setSelectedId] = useState<string>()
   const [messages, setMessages] = useState<SessionMessage[]>([])
   const [stopping, setStopping] = useState(false)
+  const latestMessageRequestRef = useRef(0)
 
   async function refreshInteractions(): Promise<void> {
     if (!sessionId) return
@@ -38,9 +39,17 @@ export function TaskWorkbench({
   const selected = tasks.find((task) => task.id === selectedId)
 
   useEffect(() => {
+    const requestId = ++latestMessageRequestRef.current
     setMessages([])
     if (!selectedId) return
-    void window.tgbuddy.delegation.messages(selectedId).then(setMessages)
+    void window.tgbuddy.delegation.messages(selectedId).then((nextMessages) => {
+      if (latestMessageRequestRef.current === requestId) setMessages(nextMessages)
+    })
+    return () => {
+      if (latestMessageRequestRef.current === requestId) {
+        latestMessageRequestRef.current += 1
+      }
+    }
   }, [selectedId, selected?.lastActivityAt])
 
   const groups = useMemo(() => groupTasks(tasks), [tasks])
