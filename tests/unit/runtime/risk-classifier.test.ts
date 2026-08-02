@@ -39,7 +39,7 @@ function completeInvocation(
 }
 
 function shell(command: string): CompleteInvocation {
-  const tokens = command.match(/&&|\|\||>>|[|;><]|[^\s|;&><]+/g) ?? []
+  const tokens = command.match(/"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|&&|\|\||>>|[|;&><`]|[^\s|;&><`]+/g) ?? []
   return completeInvocation('bash', {
     kind: 'shell',
     args: { command },
@@ -141,6 +141,7 @@ describe('RiskClassifier', () => {
       'powershell -enc ZABhAG4AZwBlAHIAbwB1AHMA',
       'cmd /c format C:',
       'C:\\Windows\\System32\\format.com C:',
+      '"C:\\Temp Folder\\format.com" C:',
     ]) {
       expect(classifier.classify(shell(command))).toMatchObject({
         status: 'forbidden',

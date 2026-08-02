@@ -213,10 +213,27 @@ function forbidden(invocation: ResolvedInvocation): string | undefined {
 }
 
 function expandedShellTokens(tokens: string[]): string[] {
-  return tokens.flatMap((token) => {
+  const expanded: string[] = []
+  let expandNestedCommand = false
+  for (const token of tokens) {
     const unquoted = token.replace(/^["'`]+|["'`]+$/g, '')
-    return unquoted.split(/\s+/).filter(Boolean).map((part) => part.toLowerCase())
-  })
+    if (expandNestedCommand) {
+      expanded.push(...tokenizeNestedShell(unquoted))
+      expandNestedCommand = false
+    } else {
+      expanded.push(unquoted.toLowerCase())
+    }
+    if (['-c', '-command', '-lc', '/c'].includes(unquoted.toLowerCase())) {
+      expandNestedCommand = true
+    }
+  }
+  return expanded
+}
+
+function tokenizeNestedShell(command: string): string[] {
+  return (command.match(/"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|&&|\|\||>>|[|;&><`]|[^\s|;&><`]+/g) ?? [])
+    .map((token) => token.replace(/^["'`]+|["'`]+$/g, '').toLowerCase())
+    .filter(Boolean)
 }
 
 function shellCommandHeads(tokens: string[]): string[] {
