@@ -174,4 +174,38 @@ describe('InvocationNormalizer', () => {
       },
     })
   })
+
+  test('MCP origin 进入 target、resource identity 与 fingerprint', async () => {
+    const normalizer = createInvocationNormalizer({
+      resolvePath: async () => {
+        throw new Error('不应解析路径')
+      },
+      policyVersion: 'permission-v2',
+      resolveMcpMethod: async () => ({
+        permission: 'read',
+        identityHash: 'browser.fetch:v1',
+      }),
+    })
+    const first = await normalizer.normalize({
+      sessionId: 's',
+      toolCallId: 't1',
+      toolName: 'browser.fetch',
+      args: { url: 'http://169.254.169.254/latest/meta-data' },
+    })
+    const second = await normalizer.normalize({
+      sessionId: 's',
+      toolCallId: 't2',
+      toolName: 'browser.fetch',
+      args: { url: 'https://example.com/public' },
+    })
+    expect(first.status).toBe('complete')
+    expect(second.status).toBe('complete')
+    if (first.status !== 'complete' || second.status !== 'complete') return
+    expect(first.invocation.targets).toContainEqual({
+      kind: 'host',
+      value: 'http://169.254.169.254:80',
+    })
+    expect(first.evidence.resourceIdentityHash).not.toBe(second.evidence.resourceIdentityHash)
+    expect(first.evidence.fingerprint).not.toBe(second.evidence.fingerprint)
+  })
 })

@@ -109,6 +109,10 @@ describe('RiskClassifier', () => {
 
   test('Shell 逐 token 判断 wrapper、复合符、网络与不可逆动作', () => {
     expect(classifier.classify(shell('git status'))).toMatchObject({ status: 'classified', level: 'R1' })
+    expect(classifier.classify(shell('git branch injected'))).toMatchObject({
+      status: 'classified',
+      level: 'R2',
+    })
     expect(classifier.classify(shell('ls -la'))).toMatchObject({ status: 'classified', level: 'R1' })
     expect(classifier.classify(shell('ls C:\\Users'))).toMatchObject({ status: 'classified', level: 'R3' })
     expect(classifier.classify(shell('cat C:\\Users\\Administrator\\.ssh\\id_rsa'))).toMatchObject({
@@ -134,7 +138,9 @@ describe('RiskClassifier', () => {
       'powershell -Command "Remove-Item -Recurse C:\\Users"',
       'powershell -Command "& { Remove-Item -LiteralPath C:\\Users -Recurse }"',
       'powershell -EncodedCommand ZABhAG4AZwBlAHIAbwB1AHMA',
+      'powershell -enc ZABhAG4AZwBlAHIAbwB1AHMA',
       'cmd /c format C:',
+      'C:\\Windows\\System32\\format.com C:',
     ]) {
       expect(classifier.classify(shell(command))).toMatchObject({
         status: 'forbidden',
@@ -155,6 +161,14 @@ describe('RiskClassifier', () => {
       kind: 'mcp',
       mcp: { serverId: 'db', method: 'get_or_create', permission: 'unknown' },
     }))).toMatchObject({ status: 'unknown_complete', effectiveRisk: 'R4' })
+    expect(classifier.classify(completeInvocation('browser.fetch', {
+      kind: 'mcp',
+      mcp: { serverId: 'browser', method: 'fetch', permission: 'read' },
+      targets: [
+        { kind: 'service', value: 'browser' },
+        { kind: 'host', value: 'http://169.254.169.254:80' },
+      ],
+    }))).toMatchObject({ status: 'forbidden' })
 
     const corrupt = completeInvocation('read')
     corrupt.evidence.policyVersion = 'corrupt-version'

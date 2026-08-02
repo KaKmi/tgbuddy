@@ -272,7 +272,7 @@ async function normalizeShell(
   if (tokens.length === 0) {
     return { status: 'incomplete', reason: 'command_tokens_required' }
   }
-  const first = (tokens[0] ?? '').toLowerCase()
+  const first = shellExecutableName(tokens[0] ?? '')
   if (!dependencies.resolveExecutionContext) {
     return { status: 'incomplete', reason: 'execution_context_required' }
   }
@@ -348,12 +348,24 @@ async function normalizeMcp(
   if (typeof input.args.accountId === 'string' && input.args.accountId) {
     targets.push({ kind: 'account', value: input.args.accountId })
   }
+  const originValue = ['url', 'origin', 'endpoint']
+    .map((key) => input.args[key])
+    .find((value): value is string => typeof value === 'string' && value.length > 0)
+  const origins = originValue ? extractHosts(originValue) : []
+  if (originValue && origins.length === 0) {
+    return { status: 'incomplete', reason: 'mcp_origin_invalid' }
+  }
+  targets.push(...origins.map((origin): InvocationTarget => ({ kind: 'host', value: origin })))
+  const resourceIdentityHash = await sha256(stableSerialize({
+    methodIdentityHash: methodIdentity?.identityHash ?? `${serverId}.${method}`,
+    accountId: input.args.accountId,
+    origins,
+  }))
   return complete(
     input,
     'mcp',
     targets,
-    methodIdentity?.identityHash
-      ?? await sha256(`mcp:${serverId}:${method}:${String(input.args.accountId ?? '-')}`),
+    resourceIdentityHash,
     dependencies.policyVersion,
     ['mcp', `method:${method}`, `permission:${permission}`],
     { mcp: { serverId, method, permission } },
@@ -426,6 +438,12 @@ async function complete(
 
 function tokenizeShell(command: string): string[] {
   return command.match(/"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\$\(|&&|\|\||>>|[|;><`]|[^\s|;&><`]+/g) ?? []
+}
+
+function shellExecutableName(token: string): string {
+  const unquoted = token.replace(/^["']+|["']+$/g, '').replaceAll('/', '\\')
+  const basename = unquoted.split('\\').at(-1) ?? unquoted
+  return basename.replace(/\.(?:com|cmd|exe)$/i, '').toLowerCase()
 }
 
 function extractHosts(value: string): string[] {

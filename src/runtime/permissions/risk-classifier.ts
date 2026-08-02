@@ -151,6 +151,9 @@ function classifyShell(
   if (isStrictReadOnlyShell(shell)) {
     return classified('R1', evidence, [])
   }
+  if (isGitBranchMutation(shell.tokens)) {
+    return classified('R2', evidence, [])
+  }
   if (isWorkspaceBuildOrTest(shell.tokens)) {
     return classified('R2', evidence, commandGrant(shell.tokens))
   }
@@ -171,6 +174,12 @@ function classifyShell(
 
 function forbidden(invocation: ResolvedInvocation): string | undefined {
   if (invocation.toolName === 'rm_root') return '禁止删除系统根目标'
+  if (invocation.targets.some((target) =>
+    target.kind === 'host'
+    && /(?:169\.254\.169\.254|100\.100\.100\.200|metadata\.google\.internal)/i.test(target.value)
+  )) {
+    return '禁止访问云环境凭据元数据地址'
+  }
   if (invocation.kind !== 'shell' || !invocation.shell) return undefined
   const tokens = expandedShellTokens(invocation.shell.tokens)
   const commandHeads = shellCommandHeads(tokens)
@@ -178,10 +187,17 @@ function forbidden(invocation: ResolvedInvocation): string | undefined {
   const systemTools = new Set([
     'bcdedit', 'diskpart', 'format', 'mkfs', 'net', 'reg', 'sc', 'schtasks', 'vssadmin', 'wsl', 'wmic',
   ])
-  if (tokens.includes('-encodedcommand')) {
+  const normalizedHeads = commandHeads.map(shellExecutableName)
+  const hasPowerShell = normalizedHeads.some((head) => head === 'powershell' || head === 'pwsh')
+  const hasEncodedCommand = tokens.some((token) =>
+    token.startsWith('-')
+    && token.length >= 2
+    && '-encodedcommand'.startsWith(token)
+  )
+  if (hasPowerShell && hasEncodedCommand) {
     return '禁止执行无法检查内容的编码命令'
   }
-  if (commandHeads.some((head) => systemTools.has(head))) {
+  if (normalizedHeads.some((head) => systemTools.has(head))) {
     return '禁止执行可绕过工作区边界的系统工具'
   }
   if (
@@ -224,14 +240,24 @@ function shellCommandHeads(tokens: string[]): string[] {
   return heads
 }
 
+function shellExecutableName(token: string): string {
+  const normalized = token.replace(/^["']+|["']+$/g, '').replaceAll('/', '\\')
+  const basename = normalized.split('\\').at(-1) ?? normalized
+  return basename.replace(/\.(?:com|cmd|exe)$/i, '').toLowerCase()
+}
+
 function isStrictReadOnlyShell(shell: NonNullable<ResolvedInvocation['shell']>): boolean {
   if (shell.compound || shell.redirected || shell.hasCommandSubstitution || shell.wrapper) return false
   const first = shell.tokens[0]?.toLowerCase() ?? ''
   if (first === 'git') {
     const subcommand = shell.tokens[1]?.toLowerCase() ?? ''
     const boundaryOverrides = new Set(['-c', '--git-dir', '--no-index', '--work-tree'])
-    return ['branch', 'diff', 'log', 'show', 'status'].includes(subcommand)
-      && !shell.tokens.some((token) => boundaryOverrides.has(token.toLowerCase()))
+    if (shell.tokens.some((token) => boundaryOverrides.has(token.toLowerCase()))) return false
+    if (subcommand === 'branch') {
+      const readOnlyFlags = new Set(['-a', '-r', '-v', '-vv', '--all', '--list', '--show-current'])
+      return shell.tokens.slice(2).every((token) => readOnlyFlags.has(token.toLowerCase()))
+    }
+    return ['diff', 'log', 'show', 'status'].includes(subcommand)
   }
   if (first === 'pwd') return shell.tokens.length === 1
   if (first === 'ls') {
@@ -241,6 +267,11 @@ function isStrictReadOnlyShell(shell: NonNullable<ResolvedInvocation['shell']>):
     return shell.tokens.slice(1).every((token) => token === '.' || /^\/[a-z]+$/i.test(token))
   }
   return false
+}
+
+function isGitBranchMutation(tokens: string[]): boolean {
+  return tokens[0]?.toLowerCase() === 'git'
+    && tokens[1]?.toLowerCase() === 'branch'
 }
 
 function isWorkspaceBuildOrTest(tokens: string[]): boolean {
