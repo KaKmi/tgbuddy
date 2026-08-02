@@ -17,6 +17,7 @@ import type {
   ArtifactPreviewResult,
   ArtifactRef,
 } from '../../../shared/contracts/artifact.ts'
+import type { DelegationTask } from '../../../shared/contracts/delegation.ts'
 import {
   filterArtifacts,
   groupArtifacts,
@@ -57,8 +58,7 @@ export function ResultsPanel({
   const [section, setSection] = useState<'artifacts' | 'workspace' | 'tasks'>('artifacts')
   const [selectedId, setSelectedId] = useState<string>()
   const [runStartedAt, setRunStartedAt] = useState<number>()
-  const [rootRunId, setRootRunId] = useState<string>()
-  const [taskCount, setTaskCount] = useState(0)
+  const [tasks, setTasks] = useState<DelegationTask[]>([])
   const [preview, setPreview] = useState<ArtifactPreviewResult>()
   const [viewerOpen, setViewerOpen] = useState(false)
   const [workspaceQuery, setWorkspaceQuery] = useState('')
@@ -75,7 +75,11 @@ export function ResultsPanel({
       undefined as (typeof runs)[number] | undefined,
     )
     setRunStartedAt(latest?.createdAt)
-    setRootRunId(latest ? (latest.rootRunId ?? latest.id) : undefined)
+  }
+
+  async function refreshTasks(): Promise<void> {
+    if (!sessionId) return
+    setTasks(await window.tgbuddy.delegation.list(sessionId))
   }
 
   useEffect(() => {
@@ -85,11 +89,21 @@ export function ResultsPanel({
     setFilter('all')
     setSection('artifacts')
     setRunStartedAt(undefined)
-    setRootRunId(undefined)
-    setTaskCount(0)
+    setTasks([])
     if (!sessionId) return
-    void refreshArtifacts()
-  }, [sessionId, active])
+    void Promise.all([refreshArtifacts(), refreshTasks()])
+  }, [sessionId])
+
+  useEffect(() => {
+    if (!sessionId) return
+    void Promise.all([refreshArtifacts(), refreshTasks()])
+  }, [active])
+
+  useEffect(() => {
+    if (!open || !sessionId) return
+    const timer = window.setInterval(() => void refreshTasks(), 800)
+    return () => window.clearInterval(timer)
+  }, [open, sessionId])
 
   useEffect(() => {
     setPreview(undefined)
@@ -144,10 +158,10 @@ export function ResultsPanel({
             className={`rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold ${section === 'tasks' ? 'bg-accent' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'}`}
           >
             子智能体
+            <span data-testid="results-section-count" className="ml-1 text-[10.5px] font-normal text-muted-foreground/70">
+              {tasks.length} 项
+            </span>
           </button>
-          <span data-testid="results-section-count" className="ml-1 text-[10.5px] text-muted-foreground/70">
-            {section === 'tasks' ? taskCount : artifacts.length} 项
-          </span>
         </div>
         <button
           type="button"
@@ -177,7 +191,7 @@ export function ResultsPanel({
       </div>}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {section === 'tasks' ? (
-          <TaskWorkbench rootRunId={rootRunId} onCountChange={setTaskCount} />
+          <TaskWorkbench sessionId={sessionId} tasks={tasks} />
         ) : section === 'workspace' ? (
           <WorkspaceFiles
             artifacts={artifacts}
