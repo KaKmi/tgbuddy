@@ -15,3 +15,9 @@ Story 2: “InvocationNormalizer 与确定性 RiskClassifier” — complete
   Verification: targeted 27/27；benchmark p95=0.010ms；`bun run check:architecture`；`bun run typecheck`；`bun run build`。
   Review: 多轮安全 review 已修复 wrapper、quoted executable、command forwarding、environment assignment、MCP multi-origin 与 command substitution 绕过。按用户的速度优先决策，停止扩展 fuzz，以明文验收和现有门槛收口。
   Concerns: 非主流 Shell/MCP 边界统一转入最终集中 review/backlog，不阻塞主链路开发。
+
+Story 3: “稳定 Run 身份与不可变 PermissionCeilingSnapshot” — complete
+  Commit: 59e1fc7
+  Produces: `PermissionSubject`、`RunIdentity`、`PermissionCeilingSnapshot`；root Run 在 `createInvocation` 和 Provider 前预留/持久化身份；权限上限进入 capability snapshot。
+  Verification: targeted 9/9；`bun run check:architecture`；`bun run typecheck`；`bun run build`。
+  Review: 按“先跑通完整闭环”策略，逐 Story 仅做主路径门槛，集中 review/QA 放到权限与子 Agent 闭环完成后。
