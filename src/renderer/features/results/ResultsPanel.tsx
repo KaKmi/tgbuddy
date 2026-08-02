@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ChevronDown,
   Code2,
@@ -62,6 +62,9 @@ export function ResultsPanel({
   const [preview, setPreview] = useState<ArtifactPreviewResult>()
   const [viewerOpen, setViewerOpen] = useState(false)
   const [workspaceQuery, setWorkspaceQuery] = useState('')
+  const currentTaskSessionRef = useRef(sessionId)
+  const latestTaskRequestRef = useRef(0)
+  currentTaskSessionRef.current = sessionId
 
   async function refreshArtifacts(): Promise<void> {
     if (!sessionId) return
@@ -77,9 +80,15 @@ export function ResultsPanel({
     setRunStartedAt(latest?.createdAt)
   }
 
-  async function refreshTasks(): Promise<void> {
-    if (!sessionId) return
-    setTasks(await window.tgbuddy.delegation.list(sessionId))
+  async function refreshTasks(targetSessionId = sessionId): Promise<void> {
+    if (!targetSessionId) return
+    const requestId = ++latestTaskRequestRef.current
+    const nextTasks = await window.tgbuddy.delegation.list(targetSessionId)
+    if (
+      currentTaskSessionRef.current !== targetSessionId
+      || latestTaskRequestRef.current !== requestId
+    ) return
+    setTasks(nextTasks)
   }
 
   useEffect(() => {
@@ -95,8 +104,12 @@ export function ResultsPanel({
   }, [sessionId])
 
   useEffect(() => {
+    latestTaskRequestRef.current += 1
     if (!sessionId) return
-    void Promise.all([refreshArtifacts(), refreshTasks()])
+    void Promise.all([refreshArtifacts(), refreshTasks(sessionId)])
+    return () => {
+      latestTaskRequestRef.current += 1
+    }
   }, [active])
 
   useEffect(() => {
@@ -191,7 +204,7 @@ export function ResultsPanel({
       </div>}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {section === 'tasks' ? (
-          <TaskWorkbench sessionId={sessionId} tasks={tasks} />
+          <TaskWorkbench sessionId={sessionId} tasks={tasks} onRefreshTasks={refreshTasks} />
         ) : section === 'workspace' ? (
           <WorkspaceFiles
             artifacts={artifacts}

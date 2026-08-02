@@ -9,9 +9,11 @@ const ACTIVE_STATUSES = new Set<DelegationTaskStatus>(['queued', 'starting', 'ru
 export function TaskWorkbench({
   sessionId,
   tasks,
+  onRefreshTasks,
 }: {
   sessionId?: string
   tasks: DelegationTask[]
+  onRefreshTasks(): Promise<void>
 }) {
   const [interactions, setInteractions] = useState<HumanInteractionRequest[]>([])
   const [selectedId, setSelectedId] = useState<string>()
@@ -74,7 +76,7 @@ export function TaskWorkbench({
                 setStopping(true)
                 try {
                   await window.tgbuddy.delegation.stop(selected.id)
-                  await refreshInteractions()
+                  await Promise.all([onRefreshTasks(), refreshInteractions()])
                 } finally {
                   setStopping(false)
                 }

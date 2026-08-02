@@ -56,6 +56,7 @@ test('两个具名子 Agent 返回具体结果，Main Agent 综合后可在任�
 
   await page.getByRole('button', { name: '+ 新会话' }).click()
   await expect(page.getByTestId('session-item')).toHaveCount(2)
+  await expect(page.getByTestId('results-section-count')).toHaveText('0 项')
   await page.locator(`[data-session-id="${originalSessionId}"]`).click()
   await expect(page.getByTestId('results-section-count')).toHaveText('2 项')
   await page.getByRole('button', { name: /子智能体/ }).click()
