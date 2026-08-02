@@ -83,7 +83,7 @@ export interface RunCommands {
 }
 
 export interface PermissionCommands {
-  respond(response: PermissionResponse): void
+  respond(response: PermissionResponse): Promise<void>
   pending(): PermissionRequest[]
   listRules(): PermissionRule[]
   removeRule(id: string): void
@@ -258,8 +258,8 @@ export function createAgentRuntime(
       list: (sessionId) => dependencies.runs.list?.(sessionId) ?? [],
     },
     permissions: {
-      respond(response) {
-        dependencies.permissions.respond(response)
+      async respond(response) {
+        await dependencies.permissions.respond(response)
         emitHost({
           type: 'permission_resolved',
           requestId: response.requestId,

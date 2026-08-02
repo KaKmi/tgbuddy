@@ -3,6 +3,7 @@ export { SqliteChannelRepository } from './repositories/sqlite-channel-repositor
 export { SqliteProfileRepository } from './repositories/sqlite-profile-repository.ts'
 export { SqlitePermissionRuleRepository } from './repositories/sqlite-permission-rule-repository.ts'
 export { SqlitePlanEffectRepository } from './repositories/sqlite-plan-effect-repository.ts'
+export { SqliteInteractionDecisionWriter } from './repositories/sqlite-interaction-decision-writer.ts'
 export { SqliteMcpConfigRepository } from './repositories/sqlite-mcp-config-repository.ts'
 export { SqliteRunRepository } from './repositories/sqlite-run-repository.ts'
 export { SqliteWorkspaceRepository } from './repositories/sqlite-workspace-repository.ts'

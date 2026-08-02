@@ -7,6 +7,13 @@ import {
 } from '../../shared/contracts/permission.ts'
 import { PendingRequests } from '../pending/pending-requests.ts'
 import type { PermissionAskInput } from './policy-engine.ts'
+import {
+  InteractionResponseConflictError,
+  interactionResponseHash,
+  type InteractionDecisionReceipt,
+  type InteractionDecisionWriter,
+} from '../pending/interaction-decision-writer.ts'
+import type { PermissionRule } from '../../shared/contracts/permission.ts'
 
 /**
  * 授权询问 broker —— 请求由 Runtime registry 持有，IPC 只按 requestId 响应。
@@ -23,13 +30,14 @@ export interface PermissionAskBroker {
   /**
    * 用户响应。返回是否找到并兑现了请求 —— 重复响应/已消失的请求返回 false。
    */
-  respond(response: PermissionResponse): boolean
+  respond(response: PermissionResponse): Promise<InteractionDecisionReceipt | undefined>
   pending(): PermissionRequest[]
   clearSession(sessionId: string): void
 }
 
 export interface PermissionAskOutcome {
   allowed: boolean
+  decisionId?: string
   /** 拒绝时用户给出的理由，模型据此换一种方式（PermissionResponse.reason 透传） */
   reason?: string
 }
@@ -42,10 +50,11 @@ export interface CreatePermissionAskBrokerOptions {
    * 用户勾选「总是允许」并允许时的落点。S07 起由 Composition Root 注入，
    * 负责按 scope 解析 ownerId 并写入规则仓库；本类不直接依赖仓库。
    */
-  applyGrant?(
+  buildRule?(
     request: PermissionRequest,
     grant: NonNullable<PermissionResponse['grant']>,
-  ): void
+  ): Omit<PermissionRule, 'createdAt' | 'hits'>
+  decisionWriter?: InteractionDecisionWriter
 }
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search'])
@@ -135,18 +144,42 @@ export function createPermissionAskBroker(
       }
       return pending.suspend(request, options.emitRequest, signal)
     },
-    respond(response) {
-      const request = pending.respond(
-        response.requestId,
-        {
-          allowed: response.allowed,
-          ...(response.reason ? { reason: response.reason } : {}),
-        },
-      )
-      if (request && response.allowed && response.grant && !request.neverPersist) {
-        options.applyGrant?.(request, response.grant)
+    async respond(response) {
+      const request = pending.get(response.requestId)
+      const responseHash = interactionResponseHash(response)
+      if (!request) {
+        const receipt = options.decisionWriter?.findReceipt(response.requestId)
+        if (!receipt) return undefined
+        if (receipt.responseHash !== responseHash) {
+          throw new InteractionResponseConflictError(response.requestId)
+        }
+        return receipt
       }
-      return request !== undefined
+      const rule = response.allowed && response.grant && !request.neverPersist
+        ? options.buildRule?.(request, response.grant)
+        : undefined
+      const receipt = options.decisionWriter
+        ? await options.decisionWriter.commit({
+            kind: 'permission',
+            request,
+            response,
+            responseHash,
+            ...(rule ? { rule } : {}),
+          })
+        : {
+            status: 'committed' as const,
+            requestId: request.requestId,
+            decisionId: `legacy:${request.requestId}`,
+            responseHash,
+            kind: 'permission' as const,
+            executionState: response.allowed ? 'accepted_not_executed' as const : 'completed' as const,
+          }
+      pending.respond(response.requestId, {
+        allowed: response.allowed,
+        ...(options.decisionWriter ? { decisionId: receipt.decisionId } : {}),
+        ...(response.reason ? { reason: response.reason } : {}),
+      })
+      return receipt
     },
     pending: () => pending.list(),
     clearSession: (sessionId) => pending.clearSession(sessionId),

@@ -214,10 +214,12 @@ export function registerIpc(
 
   ipcMain.handle(
     IPC.PERMISSION_RESPOND,
-    (
+    async (
       _event,
       response: IpcRequest<'permission:respond'>,
-    ): IpcResponse<'permission:respond'> => agentRuntime.permissions.respond(response),
+    ): Promise<IpcResponse<'permission:respond'>> => {
+      await agentRuntime.permissions.respond(response)
+    },
   )
   ipcMain.handle(
     IPC.PERMISSION_PENDING,

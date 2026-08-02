@@ -188,6 +188,14 @@ export {
 } from './permissions/risk-classifier.ts'
 export { PendingRequests } from './pending/pending-requests.ts'
 export {
+  InteractionResponseConflictError,
+  interactionResponseHash,
+  type InteractionDecisionCommit,
+  type InteractionDecisionReceipt,
+  type InteractionDecisionWriter,
+  type PermissionExecutionState,
+} from './pending/interaction-decision-writer.ts'
+export {
   mountFailureMessage,
   type WorkspaceMountResolver,
 } from './workspaces/workspace-mount-resolver.ts'

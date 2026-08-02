@@ -2,12 +2,16 @@ import { describe, expect, test } from 'bun:test'
 import {
   createPermissionAskBroker,
   createPolicyEngine,
+  interactionResponseHash,
+  type InteractionDecisionReceipt,
+  type InteractionDecisionWriter,
   type PermissionAskBroker,
 } from '../../../src/runtime/index.ts'
 import type { PermissionRequest } from '../../../src/shared/contracts/permission.ts'
 
 interface HarnessOptions {
   emit?(request: PermissionRequest): void
+  decisionWriter?: InteractionDecisionWriter
 }
 
 function harness(options: HarnessOptions = {}): {
@@ -22,6 +26,7 @@ function harness(options: HarnessOptions = {}): {
       emitted.push(request)
       options.emit?.(request)
     },
+    decisionWriter: options.decisionWriter,
   })
   return { broker, emitted }
 }
@@ -37,6 +42,43 @@ function writeInput(overrides: Partial<{ toolName: string; args: Record<string, 
 }
 
 describe('PermissionAskBroker', () => {
+  test('decision commit 成功前不 settle，重复响应幂等，冲突响应失败', async () => {
+    let resolveCommit: ((receipt: InteractionDecisionReceipt) => void) | undefined
+    let receipt: InteractionDecisionReceipt | undefined
+    const writer: InteractionDecisionWriter = {
+      commit: () => new Promise((resolve) => {
+        resolveCommit = (value) => {
+          receipt = value
+          resolve(value)
+        }
+      }),
+      findReceipt: () => receipt,
+    }
+    const { broker } = harness({ decisionWriter: writer })
+    const result = broker.ask(writeInput(), new AbortController().signal)
+    const response = { requestId: 'request-1', allowed: true }
+    const responding = broker.respond(response)
+
+    expect(await Promise.race([
+      result.then(() => 'settled'),
+      Promise.resolve('pending'),
+    ])).toBe('pending')
+    resolveCommit?.({
+      status: 'committed',
+      requestId: 'request-1',
+      decisionId: 'decision-1',
+      responseHash: interactionResponseHash(response),
+      kind: 'permission',
+      executionState: 'accepted_not_executed',
+    })
+    await expect(responding).resolves.toMatchObject({ decisionId: 'decision-1' })
+    await expect(result).resolves.toMatchObject({ allowed: true, decisionId: 'decision-1' })
+    const duplicates = await Promise.all(Array.from({ length: 10 }, () => broker.respond(response)))
+    expect(new Set(duplicates.map((item) => item?.decisionId))).toEqual(new Set(['decision-1']))
+    await expect(broker.respond({ requestId: 'request-1', allowed: false }))
+      .rejects.toMatchObject({ code: 'interaction_response_conflict' })
+  })
+
   test('根目录文件的候选粒度包含精确文件匹配，避免「总是允许」建了也命中不了', () => {
     const { broker, emitted } = harness()
     void broker.ask(
@@ -89,7 +131,7 @@ describe('PermissionAskBroker', () => {
     expect(broker.pending()).toHaveLength(1)
     expect(broker.pending()[0]?.requestId).toBe('request-1')
 
-    broker.respond({ requestId: 'request-1', allowed: true })
+    await broker.respond({ requestId: 'request-1', allowed: true })
     await expect(result).resolves.toEqual({ allowed: true })
     expect(broker.pending()).toEqual([])
   })
@@ -98,23 +140,23 @@ describe('PermissionAskBroker', () => {
     const { broker } = harness()
     const result = broker.ask(writeInput(), new AbortController().signal)
 
-    expect(broker.respond({ requestId: 'request-1', allowed: false })).toBe(true)
+    await expect(broker.respond({ requestId: 'request-1', allowed: false })).resolves.toBeDefined()
     await expect(result).resolves.toEqual({ allowed: false })
     expect(broker.pending()).toEqual([])
-    expect(broker.respond({ requestId: 'request-1', allowed: true })).toBe(false)
+    await expect(broker.respond({ requestId: 'request-1', allowed: true })).resolves.toBeUndefined()
   })
 
   test('拒绝理由透传给策略层：PermissionResponse.reason 不丢失', async () => {
     const { broker } = harness()
     const result = broker.ask(writeInput(), new AbortController().signal)
 
-    expect(
+    await expect(
       broker.respond({
         requestId: 'request-1',
         allowed: false,
         reason: '不要动这个文件，先看日志',
       }),
-    ).toBe(true)
+    ).resolves.toBeDefined()
     await expect(result).resolves.toEqual({
       allowed: false,
       reason: '不要动这个文件，先看日志',
@@ -203,8 +245,8 @@ describe('PermissionAskBroker', () => {
     })
     expect(emitted[1]?.suggestedGrants).toEqual([])
 
-    broker.respond({ requestId: 'request-1', allowed: true })
-    broker.respond({ requestId: 'request-2', allowed: true })
+    await broker.respond({ requestId: 'request-1', allowed: true })
+    await broker.respond({ requestId: 'request-2', allowed: true })
     await Promise.all([writeResult, destructiveResult])
   })
 
@@ -243,7 +285,7 @@ describe('PermissionAskBroker', () => {
     expect(emitted[1]?.suggestedGrants).toEqual([])
 
     for (const request of emitted) {
-      broker.respond({ requestId: request.requestId, allowed: false })
+      await broker.respond({ requestId: request.requestId, allowed: false })
     }
     expect(broker.pending()).toEqual([])
   })
@@ -270,7 +312,7 @@ describe('PermissionAskBroker', () => {
     )
 
     expect(broker.pending()).toHaveLength(1)
-    broker.respond({ requestId: broker.pending()[0]!.requestId, allowed: true })
+    await broker.respond({ requestId: broker.pending()[0]!.requestId, allowed: true })
     await expect(decision).resolves.toEqual({ action: 'allow' })
     expect(broker.pending()).toEqual([])
   })

@@ -168,7 +168,9 @@ export function createLegacyRuntime(
     sessionTitles: options.sessionTitles,
     runs,
     permissions: {
-      respond: (response) => options.permissions.respond(response),
+      respond: async (response) => {
+        await options.permissions.respond(response)
+      },
       pending: options.permissions.pending,
       expireSessionRules(sessionId) {
         for (const rule of options.rules.list()) {

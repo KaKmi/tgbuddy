@@ -74,4 +74,14 @@ describe('Permission v2 SQLite 契约', () => {
     expect(migration).toContain('plan_revision INTEGER NOT NULL')
     expect(migration).toContain('subject_json TEXT NOT NULL')
   })
+
+  test('interaction journal 按 requestId 唯一并记录 permission audit', () => {
+    const migration = readFileSync(
+      join(import.meta.dir, '..', '..', '..', 'src', 'infrastructure', 'sqlite', 'migrations', '020_app_interaction_journal.sql'),
+      'utf8',
+    )
+    expect(migration).toContain('request_id TEXT PRIMARY KEY')
+    expect(migration).toContain('CREATE TABLE app_permission_audit')
+    expect(migration).toContain('execution_state TEXT')
+  })
 })

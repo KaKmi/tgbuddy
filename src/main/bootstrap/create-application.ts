@@ -37,6 +37,7 @@ import {
   SqliteMcpConfigRepository,
   SqlitePermissionRuleRepository,
   SqlitePlanEffectRepository,
+  SqliteInteractionDecisionWriter,
   SqliteProfileRepository,
   SqliteRunRepository,
   SqliteSessionRepository,
@@ -112,6 +113,17 @@ export async function createApplication(
     rules: permissionRules.list(),
   })
   const planEffects = new SqlitePlanEffectRepository(appDatabase)
+  const interactionDecisionWriter = new SqliteInteractionDecisionWriter(appDatabase, {
+    createId,
+    now: Date.now,
+    onPermissionRuleCommitted() {
+      const currentRules = permissionRuleIndex.current()
+      permissionRuleIndex.replaceCommitted({
+        revision: currentRules.revision + 1,
+        rules: permissionRules.list(),
+      })
+    },
+  })
   const channelRepository = new SqliteChannelRepository(appDatabase)
   const profileRepository = new SqliteProfileRepository(appDatabase)
   // C01：渠道密钥只经 SecretStore 保存；SQLite 只存 secret ref。
@@ -302,8 +314,9 @@ export async function createApplication(
         },
       })
     },
-    applyGrant(request, grant) {
-      permissionRules.add({
+    decisionWriter: interactionDecisionWriter,
+    buildRule(request, grant) {
+      return {
         id: createId(),
         tool: request.toolName,
         match: grant.match,
@@ -318,12 +331,7 @@ export async function createApplication(
               : undefined,
         reason: '授权卡「总是允许」',
         source: 'user',
-      })
-      const currentRules = permissionRuleIndex.current()
-      permissionRuleIndex.replaceCommitted({
-        revision: currentRules.revision + 1,
-        rules: permissionRules.list(),
-      })
+      }
     },
   })
   // S09：计划审批请求同样由 Runtime broker 持有（与权限共用 pending registry）。

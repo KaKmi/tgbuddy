@@ -88,6 +88,10 @@ export class PendingRequests<TReq extends HasSession, TRes> {
     return [...this.map.values()].map((p) => p.request)
   }
 
+  get(requestId: string): TReq | undefined {
+    return this.map.get(requestId)?.request
+  }
+
   private settle(requestId: string, value: TRes): TReq | undefined {
     const pending = this.map.get(requestId)
     if (!pending) return undefined
