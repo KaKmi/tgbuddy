@@ -42,6 +42,10 @@ import {
   type AuthorizedInvocation,
   type RunAuthorizationGate,
 } from '../../runtime/ports/run-authorization-gate.ts'
+import {
+  PiFileIdentityBinder,
+  type FileIdentityBinding,
+} from './pi-file-identity-binder.ts'
 
 export interface PiAgentSessionProvider {
   openHarnessSession(
@@ -214,15 +218,20 @@ class PiAgentEngine implements AgentEngine {
       mountPath: invocation.cwd,
     })
     try {
+      const fileIdentityBinder = await PiFileIdentityBinder.create(
+        invocation.cwd,
+        invocation.permissionCeiling.mountRevision,
+      )
       const authorizations = new Map<
         string,
-        | { direct: true }
-        | { ticket: AuthorizationTicket; invocation: AuthorizedInvocation }
+        | { direct: true; fileBinding?: FileIdentityBinding }
+        | { ticket: AuthorizationTicket; invocation: AuthorizedInvocation; fileBinding?: FileIdentityBinding }
       >()
       const tools = this.#tools(invocation, this.#piEnv(runEnv)).map((tool): AgentTool => ({
         ...tool,
         execute: async (toolCallId, params, toolSignal, onUpdate) => {
           const authorization = authorizations.get(toolCallId)
+          await fileIdentityBinder.verify(authorization?.fileBinding)
           if (!authorization || 'direct' in authorization) {
             return tool.execute(toolCallId, params, toolSignal, onUpdate)
           }
@@ -272,11 +281,17 @@ class PiAgentEngine implements AgentEngine {
           return { block: true, reason: decision.reason ?? '用户拒绝了授权' }
         }
         if (decision.action === 'allow') {
-          authorizations.set(event.toolCallId, { direct: true })
+          authorizations.set(event.toolCallId, {
+            direct: true,
+            fileBinding: decision.invocation
+              ? await fileIdentityBinder.bind(decision.invocation)
+              : undefined,
+          })
         } else if (decision.action === 'authorize' || decision.action === 'approval_required') {
           const current = authorizedInvocation(invocation, decision.invocation)
           authorizations.set(event.toolCallId, {
             invocation: current,
+            fileBinding: await fileIdentityBinder.bind(decision.invocation),
             ticket: authorizationTicket(
               event.toolCallId,
               decision.action === 'approval_required' ? decision.decisionId : undefined,
