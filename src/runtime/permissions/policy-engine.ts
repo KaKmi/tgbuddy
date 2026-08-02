@@ -14,6 +14,8 @@ import type {
   ToolPolicyInput,
 } from '../runs/agent-engine.ts'
 import type { PermissionRuleRepository } from './permission-rule-repository.ts'
+import type { PlanEffectRepository } from '../plans/plan-effect-repository.ts'
+import type { PlanEffectGrant } from '../../shared/contracts/permission.ts'
 import type { InvocationNormalizer, ResolvedInvocation } from './invocation-normalizer.ts'
 import type { PermissionRiskLevel, RiskClassifier } from './risk-classifier.ts'
 
@@ -38,6 +40,7 @@ export interface PolicyEngineDependencies {
   /** Task 4 新决策链；短期可缺仅为旧测试/迁移入口。 */
   normalizer?: InvocationNormalizer
   classifier?: RiskClassifier
+  planEffects?: PlanEffectRepository
 }
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search', 'skill'])
@@ -274,12 +277,28 @@ async function evaluateRiskPolicy(
     ? assessment.effectiveRisk
     : assessment.level
   const invocation: ResolvedInvocation = normalized.invocation
+  const mode = dependencies.getMode(input.sessionId)
+  if (
+    mode === 'plan'
+    && input.toolName === 'delegate_to_agent'
+    && input.args.role !== 'explorer'
+    && !findPlanEffect(dependencies.planEffects, input, invocation, risk)
+  ) {
+    return {
+      action: 'deny',
+      risk,
+      reason: { kind: 'plan_gate', code: 'plan_required' },
+    }
+  }
   if (risk === 'R0' || risk === 'R1') {
     return { action: 'allow', risk, invocation }
   }
 
-  const mode = dependencies.getMode(input.sessionId)
   if (mode === 'plan') {
+    const effect = findPlanEffect(dependencies.planEffects, input, invocation, risk)
+    if (effect && risk !== 'R4') {
+      return { action: 'authorize', risk, source: 'plan_effect', invocation }
+    }
     return {
       action: 'deny',
       risk,
@@ -306,4 +325,39 @@ async function evaluateRiskPolicy(
     invocation,
     ...(outcome.reason ? { reason: outcome.reason } : {}),
   }
+}
+
+function findPlanEffect(
+  repository: PlanEffectRepository | undefined,
+  input: ToolPolicyInput,
+  invocation: ResolvedInvocation,
+  risk: PermissionRiskLevel,
+): PlanEffectGrant | undefined {
+  const subject = input.subject
+  if (!repository || !subject || risk === 'R4') return undefined
+  return repository.list(subject.rootRunId).find((grant) => {
+    if (grant.maxRisk === 'R2' && risk === 'R3') return false
+    if (grant.subjectTemplate.kind === 'root_agent') {
+      if (grant.subjectTemplate.agentRunId !== subject.agentRunId) return false
+    } else if (grant.subjectTemplate.delegationIntentId !== input.args.delegationIntentId) {
+      return false
+    }
+    if (grant.matcher.tool && grant.matcher.tool !== input.toolName) return false
+    if (grant.matcher.match === 'tool') return grant.matcher.pattern === input.toolName
+    if (grant.matcher.match === 'path') {
+      return invocation.targets.some((target) =>
+        target.kind === 'path' && target.value.startsWith(grant.matcher.pattern)
+      )
+    }
+    if (grant.matcher.match === 'command') {
+      return invocation.shell?.command.startsWith(grant.matcher.pattern) ?? false
+    }
+    if (grant.matcher.match === 'method') {
+      return `${invocation.mcp?.serverId}.${invocation.mcp?.method}` === grant.matcher.pattern
+    }
+    const targetKind = grant.matcher.match === 'origin' ? 'host' : 'account'
+    return invocation.targets.some((target) =>
+      target.kind === targetKind && target.value === grant.matcher.pattern
+    )
+  })
 }

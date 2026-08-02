@@ -449,7 +449,7 @@ export async function createApplication(
           if (!invocation.lineage && delegationRef.service) {
             tools.push(
               buildDelegateTool({
-                delegate: (task, toolCallId, signal) =>
+                delegate: (task, toolCallId, _options, signal) =>
                   delegationRef.service!.delegate({
                     parentSessionId: invocation.sessionId,
                     workspaceId: invocation.workspaceId,

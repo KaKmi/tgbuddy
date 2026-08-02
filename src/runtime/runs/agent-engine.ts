@@ -63,7 +63,7 @@ export type ToolPolicyDecision =
   | {
       action: 'authorize'
       risk: 'R2' | 'R3'
-      source: 'rule' | 'bypass'
+      source: 'rule' | 'bypass' | 'plan_effect'
       invocation: ResolvedInvocation
     }
   | {

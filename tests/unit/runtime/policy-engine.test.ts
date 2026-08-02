@@ -82,7 +82,7 @@ function tool(input: Partial<ToolPolicyInput> = {}): ToolPolicyInput {
       rootSessionId: 'session-1',
       workspaceId: 'ws-1',
       mountRevision: 'mount-1',
-      allowedToolIds: ['read', 'write', 'edit', 'bash', 'ask_user'],
+      allowedToolIds: ['read', 'write', 'edit', 'bash', 'ask_user', 'delegate_to_agent'],
       maxAutoRisk: 'R3',
       role: 'root',
     },
@@ -117,6 +117,33 @@ describe('PolicyEngine 基础决策', () => {
       reason: { kind: 'permission', code: 'forbidden' },
     })
     expect(h.askCalls).toHaveLength(1)
+  })
+
+  test('planning 只允许只读能力与 Explorer，Worker 和写 effect 返回 plan gate', async () => {
+    const h = harness({ mode: () => 'plan', riskPolicy: true })
+    await expect(h.policy.evaluate(tool({
+      toolName: 'bash',
+      args: { command: 'git status' },
+    }), h.controller.signal)).resolves.toMatchObject({ action: 'allow', risk: 'R1' })
+    await expect(h.policy.evaluate(tool({
+      toolName: 'delegate_to_agent',
+      args: { task: '调查', role: 'explorer' },
+    }), h.controller.signal)).resolves.toMatchObject({ action: 'allow', risk: 'R0' })
+    await expect(h.policy.evaluate(tool({
+      toolName: 'delegate_to_agent',
+      args: { task: '实现', role: 'worker', delegationIntentId: 'intent-1' },
+    }), h.controller.signal)).resolves.toMatchObject({
+      action: 'deny',
+      reason: { kind: 'plan_gate', code: 'plan_required' },
+    })
+    await expect(h.policy.evaluate(tool({
+      toolName: 'write',
+      args: { path: 'C:\\work\\src\\a.ts' },
+    }), h.controller.signal)).resolves.toMatchObject({
+      action: 'deny',
+      reason: { kind: 'plan_gate', code: 'plan_required' },
+    })
+    expect(h.askCalls).toHaveLength(0)
   })
 
   test('默认读工具 allow，不触发 broker', async () => {

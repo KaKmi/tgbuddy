@@ -56,7 +56,7 @@ describe('计划模式中断', () => {
     expect(text?.type === 'text' ? text.text : '').toContain('操作已中止')
   })
 
-  test('批准后自动退出计划模式并通知宿主', async () => {
+  test('批准后保持计划模式，只允许批准效果', async () => {
     const state = harness()
     const tools = buildPlanModeTools({
       getMode: () => 'plan',
@@ -73,7 +73,7 @@ describe('计划模式中断', () => {
     const text = result.content.find((item) => item.type === 'text')
 
     expect(text?.type === 'text' ? text.text : '').toContain('计划已批准')
-    expect(state.changes).toEqual([{ mode: 'auto', source: 'tool' }])
+    expect(state.changes).toEqual([])
   })
 
   test('拒绝后留在计划模式，把意见回给模型', async () => {

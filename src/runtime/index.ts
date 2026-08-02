@@ -158,6 +158,10 @@ export {
   type PlanAskBroker,
 } from './plans/plan-broker.ts'
 export {
+  MemoryPlanEffectRepository,
+  type PlanEffectRepository,
+} from './plans/plan-effect-repository.ts'
+export {
   createAskUserBroker,
   type AskUserBroker,
   type CreateAskUserBrokerOptions,

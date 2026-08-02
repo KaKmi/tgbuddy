@@ -6,6 +6,7 @@ export interface DelegateHooks {
   delegate(
     task: string,
     toolCallId: string,
+    options: { role: 'explorer' | 'worker'; delegationIntentId?: string },
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; text: string }>
 }
@@ -23,10 +24,24 @@ export function buildDelegateTool(hooks: DelegateHooks): AgentTool {
       task: Type.String({
         description: '子任务描述，包含要收集什么、返回什么格式',
       }),
+      role: Type.Optional(Type.Union([
+        Type.Literal('explorer'),
+        Type.Literal('worker'),
+      ])),
+      delegationIntentId: Type.Optional(Type.String()),
     }),
     execute: async (toolCallId, params, signal) => {
-      const { task } = params as { task: string }
-      const result = await hooks.delegate(task, toolCallId, signal)
+      const { task, role = 'explorer', delegationIntentId } = params as {
+        task: string
+        role?: 'explorer' | 'worker'
+        delegationIntentId?: string
+      }
+      const result = await hooks.delegate(
+        task,
+        toolCallId,
+        { role, ...(delegationIntentId ? { delegationIntentId } : {}) },
+        signal,
+      )
       if (!result.ok) {
         return {
           content: [

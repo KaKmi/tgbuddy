@@ -2,6 +2,7 @@ import type {
   PlanApproval,
   PlanRequest,
   PlanResponse,
+  PlanningPhase,
 } from '../../shared/contracts/permission.ts'
 import { PendingRequests } from '../pending/pending-requests.ts'
 
@@ -22,6 +23,7 @@ export interface PlanAskBroker {
    */
   respond(response: PlanResponse): boolean
   pending(): PlanRequest[]
+  phase(sessionId: string): PlanningPhase
   clearSession(sessionId: string): void
 }
 
@@ -38,12 +40,22 @@ export function createPlanAskBroker(
     () => ({ approved: false, reason: '操作已中止' }),
     () => ({ approved: false, reason: '会话已结束' }),
   )
+  const phases = new Map<string, PlanningPhase>()
+  const requestPhase = new Map<string, Extract<PlanningPhase, { status: 'plan_pending' }>>()
 
   return {
     requestApproval(input, signal) {
+      const requestId = options.createId()
+      const phase: Extract<PlanningPhase, { status: 'plan_pending' }> = {
+        status: 'plan_pending',
+        planId: requestId,
+        planRevision: 1,
+      }
+      phases.set(input.sessionId, phase)
+      requestPhase.set(requestId, phase)
       return pending.suspend(
         {
-          requestId: options.createId(),
+          requestId,
           sessionId: input.sessionId,
           plan: input.plan,
         },
@@ -52,13 +64,30 @@ export function createPlanAskBroker(
       )
     },
     respond(response) {
+      const request = pending.list().find((item) => item.requestId === response.requestId)
       const settled = pending.respond(response.requestId, {
         approved: response.approved,
         ...(response.reason ? { reason: response.reason } : {}),
       })
+      const phase = requestPhase.get(response.requestId)
+      if (settled !== undefined && request && phase) {
+        phases.set(request.sessionId, response.approved
+          ? {
+              status: 'executing_approved_plan',
+              planId: phase.planId,
+              planRevision: phase.planRevision,
+              approvalId: `${response.requestId}:approval`,
+            }
+          : { status: 'planning' })
+        requestPhase.delete(response.requestId)
+      }
       return settled !== undefined
     },
     pending: () => pending.list(),
-    clearSession: (sessionId) => pending.clearSession(sessionId),
+    phase: (sessionId) => phases.get(sessionId) ?? { status: 'planning' },
+    clearSession: (sessionId) => {
+      pending.clearSession(sessionId)
+      phases.delete(sessionId)
+    },
   }
 }

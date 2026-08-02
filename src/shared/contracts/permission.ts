@@ -177,6 +177,34 @@ export interface PlanResponse {
   reason?: string
 }
 
+export type PlanningPhase =
+  | { status: 'planning' }
+  | { status: 'plan_pending'; planId: string; planRevision: number }
+  | {
+      status: 'executing_approved_plan'
+      planId: string
+      planRevision: number
+      approvalId: string
+    }
+
+export interface PermissionMatcher {
+  tool?: string
+  match: 'tool' | 'path' | 'command' | 'method' | 'origin' | 'account'
+  pattern: string
+}
+
+export interface PlanEffectGrant {
+  rootRunId: string
+  planId: string
+  planRevision: number
+  effectId: string
+  subjectTemplate:
+    | { kind: 'root_agent'; agentRunId: string }
+    | { kind: 'delegated_worker'; delegationIntentId: string }
+  maxRisk: 'R2' | 'R3'
+  matcher: PermissionMatcher
+}
+
 // ── 用户问答 ──────────────────────────────────────────────────────
 
 export interface AskUserOption {

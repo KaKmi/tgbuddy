@@ -8,7 +8,7 @@
  * 不进工具区、不参与权限设置。
  *
  * 判定规则在 `policy-engine.ts` 的 `mode === 'plan'` 分支：
- *   只读工具放行 / `.md` 写入放行 / 只读 bash 放行 / 只读 MCP 放行 / 其余拒绝。
+ *   只读能力与 Explorer 放行；其余效果必须由批准计划生成 grant。
  */
 
 import { Type } from '@earendil-works/pi-ai'
@@ -71,10 +71,8 @@ function exitPlanMode(hooks: PlanModeHooks): AgentTool {
         }
       }
 
-      hooks.setMode('auto')
-      hooks.onModeChanged('auto', 'tool')
       return {
-        content: [{ type: 'text', text: '计划已批准，已退出计划模式。现在可以按计划执行。' }],
+        content: [{ type: 'text', text: '计划已批准。保持计划模式，只执行批准的效果。' }],
         details: { action: 'read' },
       }
     },
