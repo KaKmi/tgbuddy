@@ -12,7 +12,17 @@ export function ActionDock({ sessionId }: { sessionId?: string }) {
   const [items, setItems] = useState<HumanInteractionRequest[]>([])
 
   async function refresh(): Promise<void> {
-    const pending = await window.tgbuddy.interaction.pending()
+    if (!sessionId) {
+      setItems([])
+      return
+    }
+    const runs = await window.tgbuddy.runs.list(sessionId)
+    const latest = runs.reduce(
+      (current, run) => (!current || run.createdAt > current.createdAt ? run : current),
+      undefined as (typeof runs)[number] | undefined,
+    )
+    const rootRunId = latest ? (latest.rootRunId ?? latest.id) : undefined
+    const pending = rootRunId ? await window.tgbuddy.interaction.pending(rootRunId) : []
     setItems(pending.filter((item) => item.active))
   }
 
