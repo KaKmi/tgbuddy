@@ -1,5 +1,5 @@
 import { Bot, CircleStop, LoaderCircle, Search, Wrench } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DelegationTask, DelegationTaskStatus } from '../../../shared/contracts/delegation.ts'
 import type { HumanInteractionRequest } from '../../../shared/contracts/interaction.ts'
 import { roleOf, type SessionMessage } from '../../../shared/types/message.ts'
@@ -7,54 +7,55 @@ import { roleOf, type SessionMessage } from '../../../shared/types/message.ts'
 const ACTIVE_STATUSES = new Set<DelegationTaskStatus>(['queued', 'starting', 'running', 'stopping'])
 
 export function TaskWorkbench({
-  rootRunId,
-  onCountChange,
+  sessionId,
+  tasks,
+  onRefreshTasks,
 }: {
-  rootRunId?: string
-  onCountChange?(count: number): void
+  sessionId?: string
+  tasks: DelegationTask[]
+  onRefreshTasks(): Promise<void>
 }) {
-  const [tasks, setTasks] = useState<DelegationTask[]>([])
   const [interactions, setInteractions] = useState<HumanInteractionRequest[]>([])
   const [selectedId, setSelectedId] = useState<string>()
   const [messages, setMessages] = useState<SessionMessage[]>([])
   const [stopping, setStopping] = useState(false)
+  const latestMessageRequestRef = useRef(0)
 
-  async function refresh(): Promise<void> {
-    if (!rootRunId) return
-    const [nextTasks, nextInteractions] = await Promise.all([
-      window.tgbuddy.delegation.list(rootRunId),
-      window.tgbuddy.interaction.pending(rootRunId),
-    ])
-    setTasks(nextTasks)
-    setInteractions(nextInteractions)
+  async function refreshInteractions(): Promise<void> {
+    if (!sessionId) return
+    setInteractions(await window.tgbuddy.interaction.pending())
   }
 
   useEffect(() => {
-    setTasks([])
     setMessages([])
     setSelectedId(undefined)
-    if (!rootRunId) return
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), 800)
+    setInteractions([])
+    if (!sessionId) return
+    void refreshInteractions()
+    const timer = window.setInterval(() => void refreshInteractions(), 800)
     return () => window.clearInterval(timer)
-  }, [rootRunId])
+  }, [sessionId])
 
   const selected = tasks.find((task) => task.id === selectedId)
 
   useEffect(() => {
+    const requestId = ++latestMessageRequestRef.current
     setMessages([])
     if (!selectedId) return
-    void window.tgbuddy.delegation.messages(selectedId).then(setMessages)
+    void window.tgbuddy.delegation.messages(selectedId).then((nextMessages) => {
+      if (latestMessageRequestRef.current === requestId) setMessages(nextMessages)
+    })
+    return () => {
+      if (latestMessageRequestRef.current === requestId) {
+        latestMessageRequestRef.current += 1
+      }
+    }
   }, [selectedId, selected?.lastActivityAt])
 
   const groups = useMemo(() => groupTasks(tasks), [tasks])
   const attention = interactions.find((item) => item.source.taskId === selectedId)
 
-  useEffect(() => {
-    onCountChange?.(tasks.length)
-  }, [onCountChange, tasks.length])
-
-  if (!rootRunId) return <TaskEmptyState message="当前会话还没有可展示的运行任务" />
+  if (!sessionId) return <TaskEmptyState message="当前会话还没有可展示的运行任务" />
   if (tasks.length === 0) return <TaskEmptyState message="主 Agent 分派任务后，子 Agent 会显示在这里" />
 
   if (selected) {
@@ -84,7 +85,7 @@ export function TaskWorkbench({
                 setStopping(true)
                 try {
                   await window.tgbuddy.delegation.stop(selected.id)
-                  await refresh()
+                  await Promise.all([onRefreshTasks(), refreshInteractions()])
                 } finally {
                   setStopping(false)
                 }

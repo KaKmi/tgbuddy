@@ -288,7 +288,7 @@ export function registerIpc(
     IPC.DELEGATION_LIST,
     (event, input: IpcRequest<'delegation:list'>): IpcResponse<'delegation:list'> => {
       assertTrustedSender(event.sender, getWindow())
-      return agentRuntime.delegations.list(input.rootRunId)
+      return agentRuntime.delegations.listSession(input.sessionId)
     },
   )
   ipcMain.handle(

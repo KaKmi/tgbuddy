@@ -167,11 +167,19 @@ export function isNeverPersist(toolName: string, args: Record<string, unknown>):
 
 // ── 计划审批 ──────────────────────────────────────────────────────
 
+export interface PlanEffectProposal {
+  tool: string
+  match: PermissionMatcher['match']
+  pattern: string
+  maxRisk: 'R2' | 'R3'
+}
+
 export interface PlanRequest {
   requestId: string
   sessionId: string
   /** 计划正文，markdown */
   plan: string
+  effects: PlanEffectProposal[]
 }
 
 export interface PlanApproval {

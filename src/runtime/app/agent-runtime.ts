@@ -112,6 +112,7 @@ export interface InteractionCommands {
 
 export interface DelegationCommands {
   list(rootRunId: string): DelegationTask[]
+  listSession(rootSessionId: string): DelegationTask[]
   messages(taskId: string): Promise<SessionMessage[]>
   stop(taskId: string): Promise<void>
   retry(taskId: string): Promise<DelegationTask>

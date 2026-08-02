@@ -56,6 +56,14 @@ export class SqliteDelegationRepository implements DelegationRepository {
     ).map(rowToTask))
   }
 
+  listBySession(rootSessionId: string): DelegationTask[] {
+    return this.appDatabase.use((database) => (
+      database.prepare(
+        `SELECT ${COLUMNS} FROM app_delegation_tasks WHERE root_session_id = ? ORDER BY created_at ASC, id ASC`,
+      ).all(rootSessionId) as unknown as DelegationRow[]
+    ).map(rowToTask))
+  }
+
   listActive(): DelegationTask[] {
     return this.appDatabase.use((database) => (
       database.prepare(

@@ -38,9 +38,21 @@ describe('DelegationTask 持久化契约', () => {
     expect(sql).not.toContain('waiting_permission')
     expect(sql).toContain('permission_ceiling_json')
   })
+
+  test('按 Session 聚合多个 root Run，同时保留 root 查询语义', () => {
+    const repository = new MemoryDelegationRepository()
+    repository.create(task({ id: 'task-2', rootRunId: 'root-2', createdAt: 2 }))
+    repository.create(task({ id: 'task-1', rootRunId: 'root-1', createdAt: 1 }))
+    repository.create(task({ id: 'task-other', rootRunId: 'root-3', rootSessionId: 'session-2', createdAt: 3 }))
+
+    expect(repository.listBySession('session-1').map((item) => item.id))
+      .toEqual(['task-1', 'task-2'])
+    expect(repository.listByRoot('root-2').map((item) => item.id))
+      .toEqual(['task-2'])
+  })
 })
 
-function task(): DelegationTask {
+function task(overrides: Partial<DelegationTask> = {}): DelegationTask {
   return {
     id: 'task-1',
     rootRunId: 'root-1',
@@ -66,5 +78,6 @@ function task(): DelegationTask {
     lastActivityAt: 1,
     createdAt: 1,
     updatedAt: 1,
+    ...overrides,
   }
 }

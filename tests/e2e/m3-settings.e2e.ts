@@ -106,12 +106,16 @@ test('专家可绑定指定 Skill，Composer 切换后写入会话', async ({ tg
     .toContainText('1 个技能')
   await closeSettings(page)
 
-  await createSession(page)
+  await expect.poll(() => page.evaluate(() => window.tgbuddy.session.list()))
+    .toHaveLength(0)
   await page.getByTestId('expert-chip').click()
   await page.getByTestId('model-profile-option').filter({ hasText: '风险分析专家' }).click()
   await page.screenshot({ path: join(COMPOSER_QA_DIRECTORY, 'composer.png') })
 
+  await expect.poll(() => page.evaluate(() => window.tgbuddy.session.list()))
+    .toHaveLength(1)
   const sessions = await page.evaluate(() => window.tgbuddy.session.list())
+  expect(sessions).toHaveLength(1)
   expect(sessions[0]?.profileId).toBeTruthy()
 })
 

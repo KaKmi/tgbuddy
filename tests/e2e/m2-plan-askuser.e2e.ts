@@ -31,6 +31,8 @@ test('计划模式完整闭环：进入调研 → 提交计划 → 批准后执�
 
   await tgbuddy.page.getByRole('button', { name: '批准并执行', exact: true }).click()
   await expect(tgbuddy.page.getByText('M2 计划完成', { exact: true })).toBeVisible()
+  const approvedWrite = tgbuddy.page.getByTestId('tool-card').filter({ hasText: 'm2-write.txt' }).last()
+  await expect(approvedWrite).not.toContainText(/失败|已拒绝/)
   // 批准后保留计划模式，仅允许执行本次获批计划内的效果。
   await expect(tgbuddy.page.getByRole('button', { name: '计划模式', exact: true })).toBeVisible()
 })

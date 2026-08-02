@@ -15,6 +15,7 @@ export interface DelegationRepository {
   create(task: DelegationTask): DelegationTask
   get(taskId: string): DelegationTask | undefined
   listByRoot(rootRunId: string): DelegationTask[]
+  listBySession(rootSessionId: string): DelegationTask[]
   listActive(): DelegationTask[]
   compareAndSet(
     taskId: string,
@@ -41,6 +42,13 @@ export class MemoryDelegationRepository implements DelegationRepository {
     return [...this.#tasks.values()]
       .filter((task) => task.rootRunId === rootRunId)
       .sort((left, right) => left.createdAt - right.createdAt)
+      .map((task) => structuredClone(task))
+  }
+
+  listBySession(rootSessionId: string): DelegationTask[] {
+    return [...this.#tasks.values()]
+      .filter((task) => task.rootSessionId === rootSessionId)
+      .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id))
       .map((task) => structuredClone(task))
   }
 

@@ -76,7 +76,13 @@ export class PiFileIdentityBinder {
 
   async #capture(lexicalPath: string): Promise<FileResourceIdentity> {
     const absolute = resolve(lexicalPath)
-    const parent = await realpath(dirname(absolute))
+    const realTarget = await realpath(absolute).catch(() => undefined)
+    // glob/grep 默认搜索工作区根；根目录本身没有“工作区内的父目录”，
+    // 因此用根自身作为身份锚点；先 realpath 也兼容 Windows 8.3 短路径。
+    const parent = realTarget
+      && relative(normalize(this.#root), normalize(realTarget)) === ''
+      ? this.#root
+      : await realpath(dirname(absolute))
     if (!isWithin(this.#root, parent)) throw new FileIdentityChangedError(lexicalPath)
     const parentInfo = await stat(parent)
     const fileInfo = await stat(absolute).catch(() => undefined)

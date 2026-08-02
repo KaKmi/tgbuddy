@@ -9,6 +9,7 @@ import { isReadOnlyCommand } from '../../../src/shared/contracts/permission.ts'
 import type { ToolPolicy, ToolPolicyInput } from '../../../src/runtime/runs/agent-engine.ts'
 import { createInvocationNormalizer } from '../../../src/runtime/permissions/invocation-normalizer.ts'
 import { createRiskClassifier } from '../../../src/runtime/permissions/risk-classifier.ts'
+import { MemoryPlanEffectRepository } from '../../../src/runtime/plans/plan-effect-repository.ts'
 
 interface HarnessOptions {
   rules?: PermissionRule[]
@@ -16,6 +17,7 @@ interface HarnessOptions {
   workspaceId?: (sessionId: string) => string | undefined
   ask?: (input: PermissionAskInput, signal: AbortSignal) => Promise<boolean>
   riskPolicy?: boolean
+  planEffects?: MemoryPlanEffectRepository
 }
 
 function harness(options: HarnessOptions = {}): {
@@ -38,6 +40,7 @@ function harness(options: HarnessOptions = {}): {
         ? { allowed: outcome }
         : outcome
     },
+    planEffects: options.planEffects,
     ...(options.riskPolicy
       ? {
           normalizer: createInvocationNormalizer({
@@ -144,6 +147,35 @@ describe('PolicyEngine 基础决策', () => {
       reason: { kind: 'plan_gate', code: 'plan_required' },
     })
     expect(h.askCalls).toHaveLength(0)
+  })
+
+  test('计划批准只放行当前 Agent 的精确路径，不扩大到相邻前缀', async () => {
+    const effects = new MemoryPlanEffectRepository()
+    effects.add({
+      rootRunId: 'run-1',
+      planId: 'plan-1',
+      planRevision: 1,
+      effectId: 'effect-1',
+      subjectTemplate: { kind: 'root_agent', agentRunId: 'run-1' },
+      maxRisk: 'R3',
+      matcher: { tool: 'write', match: 'path', pattern: 'C:\\work\\src\\a.ts' },
+    })
+    const h = harness({ mode: () => 'plan', riskPolicy: true, planEffects: effects })
+
+    await expect(h.policy.evaluate(tool({
+      args: { path: 'C:\\work\\src\\a.ts' },
+    }), h.controller.signal)).resolves.toMatchObject({ action: 'authorize', source: 'plan_effect' })
+    await expect(h.policy.evaluate(tool({
+      args: { path: 'C:\\work\\src\\a.ts.bak' },
+    }), h.controller.signal)).resolves.toMatchObject({
+      action: 'deny', reason: { kind: 'plan_gate', code: 'plan_required' },
+    })
+    await expect(h.policy.evaluate(tool({
+      subject: { ...tool().subject!, agentRunId: 'run-2' },
+      args: { path: 'C:\\work\\src\\a.ts' },
+    }), h.controller.signal)).resolves.toMatchObject({
+      action: 'deny', reason: { kind: 'plan_gate', code: 'plan_required' },
+    })
   })
 
   test('默认读工具 allow，不触发 broker', async () => {

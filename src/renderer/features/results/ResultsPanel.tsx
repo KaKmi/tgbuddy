@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ChevronDown,
   Code2,
   Eye,
   ExternalLink,
-  File,
   FileImage,
   FileText,
   Folder,
@@ -17,6 +16,7 @@ import type {
   ArtifactPreviewResult,
   ArtifactRef,
 } from '../../../shared/contracts/artifact.ts'
+import type { DelegationTask } from '../../../shared/contracts/delegation.ts'
 import {
   filterArtifacts,
   groupArtifacts,
@@ -57,11 +57,16 @@ export function ResultsPanel({
   const [section, setSection] = useState<'artifacts' | 'workspace' | 'tasks'>('artifacts')
   const [selectedId, setSelectedId] = useState<string>()
   const [runStartedAt, setRunStartedAt] = useState<number>()
-  const [rootRunId, setRootRunId] = useState<string>()
-  const [taskCount, setTaskCount] = useState(0)
+  const [taskProjection, setTaskProjection] = useState<{
+    sessionId: string
+    tasks: DelegationTask[]
+  }>()
   const [preview, setPreview] = useState<ArtifactPreviewResult>()
   const [viewerOpen, setViewerOpen] = useState(false)
   const [workspaceQuery, setWorkspaceQuery] = useState('')
+  const currentTaskSessionRef = useRef(sessionId)
+  const latestTaskRequestRef = useRef(0)
+  currentTaskSessionRef.current = sessionId
 
   async function refreshArtifacts(): Promise<void> {
     if (!sessionId) return
@@ -75,7 +80,17 @@ export function ResultsPanel({
       undefined as (typeof runs)[number] | undefined,
     )
     setRunStartedAt(latest?.createdAt)
-    setRootRunId(latest ? (latest.rootRunId ?? latest.id) : undefined)
+  }
+
+  async function refreshTasks(targetSessionId = sessionId): Promise<void> {
+    if (!targetSessionId) return
+    const requestId = ++latestTaskRequestRef.current
+    const nextTasks = await window.tgbuddy.delegation.list(targetSessionId)
+    if (
+      currentTaskSessionRef.current !== targetSessionId
+      || latestTaskRequestRef.current !== requestId
+    ) return
+    setTaskProjection({ sessionId: targetSessionId, tasks: nextTasks })
   }
 
   useEffect(() => {
@@ -85,11 +100,25 @@ export function ResultsPanel({
     setFilter('all')
     setSection('artifacts')
     setRunStartedAt(undefined)
-    setRootRunId(undefined)
-    setTaskCount(0)
+    setTaskProjection(undefined)
     if (!sessionId) return
-    void refreshArtifacts()
-  }, [sessionId, active])
+    void Promise.all([refreshArtifacts(), refreshTasks()])
+  }, [sessionId])
+
+  useEffect(() => {
+    latestTaskRequestRef.current += 1
+    if (!sessionId) return
+    void Promise.all([refreshArtifacts(), refreshTasks(sessionId)])
+    return () => {
+      latestTaskRequestRef.current += 1
+    }
+  }, [active])
+
+  useEffect(() => {
+    if (!open || !sessionId) return
+    const timer = window.setInterval(() => void refreshTasks(), 800)
+    return () => window.clearInterval(timer)
+  }, [open, sessionId])
 
   useEffect(() => {
     setPreview(undefined)
@@ -107,6 +136,9 @@ export function ResultsPanel({
 
   const groups = groupArtifacts(filterArtifacts(artifacts, filter), runStartedAt)
   const selected = artifacts.find((artifact) => artifact.id === selectedId)
+  const tasks = taskProjection && taskProjection.sessionId === sessionId
+    ? taskProjection.tasks
+    : []
 
   useEffect(() => {
     if (artifacts.length === 0) return
@@ -144,10 +176,10 @@ export function ResultsPanel({
             className={`rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold ${section === 'tasks' ? 'bg-accent' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'}`}
           >
             子智能体
+            <span data-testid="results-section-count" className="ml-1 text-[10.5px] font-normal text-muted-foreground/70">
+              {tasks.length} 项
+            </span>
           </button>
-          <span data-testid="results-section-count" className="ml-1 text-[10.5px] text-muted-foreground/70">
-            {section === 'tasks' ? taskCount : artifacts.length} 项
-          </span>
         </div>
         <button
           type="button"
@@ -177,7 +209,12 @@ export function ResultsPanel({
       </div>}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {section === 'tasks' ? (
-          <TaskWorkbench rootRunId={rootRunId} onCountChange={setTaskCount} />
+          <TaskWorkbench
+            key={sessionId ?? 'no-session'}
+            sessionId={sessionId}
+            tasks={tasks}
+            onRefreshTasks={refreshTasks}
+          />
         ) : section === 'workspace' ? (
           <WorkspaceFiles
             artifacts={artifacts}
@@ -496,16 +533,7 @@ const EMPTY_HINTS = [
 
 function ResultsEmptyState() {
   return (
-    <div className="flex flex-col gap-4 px-4 pb-5 pt-1.5">
-      <section className="flex flex-col gap-[7px] rounded-xl bg-card/65 p-3.5 shadow-[inset_0_0_0_1px_hsl(var(--border))]">
-        <span className="grid h-[30px] w-[30px] place-items-center rounded-[9px] bg-muted text-muted-foreground">
-          <File className="h-4 w-4" strokeWidth={1.7} />
-        </span>
-        <strong className="text-[13px] font-medium text-foreground/90">这次任务的产物会出现在这里</strong>
-        <p className="m-0 text-[12px] leading-[1.75] text-muted-foreground">
-          左边保留 Agent 的执行过程；这里只收纳它写出的文件、生成的图片和改动过的代码。
-        </p>
-      </section>
+    <div className="flex flex-col px-4 pb-5 pt-1.5">
       <section className="flex flex-col gap-2">
         <span className="pl-0.5 text-[11px] font-medium tracking-[.07em] text-muted-foreground/70">会自动收纳</span>
         {EMPTY_HINTS.map(({ icon: Icon, label, description }) => (

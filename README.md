@@ -31,15 +31,42 @@ TgBuddy 不是一个把大模型包进聊天窗口的 Demo，而是一套围绕 
 | **单层 Subagent** | Root Agent 可委派 child Run，具备 lineage、预算、权限收窄、状态可见与级联取消 |
 | **本地优先数据** | SQLite 保存 canonical state，BlobStore 管理大对象，SecretStore 隔离敏感凭据 |
 
-## 实机界面
+##  Agent Harness 核心交互
 
-以下画面均来自当前仓库通过 `bun run dev` 启动后的实际 Electron 应用。
-
-### Agent 工作台
-
-会话、模型运行过程、工具活动、上下文状态和最终产物保持在同一个任务视图中。
-
-![TgBuddy Agent 工作台](assets/readme/tgbuddy-workbench.png)
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Agent 编排</strong><br />
+      Root Agent 委派边界清晰的子任务，并集中呈现 Subagent 的执行状态、过程与产出。<br /><br />
+      <a href="assets/readme/tgbuddy-agent-orchestration.png">
+        <img src="assets/readme/tgbuddy-agent-orchestration.png" alt="TgBuddy Agent 编排与子智能体任务" />
+      </a>
+    </td>
+    <td width="50%" valign="top">
+      <strong>人在回路</strong><br />
+      Agent 通过结构化提问暂停 Run，在获得用户的明确决策后继续执行。<br /><br />
+      <a href="assets/readme/tgbuddy-human-in-loop.png">
+        <img src="assets/readme/tgbuddy-human-in-loop.png" alt="TgBuddy 人在回路与结构化提问" />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>计划分析</strong><br />
+      先调查项目并梳理执行阶段、依赖与风险，将“先理解、再执行”固化为流程。<br /><br />
+      <a href="assets/readme/tgbuddy-plan-analysis.png">
+        <img src="assets/readme/tgbuddy-plan-analysis.png" alt="TgBuddy 计划分析与风险梳理" />
+      </a>
+    </td>
+    <td width="50%" valign="top">
+      <strong>审批检查点</strong><br />
+      完整计划交由用户批准或要求修改，通过检查点后才进入实际执行。<br /><br />
+      <a href="assets/readme/tgbuddy-plan-approval.png">
+        <img src="assets/readme/tgbuddy-plan-approval.png" alt="TgBuddy 计划审批与执行检查点" />
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## 系统架构
 

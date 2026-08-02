@@ -232,7 +232,7 @@ export interface IpcCommandMap {
     { requestId: string; response: unknown; expectedRevision: number },
     void
   >
-  'delegation:list': IpcCommand<{ rootRunId: string }, DelegationTask[]>
+  'delegation:list': IpcCommand<{ sessionId: string }, DelegationTask[]>
   'delegation:messages': IpcCommand<{ taskId: string }, SessionMessage[]>
   'delegation:stop': IpcCommand<{ taskId: string }, void>
   'delegation:retry': IpcCommand<{ taskId: string }, DelegationTask>
@@ -345,7 +345,7 @@ export interface TgBuddyAPI {
     respond(input: IpcRequest<'interaction:respond'>): Promise<IpcResponse<'interaction:respond'>>
   }
   delegation: {
-    list(rootRunId: string): Promise<IpcResponse<'delegation:list'>>
+    list(sessionId: string): Promise<IpcResponse<'delegation:list'>>
     messages(taskId: string): Promise<IpcResponse<'delegation:messages'>>
     stop(taskId: string): Promise<IpcResponse<'delegation:stop'>>
     retry(taskId: string): Promise<IpcResponse<'delegation:retry'>>

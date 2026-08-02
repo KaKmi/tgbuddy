@@ -87,7 +87,7 @@ const api = {
     respond: (input) => ipcRenderer.invoke(IPC.INTERACTION_RESPOND, input),
   },
   delegation: {
-    list: (rootRunId) => ipcRenderer.invoke(IPC.DELEGATION_LIST, { rootRunId }),
+    list: (sessionId) => ipcRenderer.invoke(IPC.DELEGATION_LIST, { sessionId }),
     messages: (taskId) => ipcRenderer.invoke(IPC.DELEGATION_MESSAGES, { taskId }),
     stop: (taskId) => ipcRenderer.invoke(IPC.DELEGATION_STOP, { taskId }),
     retry: (taskId) => ipcRenderer.invoke(IPC.DELEGATION_RETRY, { taskId }),

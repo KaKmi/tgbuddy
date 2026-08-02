@@ -58,4 +58,10 @@ export class SqlitePlanEffectRepository implements PlanEffectRepository {
         .run(rootRunId, planId)
     })
   }
+
+  removeRoot(rootRunId: string): void {
+    this.database.use((db) => {
+      db.prepare('DELETE FROM app_plan_effects WHERE root_run_id = ?').run(rootRunId)
+    })
+  }
 }

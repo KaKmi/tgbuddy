@@ -34,6 +34,9 @@ test('两个具名子 Agent 返回具体结果，Main Agent 综合后可在任�
   await expect(page.getByText('架构侦察员', { exact: true })).toBeVisible()
   await expect(page.getByText('测试侦察员', { exact: true })).toBeVisible()
   await expect(page.getByTestId('session-item')).toHaveCount(1)
+  const originalSessionId = await page.getByTestId('session-item').getAttribute('data-session-id')
+  if (!originalSessionId) throw new Error('缺少原会话 ID')
+  await expect(page.getByTestId('results-section-count')).toHaveText('2 项')
   await page.screenshot({ path: join(EVIDENCE_DIR, '01-delegation-cards.png'), fullPage: true })
 
   await page.getByRole('button', { name: '切换到深色主题' }).click()
@@ -50,6 +53,14 @@ test('两个具名子 Agent 返回具体结果，Main Agent 综合后可在任�
   await expect(page.getByTestId('results-section-count')).toHaveText('2 项')
   await expect(page.getByText('架构侦察员', { exact: true }).last()).toBeVisible()
   await expect(page.getByText('测试侦察员', { exact: true }).last()).toBeVisible()
+
+  await page.getByRole('button', { name: '+ 新会话' }).click()
+  await expect(page.getByTestId('session-item')).toHaveCount(2)
+  await expect(page.getByTestId('results-section-count')).toHaveText('0 项')
+  await page.locator(`[data-session-id="${originalSessionId}"]`).click()
+  await expect(page.getByTestId('results-section-count')).toHaveText('2 项')
+  await page.getByRole('button', { name: /子智能体/ }).click()
+  await expect(page.getByTestId('task-list')).toBeVisible()
   await page.screenshot({ path: join(EVIDENCE_DIR, '02-task-workbench.png'), fullPage: true })
 
   await page.getByText('架构侦察员', { exact: true }).last().click()

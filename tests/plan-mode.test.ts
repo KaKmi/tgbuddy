@@ -32,7 +32,7 @@ describe('计划模式中断', () => {
       getMode: () => 'plan',
       setMode: () => {},
       onModeChanged: () => {},
-      requestApproval: (_plan, signal) => {
+      requestApproval: (_plan, _effects, signal) => {
         receivedSignal = signal
         return new Promise((resolve) => {
           signal?.addEventListener(
@@ -57,6 +57,7 @@ describe('计划模式中断', () => {
   })
 
   test('批准后保持计划模式，只允许批准效果', async () => {
+    let receivedEffects: unknown
     const state = harness()
     const tools = buildPlanModeTools({
       getMode: () => 'plan',
@@ -64,16 +65,25 @@ describe('计划模式中断', () => {
       onModeChanged: (next, source) => {
         state.changes.push({ mode: next, source })
       },
-      requestApproval: async () => ({ approved: true }),
+      requestApproval: async (_plan, effects) => {
+        receivedEffects = effects
+        return { approved: true }
+      },
     })
     const exitTool = tools.find((tool) => tool.name === 'exit_plan_mode')
     if (!exitTool) throw new Error('缺少 exit_plan_mode 工具')
 
-    const result = await exitTool.execute('tool-1', { plan: '测试计划' })
+    const result = await exitTool.execute('tool-1', {
+      plan: '测试计划',
+      effects: [{ tool: 'write', match: 'path', pattern: 'src/a.ts', maxRisk: 'R3' }],
+    })
     const text = result.content.find((item) => item.type === 'text')
 
     expect(text?.type === 'text' ? text.text : '').toContain('计划已批准')
     expect(state.changes).toEqual([])
+    expect(receivedEffects).toEqual([
+      { tool: 'write', match: 'path', pattern: 'src/a.ts', maxRisk: 'R3' },
+    ])
   })
 
   test('拒绝后留在计划模式，把意见回给模型', async () => {
