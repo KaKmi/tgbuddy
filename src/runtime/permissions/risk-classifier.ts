@@ -247,7 +247,7 @@ function shellCommandHeads(tokens: string[]): string[] {
     if (expectHead && ['{', '}'].includes(token)) continue
     if (expectHead) {
       heads.push(token)
-      expectHead = token === 'sudo'
+      expectHead = token === 'sudo' || token === 'call'
       continue
     }
     if (['-c', '-command', '-encodedcommand', '-lc', '/c'].includes(token)) {

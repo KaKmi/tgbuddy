@@ -140,6 +140,7 @@ describe('RiskClassifier', () => {
       'powershell -EncodedCommand ZABhAG4AZwBlAHIAbwB1AHMA',
       'powershell -enc ZABhAG4AZwBlAHIAbwB1AHMA',
       'cmd /c format C:',
+      'cmd /c call format C:',
       'C:\\Windows\\System32\\format.com C:',
       '"C:\\Temp Folder\\format.com" C:',
     ]) {
