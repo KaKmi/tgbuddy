@@ -166,6 +166,17 @@ export {
   MemoryPermissionRuleRepository,
   type PermissionRuleRepository,
 } from './permissions/permission-rule-repository.ts'
+export {
+  createInvocationNormalizer,
+  type InvocationNormalizer,
+  type ResolvedInvocation,
+} from './permissions/invocation-normalizer.ts'
+export {
+  createRiskClassifier,
+  type PermissionRiskLevel,
+  type RiskAssessment,
+  type RiskClassifier,
+} from './permissions/risk-classifier.ts'
 export { PendingRequests } from './pending/pending-requests.ts'
 export {
   mountFailureMessage,

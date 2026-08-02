@@ -18,9 +18,9 @@ import { composerKeyShouldSend, profileSkillSummary } from './composer-state.ts'
 type ComposerMenu = 'mode' | 'expert' | 'model' | null
 
 const MODES: Array<{ id: PermissionMode; label: string; description: string }> = [
-  { id: 'auto', label: '默认权限', description: '只读直接执行，写操作与命令逐次询问' },
-  { id: 'plan', label: '计划模式', description: '先调查并提交计划，批准后才执行' },
-  { id: 'bypass', label: '完全访问', description: '不再询问，仅建议在隔离环境中使用' },
+  { id: 'auto', label: '默认权限', description: 'R0/R1 直接执行，R2–R4 按规则或逐次确认，F 拒绝' },
+  { id: 'plan', label: '计划模式', description: '只自动执行调查能力，其余操作需先批准计划' },
+  { id: 'bypass', label: '完全访问', description: 'R0–R3 自动执行，R4 仍逐次确认，F 始终拒绝' },
 ]
 
 export interface AgentComposerProps {
@@ -325,6 +325,6 @@ function permissionHint(mode: PermissionMode, compacting: boolean, queued: boole
   if (queued) return '已排队，压缩完成后自动发送'
   if (compacting) return '正在压缩上下文，发送内容将排队'
   if (mode === 'plan') return '计划模式：先调查并提交计划'
-  if (mode === 'bypass') return '完全访问：不会再询问授权'
+  if (mode === 'bypass') return '完全访问：R4 仍会询问，F 始终拒绝'
   return '默认权限：写操作与命令会请求授权'
 }

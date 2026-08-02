@@ -231,10 +231,16 @@ class PiAgentEngine implements AgentEngine {
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           args: event.input,
+          subject: invocation.subject,
+          permissionCeiling: invocation.permissionCeiling,
         }, signal)
-        return decision.action === 'deny'
-          ? { block: true, reason: decision.reason }
-          : undefined
+        if (decision.action === 'deny') {
+          return { block: true, reason: toolPolicyReasonText(decision.reason) }
+        }
+        if (decision.action === 'approval_required' && !decision.allowed) {
+          return { block: true, reason: decision.reason ?? '用户拒绝了授权' }
+        }
+        return undefined
       })
       // A04：超长工具输出落 Blob，消息/模型只收 8 行尾部预览 + ref
       const unsubscribeToolOutput = harness.on('tool_result', async (event) => {
@@ -609,6 +615,16 @@ function extractToolOutput(result: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function toolPolicyReasonText(reason: ToolNonSuccessReason | string): string {
+  if (typeof reason === 'string') return reason
+  if (reason.kind === 'plan_gate') return '计划模式下不允许执行该操作'
+  if (reason.kind === 'invalid_invocation') {
+    return reason.repairHint ?? `工具参数无效：${reason.code}`
+  }
+  if (reason.kind === 'execution') return `工具执行失败：${reason.code}`
+  return reason.code === 'forbidden' ? '系统策略禁止该操作' : '用户拒绝了授权'
 }
 
 export function createPiAgentEngine(

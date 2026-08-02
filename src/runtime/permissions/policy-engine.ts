@@ -14,6 +14,8 @@ import type {
   ToolPolicyInput,
 } from '../runs/agent-engine.ts'
 import type { PermissionRuleRepository } from './permission-rule-repository.ts'
+import type { InvocationNormalizer, ResolvedInvocation } from './invocation-normalizer.ts'
+import type { PermissionRiskLevel, RiskClassifier } from './risk-classifier.ts'
 
 /** 挂起授权请求所需的输入，从 ToolPolicyInput 收窄为 policy 域语义 */
 export interface PermissionAskInput {
@@ -33,6 +35,9 @@ export interface PolicyEngineDependencies {
     input: PermissionAskInput,
     signal: AbortSignal,
   ): Promise<{ allowed: boolean; reason?: string }>
+  /** Task 4 新决策链；短期可缺仅为旧测试/迁移入口。 */
+  normalizer?: InvocationNormalizer
+  classifier?: RiskClassifier
 }
 
 const READONLY_TOOLS = new Set(['read', 'glob', 'grep', 'web_search', 'skill'])
@@ -124,6 +129,9 @@ export function createPolicyEngine(
 ): ToolPolicy {
   return {
     async evaluate(input: ToolPolicyInput, signal: AbortSignal): Promise<ToolPolicyDecision> {
+      if (dependencies.normalizer && dependencies.classifier) {
+        return evaluateRiskPolicy(dependencies, input, signal)
+      }
       const { sessionId, toolName, args } = input
       const mode = dependencies.getMode(sessionId)
 
@@ -204,5 +212,98 @@ export function createPolicyEngine(
         ? { action: 'allow' }
         : deny(outcome.reason ?? '用户拒绝了授权')
     },
+  }
+}
+
+async function evaluateRiskPolicy(
+  dependencies: PolicyEngineDependencies & {
+    normalizer?: InvocationNormalizer
+    classifier?: RiskClassifier
+  },
+  input: ToolPolicyInput,
+  signal: AbortSignal,
+): Promise<ToolPolicyDecision> {
+  const normalized = await dependencies.normalizer!.normalize(input)
+  if (normalized.status === 'incomplete') {
+    return {
+      action: 'deny',
+      reason: {
+        kind: 'invalid_invocation',
+        code: normalized.reason,
+        ...(normalized.repairHint ? { repairHint: normalized.repairHint } : {}),
+      },
+    }
+  }
+
+  const ceiling = input.permissionCeiling
+  if (ceiling && !ceiling.allowedToolIds.includes(input.toolName)) {
+    return {
+      action: 'deny',
+      reason: { kind: 'permission', code: 'forbidden' },
+    }
+  }
+
+  const workspaceId = dependencies.getWorkspaceId(input.sessionId)
+  const hit = dependencies.rules.list().find((rule) =>
+    ruleIsValid(rule, input.sessionId, workspaceId)
+    && matchRule(rule, input.toolName, input.args)
+  )
+  if (hit?.action === 'deny') {
+    return {
+      action: 'deny',
+      reason: { kind: 'permission', code: 'denied' },
+    }
+  }
+
+  const assessment = dependencies.classifier!.classify(normalized)
+  if (assessment.status === 'forbidden') {
+    return {
+      action: 'deny',
+      risk: 'R4',
+      reason: { kind: 'permission', code: 'forbidden' },
+    }
+  }
+  if (assessment.status === 'classification_error') {
+    return {
+      action: 'deny',
+      reason: { kind: 'invalid_invocation', code: assessment.errorCode },
+    }
+  }
+
+  const risk: PermissionRiskLevel = assessment.status === 'unknown_complete'
+    ? assessment.effectiveRisk
+    : assessment.level
+  const invocation: ResolvedInvocation = normalized.invocation
+  if (risk === 'R0' || risk === 'R1') {
+    return { action: 'allow', risk, invocation }
+  }
+
+  const mode = dependencies.getMode(input.sessionId)
+  if (mode === 'plan') {
+    return {
+      action: 'deny',
+      risk,
+      reason: { kind: 'plan_gate', code: 'plan_required' },
+    }
+  }
+  if (risk !== 'R4' && hit) {
+    return { action: 'authorize', risk, source: 'rule', invocation }
+  }
+  if (risk !== 'R4' && mode === 'bypass') {
+    return { action: 'authorize', risk, source: 'bypass', invocation }
+  }
+
+  const outcome = await dependencies.ask({
+    sessionId: input.sessionId,
+    toolCallId: input.toolCallId,
+    toolName: input.toolName,
+    args: input.args,
+  }, signal)
+  return {
+    action: 'approval_required',
+    risk,
+    allowed: outcome.allowed,
+    invocation,
+    ...(outcome.reason ? { reason: outcome.reason } : {}),
   }
 }

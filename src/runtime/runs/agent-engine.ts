@@ -3,6 +3,9 @@ import type { AgentEvent } from '../../shared/contracts/events.ts'
 import type { SkillManifest } from '../../shared/contracts/skill.ts'
 import type { RunProfileSnapshot } from '../../shared/contracts/run-snapshot.ts'
 import type { PermissionCeilingSnapshot } from '../../shared/contracts/run-snapshot.ts'
+import type { ToolNonSuccessReason } from '../../shared/contracts/permission.ts'
+import type { PermissionRiskLevel } from '../permissions/risk-classifier.ts'
+import type { ResolvedInvocation } from '../permissions/invocation-normalizer.ts'
 import type { ToolDescriptor } from '../../shared/contracts/tool.ts'
 import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
 import type { PermissionSubject, RunLineage } from '../../shared/contracts/run.ts'
@@ -51,11 +54,26 @@ export interface ToolPolicyInput {
   toolCallId: string
   toolName: string
   args: Record<string, unknown>
+  subject?: PermissionSubject
+  permissionCeiling?: PermissionCeilingSnapshot
 }
 
 export type ToolPolicyDecision =
-  | { action: 'allow' }
-  | { action: 'deny'; reason: string }
+  | { action: 'allow'; risk?: 'R0' | 'R1'; invocation?: ResolvedInvocation }
+  | {
+      action: 'authorize'
+      risk: 'R2' | 'R3'
+      source: 'rule' | 'bypass'
+      invocation: ResolvedInvocation
+    }
+  | {
+      action: 'approval_required'
+      risk: 'R2' | 'R3' | 'R4'
+      allowed: boolean
+      invocation: ResolvedInvocation
+      reason?: string
+    }
+  | { action: 'deny'; reason: ToolNonSuccessReason | string; risk?: PermissionRiskLevel }
 
 /**
  * 工具执行前的策略端口。

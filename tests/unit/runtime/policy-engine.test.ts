@@ -7,12 +7,15 @@ import { MemoryPermissionRuleRepository } from '../../../src/runtime/permissions
 import type { PermissionRule } from '../../../src/shared/contracts/permission.ts'
 import { isReadOnlyCommand } from '../../../src/shared/contracts/permission.ts'
 import type { ToolPolicy, ToolPolicyInput } from '../../../src/runtime/runs/agent-engine.ts'
+import { createInvocationNormalizer } from '../../../src/runtime/permissions/invocation-normalizer.ts'
+import { createRiskClassifier } from '../../../src/runtime/permissions/risk-classifier.ts'
 
 interface HarnessOptions {
   rules?: PermissionRule[]
   mode?: (sessionId: string) => 'plan' | 'auto' | 'bypass'
   workspaceId?: (sessionId: string) => string | undefined
   ask?: (input: PermissionAskInput, signal: AbortSignal) => Promise<boolean>
+  riskPolicy?: boolean
 }
 
 function harness(options: HarnessOptions = {}): {
@@ -35,6 +38,26 @@ function harness(options: HarnessOptions = {}): {
         ? { allowed: outcome }
         : outcome
     },
+    ...(options.riskPolicy
+      ? {
+          normalizer: createInvocationNormalizer({
+            policyVersion: 'permission-v2',
+            resolvePath: async (path) => ({
+              kind: 'file',
+              canonicalPath: path,
+              identityHash: `path:${path}`,
+              scope: path.startsWith('C:\\work') ? 'workspace' : 'outside',
+            }),
+            resolveExecutionContext: async () => ({
+              canonicalCwd: 'C:\\work',
+              workspaceId: 'ws-1',
+              mountRevision: 'mount-1',
+              identityHash: 'execution-1',
+            }),
+          }),
+          classifier: createRiskClassifier({ policyVersion: 'permission-v2' }),
+        }
+      : {}),
   })
   return { policy, askCalls, controller }
 }
@@ -45,11 +68,57 @@ function tool(input: Partial<ToolPolicyInput> = {}): ToolPolicyInput {
     toolCallId: 'tool-1',
     toolName: 'write',
     args: { path: 'C:\\work\\a.md' },
+    subject: {
+      rootSessionId: 'session-1',
+      executionSessionId: 'session-1',
+      rootRunId: 'run-1',
+      agentRunId: 'run-1',
+      role: 'root',
+    },
+    permissionCeiling: {
+      schemaVersion: 1,
+      policyVersion: 'permission-v2',
+      mode: 'auto',
+      rootSessionId: 'session-1',
+      workspaceId: 'ws-1',
+      mountRevision: 'mount-1',
+      allowedToolIds: ['read', 'write', 'edit', 'bash', 'ask_user'],
+      maxAutoRisk: 'R3',
+      role: 'root',
+    },
     ...input,
   }
 }
 
 describe('PolicyEngine 基础决策', () => {
+  test('bypass 只自动授权 R0-R3，R4 仍询问，F 直接拒绝', async () => {
+    const h = harness({ mode: () => 'bypass', riskPolicy: true })
+    await expect(h.policy.evaluate(tool({
+      toolName: 'bash',
+      args: { command: 'curl https://example.com' },
+    }), h.controller.signal)).resolves.toMatchObject({
+      action: 'authorize',
+      risk: 'R3',
+      source: 'bypass',
+    })
+    await expect(h.policy.evaluate(tool({
+      toolName: 'bash',
+      args: { command: 'git push --force' },
+    }), h.controller.signal)).resolves.toMatchObject({
+      action: 'approval_required',
+      risk: 'R4',
+      allowed: true,
+    })
+    await expect(h.policy.evaluate(tool({
+      toolName: 'bash',
+      args: { command: 'rm -rf C:\\Users' },
+    }), h.controller.signal)).resolves.toMatchObject({
+      action: 'deny',
+      reason: { kind: 'permission', code: 'forbidden' },
+    })
+    expect(h.askCalls).toHaveLength(1)
+  })
+
   test('默认读工具 allow，不触发 broker', async () => {
     const { policy, askCalls } = harness()
     expect(await policy.evaluate(tool({ toolName: 'read', args: { path: 'C:\\work\\a.ts' } }), new AbortController().signal))

@@ -1,6 +1,6 @@
 import { safeStorage, shell, type BrowserWindow } from 'electron'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
-import { readdir, unlink } from 'node:fs/promises'
+import { realpath, readdir, stat, unlink } from 'node:fs/promises'
 import {
   basename,
   dirname,
@@ -16,6 +16,8 @@ import {
   createPlanAskBroker,
   createPermissionAskBroker,
   createPolicyEngine,
+  createInvocationNormalizer,
+  createRiskClassifier,
   createProfileService,
   createSessionCommands,
   createSessionTitleService,
@@ -230,6 +232,53 @@ export async function createApplication(
     },
     mountResolver,
   })
+  const invocationNormalizer = createInvocationNormalizer({
+    policyVersion: 'permission-v2',
+    async resolvePath(path) {
+      const absolute = resolve(path)
+      const canonical = await realpath(absolute).catch(() => absolute)
+      const info = await stat(canonical).catch(() => undefined)
+      const workspaceScope = workspaceService.list().some((workspace) => {
+        const root = workspace.mount?.path
+        if (!root) return false
+        const key = resolve(root).toLowerCase()
+        const target = canonical.toLowerCase()
+        return target === key || target.startsWith(`${key}\\`)
+      })
+      return {
+        kind: info ? (info.isDirectory() ? 'directory' : 'file') : 'missing',
+        canonicalPath: canonical,
+        identityHash: info
+          ? `${canonical}:${info.size}:${info.mtimeMs}`
+          : `missing:${canonical}`,
+        scope: workspaceScope ? 'workspace' : 'outside',
+      }
+    },
+    async resolveExecutionContext(input) {
+      const ceiling = input.permissionCeiling
+      if (!ceiling) throw new Error('permission_ceiling_required')
+      const mount = workspaceService.mountStatus(ceiling.workspaceId)
+      if (!mount.ok) throw new Error('workspace_mount_required')
+      return {
+        canonicalCwd: mount.mount.path,
+        workspaceId: ceiling.workspaceId,
+        mountRevision: ceiling.mountRevision,
+        identityHash: `${ceiling.workspaceId}:${ceiling.mountRevision}:${mount.mount.path}`,
+      }
+    },
+    async resolveMcpMethod(serverId, method) {
+      const descriptor = toolRegistry.snapshot().find((tool) =>
+        tool.category === 'mcp'
+        && tool.name === `${serverId}.${method}`
+      )
+      if (!descriptor) return undefined
+      return {
+        permission: descriptor.defaultPermission === 'allow' ? 'read' : 'write',
+        identityHash: `${descriptor.id}:${descriptor.owner}:${descriptor.defaultPermission}`,
+      }
+    },
+  })
+  const riskClassifier = createRiskClassifier({ policyVersion: 'permission-v2' })
   // S06：授权请求由 Runtime broker 持有，主进程只负责把请求推给渲染进程。
   // 旧 Main permission-service 的 pending 注册表不再接新请求（S11 删除）。
   const permissionAskBroker = createPermissionAskBroker({
@@ -491,6 +540,8 @@ export async function createApplication(
           getWorkspaceId: (sessionId) =>
             sessionRepository.get(sessionId)?.workspaceId,
           ask: (input, signal) => permissionAskBroker.ask(input, signal),
+          normalizer: invocationNormalizer,
+          classifier: riskClassifier,
         }),
       }),
       contextCompactor: createPiContextCompactor(),
