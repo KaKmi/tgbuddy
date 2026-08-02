@@ -152,10 +152,17 @@ export function App() {
     void window.tgbuddy.session.list().then(setSessions)
   }, [stream.running, stream.toolActivities.length, setSessions])
 
-  async function newSession() {
+  async function newSession(selection: {
+    profileId?: string
+    channelId?: string
+    modelId?: string
+  } = {}) {
     const preferences = readSettingsPreferences(window.localStorage)
     const primaryModel = parseModelPreference(preferences.primaryModel)
-    const meta = await window.tgbuddy.session.create(primaryModel ?? {})
+    const meta = await window.tgbuddy.session.create({
+      ...(primaryModel ?? {}),
+      ...selection,
+    })
     if (preferences.defaultPermissionMode !== 'auto') {
       await window.tgbuddy.plan.setMode(meta.id, preferences.defaultPermissionMode)
     }
@@ -253,7 +260,11 @@ export function App() {
     channelId?: string
     modelId?: string
   }): Promise<void> {
-    if (!currentId) return
+    if (!currentId) {
+      if (!patch.profileId && !patch.channelId && !patch.modelId) return
+      await newSession(patch)
+      return
+    }
     await window.tgbuddy.session.updateMeta(currentId, patch)
     setSessions(await window.tgbuddy.session.list())
   }
