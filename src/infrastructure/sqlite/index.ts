@@ -6,6 +6,7 @@ export { SqlitePlanEffectRepository } from './repositories/sqlite-plan-effect-re
 export { SqliteInteractionDecisionWriter } from './repositories/sqlite-interaction-decision-writer.ts'
 export { SqliteMcpConfigRepository } from './repositories/sqlite-mcp-config-repository.ts'
 export { SqliteRunRepository } from './repositories/sqlite-run-repository.ts'
+export { SqliteDelegationRepository } from './repositories/sqlite-delegation-repository.ts'
 export { SqliteWorkspaceRepository } from './repositories/sqlite-workspace-repository.ts'
 export {
   canonicalJson,

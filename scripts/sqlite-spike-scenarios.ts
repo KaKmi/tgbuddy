@@ -177,6 +177,7 @@ export async function runAppDatabaseScenario(
           '020_app_interaction_journal.sql',
           '021_app_authorization_claims.sql',
           '022_app_session_visibility.sql',
+          '023_app_delegation_tasks.sql',
         ]),
       'app migration 必须按顺序包含当前 001–021（已删除的 008 除外）',
     )
@@ -191,6 +192,7 @@ export async function runAppDatabaseScenario(
           'app_artifacts',
           'app_attachments',
           'app_authorization_claims',
+          'app_delegation_tasks',
           'app_blob_refs',
           'app_channels',
           'app_interaction_decisions',

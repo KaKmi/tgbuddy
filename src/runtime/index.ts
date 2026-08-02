@@ -83,6 +83,11 @@ export {
   type CreateDelegationServiceOptions,
 } from './delegation/delegation-service.ts'
 export {
+  DelegationVersionConflictError,
+  MemoryDelegationRepository,
+  type DelegationRepository,
+} from './delegation/delegation-repository.ts'
+export {
   MemoryAttachmentRepository,
   type AttachmentRepository,
 } from './attachments/attachment-repository.ts'
