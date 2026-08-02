@@ -43,11 +43,6 @@ export interface RiskClassifierOptions {
 }
 
 const HOST_CONTROL_TOOLS = new Set(['ask_user', 'exit_plan_mode', 'delegate_to_agent', 'skill'])
-const READ_MCP_VERBS = new Set(['count', 'find', 'get', 'list', 'query', 'read', 'search', 'select'])
-const READ_SHELL_TOOLS = new Set([
-  'cat', 'df', 'dir', 'du', 'echo', 'fd', 'find', 'grep', 'head', 'ls', 'pwd', 'rg',
-  'stat', 'tail', 'type', 'wc', 'where', 'which',
-])
 
 export function createRiskClassifier(options: RiskClassifierOptions): RiskClassifier {
   return {
@@ -89,8 +84,16 @@ function classifyComplete(input: CompleteInvocation): RiskAssessment {
     return classifyShell(invocation, evidence)
   }
   if (invocation.kind === 'mcp' && invocation.mcp) {
-    const verb = invocation.mcp.method.split(/[._-]/)[0]?.toLowerCase() ?? ''
-    const level: PermissionRiskLevel = READ_MCP_VERBS.has(verb) ? 'R1' : 'R3'
+    if (invocation.mcp.permission === 'unknown') {
+      return {
+        status: 'unknown_complete',
+        effectiveRisk: 'R4',
+        evidence,
+        reason: `MCP descriptor 未声明可信副作用：${invocation.mcp.serverId}.${invocation.mcp.method}`,
+        suggestedGrants: [],
+      }
+    }
+    const level: PermissionRiskLevel = invocation.mcp.permission === 'read' ? 'R1' : 'R3'
     return classified(level, evidence, level === 'R1' ? [] : [{
       match: 'method',
       pattern: `${invocation.mcp.serverId}.${invocation.mcp.method}`,
@@ -151,6 +154,9 @@ function classifyShell(
   if (isWorkspaceBuildOrTest(shell.tokens)) {
     return classified('R2', evidence, commandGrant(shell.tokens))
   }
+  if (shell.wrapper) {
+    return classified('R4', evidence, [])
+  }
   if (
     shell.compound
     || shell.redirected
@@ -166,16 +172,56 @@ function classifyShell(
 function forbidden(invocation: ResolvedInvocation): string | undefined {
   if (invocation.toolName === 'rm_root') return '禁止删除系统根目标'
   if (invocation.kind !== 'shell' || !invocation.shell) return undefined
-  const command = invocation.shell.command
-  if (/^\s*(?:wsl|wmic|sc|reg|schtasks|net|bcdedit|vssadmin)\b/i.test(command)) {
+  const tokens = expandedShellTokens(invocation.shell.tokens)
+  const commandHeads = shellCommandHeads(tokens)
+  const semanticCommand = tokens.join(' ')
+  const systemTools = new Set([
+    'bcdedit', 'diskpart', 'format', 'mkfs', 'net', 'reg', 'sc', 'schtasks', 'vssadmin', 'wsl', 'wmic',
+  ])
+  if (tokens.includes('-encodedcommand')) {
+    return '禁止执行无法检查内容的编码命令'
+  }
+  if (commandHeads.some((head) => systemTools.has(head))) {
     return '禁止执行可绕过工作区边界的系统工具'
   }
   if (
-    /\brm\s+(?:-[^\s]+\s+)*(?:[a-z]:[\\/](?:\s|$)|[a-z]:[\\/]users[\\/]?(?:\s|$)|\/(?:home[\\/]?)?(?:\s|$))/i.test(command)
+    commandHeads.some((head) => ['del', 'erase', 'rd', 'remove-item', 'rmdir', 'rm'].includes(head))
+    && /(?:[a-z]:[\\/](?=\s|$)|[a-z]:[\\/]users[\\/]?(?=\s|$)|\/(?:home[\\/]?)?(?=\s|$))/i.test(semanticCommand)
   ) {
     return '禁止删除磁盘根目录或用户目录'
   }
+  if (/\bdd\b[^\r\n]*\bof=\/dev\//i.test(semanticCommand)) {
+    return '禁止直接覆写磁盘设备'
+  }
   return undefined
+}
+
+function expandedShellTokens(tokens: string[]): string[] {
+  return tokens.flatMap((token) => {
+    const unquoted = token.replace(/^["'`]+|["'`]+$/g, '')
+    return unquoted.split(/\s+/).filter(Boolean).map((part) => part.toLowerCase())
+  })
+}
+
+function shellCommandHeads(tokens: string[]): string[] {
+  const heads: string[] = []
+  let expectHead = true
+  for (const token of tokens) {
+    if (['&&', '||', '|', ';', '&'].includes(token)) {
+      expectHead = true
+      continue
+    }
+    if (expectHead && ['{', '}'].includes(token)) continue
+    if (expectHead) {
+      heads.push(token)
+      expectHead = token === 'sudo'
+      continue
+    }
+    if (['-c', '-command', '-encodedcommand', '-lc', '/c'].includes(token)) {
+      expectHead = true
+    }
+  }
+  return heads
 }
 
 function isStrictReadOnlyShell(shell: NonNullable<ResolvedInvocation['shell']>): boolean {
@@ -183,13 +229,18 @@ function isStrictReadOnlyShell(shell: NonNullable<ResolvedInvocation['shell']>):
   const first = shell.tokens[0]?.toLowerCase() ?? ''
   if (first === 'git') {
     const subcommand = shell.tokens[1]?.toLowerCase() ?? ''
+    const boundaryOverrides = new Set(['-c', '--git-dir', '--no-index', '--work-tree'])
     return ['branch', 'diff', 'log', 'show', 'status'].includes(subcommand)
+      && !shell.tokens.some((token) => boundaryOverrides.has(token.toLowerCase()))
   }
-  if (!READ_SHELL_TOOLS.has(first)) return false
-  if (first === 'find') {
-    return !shell.tokens.some((token) => /^-(?:delete|exec|execdir|ok|okdir)$/i.test(token))
+  if (first === 'pwd') return shell.tokens.length === 1
+  if (first === 'ls') {
+    return shell.tokens.slice(1).every((token) => token === '.' || /^-[a-z0-9-]+$/i.test(token))
   }
-  return true
+  if (first === 'dir') {
+    return shell.tokens.slice(1).every((token) => token === '.' || /^\/[a-z]+$/i.test(token))
+  }
+  return false
 }
 
 function isWorkspaceBuildOrTest(tokens: string[]): boolean {

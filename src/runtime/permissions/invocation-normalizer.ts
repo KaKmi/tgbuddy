@@ -22,11 +22,28 @@ export interface ResolvedShellInvocation {
   redirected: boolean
   hasCommandSubstitution: boolean
   wrapper: boolean
+  canonicalCwd: string
+  workspaceId: string
+  mountRevision: string
+  executionEnvIdentityHash: string
 }
 
 export interface ResolvedMcpInvocation {
   serverId: string
   method: string
+  permission: 'read' | 'write' | 'unknown'
+}
+
+export interface ResolvedExecutionContext {
+  canonicalCwd: string
+  workspaceId: string
+  mountRevision: string
+  identityHash: string
+}
+
+export interface ResolvedMcpMethodIdentity {
+  permission: ResolvedMcpInvocation['permission']
+  identityHash: string
 }
 
 export interface ResolvedInvocation {
@@ -75,6 +92,13 @@ export interface InvocationNormalizerDependencies {
   resolvePath(path: string): Promise<ResolvedPathIdentity>
   policyVersion: string
   shellDialect?: ResolvedShellInvocation['dialect']
+  /** Shell ticket 必须绑定真实 cwd、mount 与 ExecutionEnv；缺失时 normalization fail closed。 */
+  resolveExecutionContext?(input: ToolPolicyInput): Promise<ResolvedExecutionContext>
+  /** MCP 的 read/write 语义只能来自可信 descriptor，不能根据方法名前缀猜测。 */
+  resolveMcpMethod?(
+    serverId: string,
+    method: string,
+  ): Promise<ResolvedMcpMethodIdentity | undefined>
 }
 
 const HOST_CONTROL_TOOLS = new Set([
@@ -137,7 +161,7 @@ export function createInvocationNormalizer(
         )
       }
       if (input.toolName.includes('.')) {
-        return normalizeMcp(input, dependencies.policyVersion)
+        return normalizeMcp(input, dependencies)
       }
       if (input.toolName === 'web_search') {
         return normalizeNetwork(input, dependencies.policyVersion)
@@ -249,6 +273,23 @@ async function normalizeShell(
     return { status: 'incomplete', reason: 'command_tokens_required' }
   }
   const first = (tokens[0] ?? '').toLowerCase()
+  if (!dependencies.resolveExecutionContext) {
+    return { status: 'incomplete', reason: 'execution_context_required' }
+  }
+  let context: ResolvedExecutionContext
+  try {
+    context = await dependencies.resolveExecutionContext(input)
+  } catch {
+    return { status: 'incomplete', reason: 'execution_context_resolution_failed' }
+  }
+  if (
+    !context.canonicalCwd
+    || !context.workspaceId
+    || !context.mountRevision
+    || !context.identityHash
+  ) {
+    return { status: 'incomplete', reason: 'execution_context_incomplete' }
+  }
   const shell: ResolvedShellInvocation = {
     command,
     dialect: dependencies.shellDialect ?? 'auto',
@@ -257,17 +298,29 @@ async function normalizeShell(
     redirected: tokens.some((token) => ['>', '>>', '<'].includes(token)),
     hasCommandSubstitution: command.includes('$(') || command.includes('`'),
     wrapper: SHELL_WRAPPERS.has(first),
+    canonicalCwd: context.canonicalCwd,
+    workspaceId: context.workspaceId,
+    mountRevision: context.mountRevision,
+    executionEnvIdentityHash: context.identityHash,
   }
   const hosts = extractHosts(command)
   const targets: InvocationTarget[] = [
     { kind: 'service', value: 'shell' },
+    { kind: 'path', value: context.canonicalCwd },
     ...hosts.map((host): InvocationTarget => ({ kind: 'host', value: host })),
   ]
   return complete(
     input,
     'shell',
     targets,
-    await sha256(`shell:${stableSerialize({ command, dialect: shell.dialect })}`),
+    await sha256(`shell:${stableSerialize({
+      command,
+      dialect: shell.dialect,
+      canonicalCwd: context.canonicalCwd,
+      workspaceId: context.workspaceId,
+      mountRevision: context.mountRevision,
+      executionEnvIdentityHash: context.identityHash,
+    })}`),
     dependencies.policyVersion,
     ['shell', ...(shell.compound ? ['compound'] : []), ...(shell.wrapper ? ['wrapper'] : [])],
     { shell },
@@ -276,7 +329,7 @@ async function normalizeShell(
 
 async function normalizeMcp(
   input: ToolPolicyInput,
-  policyVersion: string,
+  dependencies: InvocationNormalizerDependencies,
 ): Promise<InvocationNormalizationResult> {
   const separator = input.toolName.indexOf('.')
   const serverId = input.toolName.slice(0, separator)
@@ -284,6 +337,13 @@ async function normalizeMcp(
   if (!serverId || !method) {
     return { status: 'incomplete', reason: 'mcp_identity_required' }
   }
+  let methodIdentity: ResolvedMcpMethodIdentity | undefined
+  try {
+    methodIdentity = await dependencies.resolveMcpMethod?.(serverId, method)
+  } catch {
+    return { status: 'incomplete', reason: 'mcp_identity_resolution_failed' }
+  }
+  const permission = methodIdentity?.permission ?? 'unknown'
   const targets: InvocationTarget[] = [{ kind: 'service', value: serverId }]
   if (typeof input.args.accountId === 'string' && input.args.accountId) {
     targets.push({ kind: 'account', value: input.args.accountId })
@@ -292,10 +352,11 @@ async function normalizeMcp(
     input,
     'mcp',
     targets,
-    await sha256(`mcp:${serverId}:${method}:${String(input.args.accountId ?? '-')}`),
-    policyVersion,
-    ['mcp', `method:${method}`],
-    { mcp: { serverId, method } },
+    methodIdentity?.identityHash
+      ?? await sha256(`mcp:${serverId}:${method}:${String(input.args.accountId ?? '-')}`),
+    dependencies.policyVersion,
+    ['mcp', `method:${method}`, `permission:${permission}`],
+    { mcp: { serverId, method, permission } },
   )
 }
 
