@@ -343,18 +343,32 @@ async function normalizeMcp(
   } catch {
     return { status: 'incomplete', reason: 'mcp_identity_resolution_failed' }
   }
+  if (
+    methodIdentity
+    && (
+      methodIdentity.identityHash.trim().length === 0
+      || !['read', 'write', 'unknown'].includes(methodIdentity.permission)
+    )
+  ) {
+    return { status: 'incomplete', reason: 'mcp_identity_required' }
+  }
   const permission = methodIdentity?.permission ?? 'unknown'
   const targets: InvocationTarget[] = [{ kind: 'service', value: serverId }]
   if (typeof input.args.accountId === 'string' && input.args.accountId) {
     targets.push({ kind: 'account', value: input.args.accountId })
   }
-  const originValue = ['url', 'origin', 'endpoint']
+  const originValues = ['url', 'origin', 'endpoint']
     .map((key) => input.args[key])
-    .find((value): value is string => typeof value === 'string' && value.length > 0)
-  const origins = originValue ? extractHosts(originValue) : []
-  if (originValue && origins.length === 0) {
-    return { status: 'incomplete', reason: 'mcp_origin_invalid' }
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+  const originSet = new Set<string>()
+  for (const originValue of originValues) {
+    const resolved = extractHosts(originValue)
+    if (resolved.length === 0) {
+      return { status: 'incomplete', reason: 'mcp_origin_invalid' }
+    }
+    for (const origin of resolved) originSet.add(origin)
   }
+  const origins = [...originSet].sort()
   targets.push(...origins.map((origin): InvocationTarget => ({ kind: 'host', value: origin })))
   const resourceIdentityHash = await sha256(stableSerialize({
     methodIdentityHash: methodIdentity?.identityHash ?? `${serverId}.${method}`,

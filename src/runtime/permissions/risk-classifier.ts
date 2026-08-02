@@ -239,19 +239,26 @@ function tokenizeNestedShell(command: string): string[] {
 function shellCommandHeads(tokens: string[]): string[] {
   const heads: string[] = []
   let expectHead = true
+  let forwarding = false
+  const transparentForwarders = new Set(['builtin', 'call', 'command', 'env', 'sudo'])
   for (const token of tokens) {
     if (['&&', '||', '|', ';', '&'].includes(token)) {
       expectHead = true
+      forwarding = false
       continue
     }
     if (expectHead && ['{', '}'].includes(token)) continue
     if (expectHead) {
+      if (/^[a-z_][a-z0-9_]*=/i.test(token)) continue
+      if (forwarding && token.startsWith('-')) continue
       heads.push(token)
-      expectHead = token === 'sudo' || token === 'call'
+      forwarding = transparentForwarders.has(shellExecutableName(token))
+      expectHead = forwarding
       continue
     }
     if (['-c', '-command', '-encodedcommand', '-lc', '/c'].includes(token)) {
       expectHead = true
+      forwarding = false
     }
   }
   return heads

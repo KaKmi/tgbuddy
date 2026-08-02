@@ -208,4 +208,56 @@ describe('InvocationNormalizer', () => {
     expect(first.evidence.resourceIdentityHash).not.toBe(second.evidence.resourceIdentityHash)
     expect(first.evidence.fingerprint).not.toBe(second.evidence.fingerprint)
   })
+
+  test('MCP 绑定所有 origin，禁止用第一个安全地址掩盖后续目标', async () => {
+    const normalizer = createInvocationNormalizer({
+      resolvePath: async () => {
+        throw new Error('不应解析路径')
+      },
+      policyVersion: 'permission-v2',
+      resolveMcpMethod: async () => ({
+        permission: 'read',
+        identityHash: 'browser.fetch:v1',
+      }),
+    })
+    const result = await normalizer.normalize({
+      sessionId: 's',
+      toolCallId: 't',
+      toolName: 'browser.fetch',
+      args: {
+        url: 'https://example.com/public',
+        endpoint: 'http://169.254.169.254/latest/meta-data',
+      },
+    })
+
+    expect(result).toMatchObject({
+      status: 'complete',
+      invocation: {
+        targets: expect.arrayContaining([
+          { kind: 'host', value: 'https://example.com:443' },
+          { kind: 'host', value: 'http://169.254.169.254:80' },
+        ]),
+      },
+    })
+  })
+
+  test('MCP resolver 返回空 identity 时 fail closed', async () => {
+    const normalizer = createInvocationNormalizer({
+      resolvePath: async () => {
+        throw new Error('不应解析路径')
+      },
+      policyVersion: 'permission-v2',
+      resolveMcpMethod: async () => ({ permission: 'read', identityHash: '' }),
+    })
+
+    await expect(normalizer.normalize({
+      sessionId: 's',
+      toolCallId: 't',
+      toolName: 'browser.fetch',
+      args: { url: 'https://example.com/public' },
+    })).resolves.toEqual({
+      status: 'incomplete',
+      reason: 'mcp_identity_required',
+    })
+  })
 })

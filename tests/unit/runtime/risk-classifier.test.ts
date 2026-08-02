@@ -141,6 +141,8 @@ describe('RiskClassifier', () => {
       'powershell -enc ZABhAG4AZwBlAHIAbwB1AHMA',
       'cmd /c format C:',
       'cmd /c call format C:',
+      'DUMMY=1 wsl --mount \\\\.\\PHYSICALDRIVE0',
+      'env DUMMY=1 command wsl --mount \\\\.\\PHYSICALDRIVE0',
       'C:\\Windows\\System32\\format.com C:',
       '"C:\\Temp Folder\\format.com" C:',
     ]) {
