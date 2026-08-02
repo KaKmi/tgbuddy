@@ -5,23 +5,90 @@
  * 具体 service、repository 和 kernel 只能由 Composition Root 装配。
  */
 
-import { ipcMain, type BrowserWindow } from 'electron'
+import { dialog, ipcMain, type BrowserWindow, type WebContents } from 'electron'
 import type { AgentRuntime } from '../runtime/index.ts'
+import type { AttachmentRef } from '../shared/contracts/attachment.ts'
+import type { ArtifactPreviewResult } from '../shared/contracts/artifact.ts'
 import {
   IPC,
   type IpcRequest,
   type IpcResponse,
 } from '../shared/contracts/ipc.ts'
 
+/**
+ * 附件 IO 端口：由 Composition Root 注入 BlobStore 实现，
+ * IPC 层不 import Runtime 内部 store（架构红线）。
+ */
+export interface AttachmentIo {
+  stage(
+    input: { name: string; mime?: string; bytes: Uint8Array },
+  ): Promise<AttachmentRef>
+  discard(ref: AttachmentRef): Promise<void>
+  /** A04：按 BlobRef.hash 读回完整工具输出（渲染层「查看完整输出」） */
+  readToolOutput(ref: AttachmentRef['blob']): Promise<string>
+}
+
+export interface ArtifactIo {
+  preview(input: { sessionId: string; artifactId: string }): Promise<ArtifactPreviewResult>
+  open(
+    input: { sessionId: string; artifactId: string },
+  ): Promise<{ ok: boolean; error?: string }>
+}
+
 export function registerIpc(
   agentRuntime: AgentRuntime,
   getWindow: () => BrowserWindow | null,
+  attachmentIo: AttachmentIo,
+  artifactIo: ArtifactIo,
 ): () => void {
   const unsubscribe = agentRuntime.subscribe((frame) => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return
     win.webContents.send(IPC.AGENT_STREAM, frame)
   })
+
+  ipcMain.handle(
+    IPC.WORKSPACE_LIST,
+    (): IpcResponse<'workspace:list'> => agentRuntime.workspaces.list(),
+  )
+  ipcMain.handle(
+    IPC.WORKSPACE_CREATE,
+    (
+      _event,
+      input: IpcRequest<'workspace:create'>,
+    ): IpcResponse<'workspace:create'> => agentRuntime.workspaces.create(input),
+  )
+  ipcMain.handle(
+    IPC.WORKSPACE_SELECT,
+    (
+      _event,
+      input: IpcRequest<'workspace:select'>,
+    ): IpcResponse<'workspace:select'> =>
+      agentRuntime.workspaces.select(input.workspaceId),
+  )
+  ipcMain.handle(
+    IPC.WORKSPACE_CURRENT,
+    (): IpcResponse<'workspace:current'> => agentRuntime.workspaces.current(),
+  )
+  ipcMain.handle(
+    IPC.WORKSPACE_MOUNT_STATUS,
+    (
+      _event,
+      input: IpcRequest<'workspace:mount-status'>,
+    ): IpcResponse<'workspace:mount-status'> =>
+      agentRuntime.workspaces.mountStatus(input.workspaceId),
+  )
+  ipcMain.handle(
+    IPC.WORKSPACE_PICK,
+    async (): Promise<IpcResponse<'workspace:pick'>> => {
+      const win = getWindow()
+      if (!win) return null
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      return result.canceled ? null : (result.filePaths[0] ?? null)
+    },
+  )
 
   ipcMain.handle(
     IPC.SESSION_LIST,
@@ -89,16 +156,86 @@ export function registerIpc(
       agentRuntime.runs.stop(sessionId),
   )
 
+  // A02：附件先落 BlobStore，消息只拿 ref；Renderer 永不接触文件系统路径。
   ipcMain.handle(
-    IPC.PERMISSION_RESPOND,
+    IPC.ATTACHMENT_STAGE,
+    async (
+      _event,
+      input: IpcRequest<'attachment:stage'>,
+    ): Promise<IpcResponse<'attachment:stage'>> => {
+      return attachmentIo.stage(input)
+    },
+  )
+  ipcMain.handle(
+    IPC.ATTACHMENT_DISCARD,
+    async (
+      _event,
+      ref: IpcRequest<'attachment:discard'>,
+    ): Promise<IpcResponse<'attachment:discard'>> => {
+      await attachmentIo.discard(ref)
+    },
+  )
+  ipcMain.handle(
+    IPC.TOOL_OUTPUT_READ,
+    async (
+      _event,
+      input: IpcRequest<'tool-output:read'>,
+    ): Promise<IpcResponse<'tool-output:read'>> => {
+      return attachmentIo.readToolOutput(input.ref)
+    },
+  )
+  ipcMain.handle(
+    IPC.ARTIFACT_LIST,
     (
       _event,
+      input: IpcRequest<'artifact:list'>,
+    ): IpcResponse<'artifact:list'> => {
+      return agentRuntime.artifacts.list(input.sessionId)
+    },
+  )
+  ipcMain.handle(
+    IPC.ARTIFACT_PREVIEW,
+    async (
+      _event,
+      input: IpcRequest<'artifact:preview'>,
+    ): Promise<IpcResponse<'artifact:preview'>> => {
+      return artifactIo.preview(input)
+    },
+  )
+  ipcMain.handle(
+    IPC.ARTIFACT_OPEN,
+    async (
+      _event,
+      input: IpcRequest<'artifact:open'>,
+    ): Promise<IpcResponse<'artifact:open'>> => {
+      return artifactIo.open(input)
+    },
+  )
+
+  ipcMain.handle(
+    IPC.PERMISSION_RESPOND,
+    async (
+      _event,
       response: IpcRequest<'permission:respond'>,
-    ): IpcResponse<'permission:respond'> => agentRuntime.permissions.respond(response),
+    ): Promise<IpcResponse<'permission:respond'>> => {
+      await agentRuntime.permissions.respond(response)
+    },
   )
   ipcMain.handle(
     IPC.PERMISSION_PENDING,
     (): IpcResponse<'permission:pending'> => agentRuntime.permissions.pending(),
+  )
+  ipcMain.handle(
+    IPC.PERMISSION_RULES,
+    (): IpcResponse<'permission:rules'> => agentRuntime.permissions.listRules(),
+  )
+  ipcMain.handle(
+    IPC.PERMISSION_RULE_REMOVE,
+    (
+      _event,
+      input: IpcRequest<'permission:rule-remove'>,
+    ): IpcResponse<'permission:rule-remove'> =>
+      agentRuntime.permissions.removeRule(input.id),
   )
 
   ipcMain.handle(
@@ -128,6 +265,52 @@ export function registerIpc(
   ipcMain.handle(
     IPC.ASK_USER_PENDING,
     (): IpcResponse<'ask-user:pending'> => agentRuntime.questions.pending(),
+  )
+
+  ipcMain.handle(
+    IPC.INTERACTION_PENDING,
+    (event, input: IpcRequest<'interaction:pending'>): IpcResponse<'interaction:pending'> => {
+      assertTrustedSender(event.sender, getWindow())
+      return agentRuntime.interactions.pending(input?.rootRunId)
+    },
+  )
+  ipcMain.handle(
+    IPC.INTERACTION_RESPOND,
+    async (event, input: IpcRequest<'interaction:respond'>): Promise<IpcResponse<'interaction:respond'>> => {
+      assertTrustedSender(event.sender, getWindow())
+      if (!input || typeof input.requestId !== 'string' || input.requestId.length === 0) {
+        throw new Error('interaction_request_invalid')
+      }
+      await agentRuntime.interactions.respond(input)
+    },
+  )
+  ipcMain.handle(
+    IPC.DELEGATION_LIST,
+    (event, input: IpcRequest<'delegation:list'>): IpcResponse<'delegation:list'> => {
+      assertTrustedSender(event.sender, getWindow())
+      return agentRuntime.delegations.list(input.rootRunId)
+    },
+  )
+  ipcMain.handle(
+    IPC.DELEGATION_MESSAGES,
+    (event, input: IpcRequest<'delegation:messages'>): Promise<IpcResponse<'delegation:messages'>> => {
+      assertTrustedSender(event.sender, getWindow())
+      return agentRuntime.delegations.messages(input.taskId)
+    },
+  )
+  ipcMain.handle(
+    IPC.DELEGATION_STOP,
+    async (event, input: IpcRequest<'delegation:stop'>): Promise<IpcResponse<'delegation:stop'>> => {
+      assertTrustedSender(event.sender, getWindow())
+      await agentRuntime.delegations.stop(input.taskId)
+    },
+  )
+  ipcMain.handle(
+    IPC.DELEGATION_RETRY,
+    (event, input: IpcRequest<'delegation:retry'>): Promise<IpcResponse<'delegation:retry'>> => {
+      assertTrustedSender(event.sender, getWindow())
+      return agentRuntime.delegations.retry(input.taskId)
+    },
   )
 
   ipcMain.handle(
@@ -174,5 +357,111 @@ export function registerIpc(
     ): Promise<IpcResponse<'channel:test'>> => agentRuntime.settings.testChannel(channelId),
   )
 
+  ipcMain.handle(
+    IPC.PROFILE_LIST,
+    (): IpcResponse<'profile:list'> => agentRuntime.settings.listProfiles(),
+  )
+  ipcMain.handle(
+    IPC.PROFILE_SAVE,
+    (_event, profile: IpcRequest<'profile:save'>): IpcResponse<'profile:save'> =>
+      agentRuntime.settings.saveProfile(profile),
+  )
+  ipcMain.handle(
+    IPC.PROFILE_DELETE,
+    (
+      _event,
+      profileId: IpcRequest<'profile:delete'>,
+    ): IpcResponse<'profile:delete'> => agentRuntime.settings.deleteProfile(profileId),
+  )
+
+  ipcMain.handle(
+    IPC.TOOL_LIST,
+    (): IpcResponse<'tool:list'> => agentRuntime.settings.listTools(),
+  )
+
+  ipcMain.handle(
+    IPC.SKILL_LIST,
+    (
+      _event,
+      input: IpcRequest<'skill:list'>,
+    ): IpcResponse<'skill:list'> =>
+      agentRuntime.settings.listSkills(input.workspaceId),
+  )
+  ipcMain.handle(
+    IPC.SKILL_SET_ENABLED,
+    (
+      _event,
+      input: IpcRequest<'skill:set-enabled'>,
+    ): IpcResponse<'skill:set-enabled'> =>
+      agentRuntime.settings.setSkillEnabled(input.skillId, input.enabled),
+  )
+
+  ipcMain.handle(
+    IPC.MCP_LIST,
+    (): IpcResponse<'mcp:list'> => agentRuntime.settings.listMcpServers(),
+  )
+  ipcMain.handle(
+    IPC.MCP_SAVE,
+    (_event, config: IpcRequest<'mcp:save'>): IpcResponse<'mcp:save'> =>
+      agentRuntime.settings.saveMcpServer(config),
+  )
+  ipcMain.handle(
+    IPC.MCP_DELETE,
+    (_event, serverId: IpcRequest<'mcp:delete'>): IpcResponse<'mcp:delete'> =>
+      agentRuntime.settings.deleteMcpServer(serverId),
+  )
+  ipcMain.handle(
+    IPC.MCP_CONNECT,
+    (
+      _event,
+      serverId: IpcRequest<'mcp:connect'>,
+    ): Promise<IpcResponse<'mcp:connect'>> =>
+      agentRuntime.settings.connectMcp(serverId),
+  )
+  ipcMain.handle(
+    IPC.MCP_DISCONNECT,
+    (
+      _event,
+      serverId: IpcRequest<'mcp:disconnect'>,
+    ): Promise<IpcResponse<'mcp:disconnect'>> =>
+      agentRuntime.settings.disconnectMcp(serverId),
+  )
+  ipcMain.handle(
+    IPC.MCP_STATUS,
+    (): IpcResponse<'mcp:status'> => agentRuntime.settings.mcpStatuses(),
+  )
+
+  ipcMain.handle(
+    IPC.RUNS_LIST,
+    (
+      _event,
+      sessionId: IpcRequest<'runs:list'>,
+    ): IpcResponse<'runs:list'> => agentRuntime.runs.list(sessionId),
+  )
+
+  ipcMain.handle(IPC.WINDOW_MINIMIZE, (): void => {
+    getWindow()?.minimize()
+  })
+  ipcMain.handle(IPC.WINDOW_TOGGLE_MAXIMIZE, (): void => {
+    const win = getWindow()
+    if (!win) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+  ipcMain.handle(IPC.WINDOW_CLOSE, (): void => {
+    getWindow()?.close()
+  })
+
   return unsubscribe
+}
+
+function assertTrustedSender(
+  sender: WebContents,
+  window: BrowserWindow | null,
+): void {
+  if (!window || window.isDestroyed() || sender !== window.webContents) {
+    const error = new Error('IPC 请求来源不可信')
+    Object.assign(error, { code: 'ipc_sender_forbidden' })
+    throw error
+  }
 }

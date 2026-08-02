@@ -122,15 +122,15 @@ shared <- renderer
 | `src/main/orchestrator.ts` | ✅ K17 已删除 |
 | `src/main/compaction-service.ts` | ✅ K14 已删除 |
 | `src/kernel/*.ts` 旧适配 | ✅ K17 已删除，生产适配只在 `src/kernel/pi/**` |
-| `src/main/permission-service.ts` | S11 |
-| `src/main/plan-service.ts` | S09 |
-| `src/main/ask-user-service.ts` | S10 |
-| `src/main/tools/sandbox.ts` | S11 |
-| `src/main/tools/sandboxed-env.ts` | S11 |
-| `src/main/channel-store.ts` | C12 |
-| `src/main/tools/index.ts` | C12 |
-| `src/main/tools/plan-mode.ts` | S09 |
-| `src/main/tools/ask-user.ts` | S10 |
+| `src/main/permission-service.ts` | ✅ S11 已删除 |
+| `src/main/plan-service.ts` | ✅ S09 已删除 |
+| `src/main/ask-user-service.ts` | ✅ S10 已删除 |
+| `src/main/tools/sandbox.ts` | ✅ S11 已删除 |
+| `src/main/tools/sandboxed-env.ts` | ✅ S11 已删除 |
+| `src/main/channel-store.ts` | ✅ C12 已删除（拆为 data-dir + legacy-channels） |
+| `src/main/tools/index.ts` | ✅ C12 已删除（内置工具迁入 kernel/pi，回收站经注入端口） |
+| `src/main/tools/plan-mode.ts` | ✅ S09 已删除 |
+| `src/main/tools/ask-user.ts` | ✅ S10 已删除 |
 | `src/main/ipc.ts` 单文件 owner | U08，拆为领域 handler |
 | `src/shared/types/**` re-export | U08 |
 | `src/renderer/atoms/agent.ts` 总 atom | U08，拆为 feature state |

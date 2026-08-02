@@ -7,7 +7,9 @@
 
 import { atom } from 'jotai'
 import type { AgentEvent } from '../../shared/types/event.ts'
-import type { SessionMeta } from '../../shared/ipc.ts'
+import type { SessionMeta, Workspace } from '../../shared/ipc.ts'
+import type { Channel } from '../../shared/contracts/channel.ts'
+import type { Profile } from '../../shared/contracts/profile.ts'
 import type { SessionMessage } from '../../shared/types/message.ts'
 import type {
   AskUserRequest,
@@ -15,6 +17,7 @@ import type {
   PlanRequest,
 } from '../../shared/types/permission.ts'
 import type { MarkerKind } from '../components/SystemMarker.tsx'
+import type { ToolNonSuccessReason } from '../../shared/contracts/permission.ts'
 
 export interface ToolActivity {
   toolCallId: string
@@ -26,13 +29,15 @@ export interface ToolActivity {
    * 直接按 running 渲染会让用户看到"正在执行 rm -rf"然后才弹授权框。
    * 详见 docs/01-架构设计.md 6.2。
    */
-  status: 'awaiting_permission' | 'running' | 'success' | 'error'
+  status: 'awaiting_permission' | 'running' | 'success' | 'error' | 'denied'
   /** 开始时间，用于算耗时 */
   startedAt: number
   /** 执行耗时，tool_end 时填 */
   elapsedMs?: number
   /** 实时结果预览；完整内容在落盘的 toolResult 消息中。 */
   result?: { isError: boolean; text: string }
+  /** 结构化非成功原因；Renderer 只展示，不据此外的错误文本改变权限状态。 */
+  reason?: ToolNonSuccessReason
 }
 
 export interface StreamState {
@@ -65,6 +70,35 @@ export const emptyStreamState = (): StreamState => ({
 
 export const sessionsAtom = atom<SessionMeta[]>([])
 export const currentSessionIdAtom = atom<string | null>(null)
+export const workspacesAtom = atom<Workspace[]>([])
+/** Runtime 选择状态的镜像：权威状态在主进程 WorkspaceService，这里只驱动 UI。 */
+export const currentWorkspaceIdAtom = atom<string | null>(null)
+/** C02/C04：渠道与 Profile 的设置镜像（主进程是权威）。 */
+export const channelsAtom = atom<Channel[]>([])
+export const profilesAtom = atom<Profile[]>([])
+
+/**
+ * 输入区「模型」chip 的显示文本：Profile 名优先，其次会话直接指定的
+ * 模型名，最后渠道首个模型；都没有时提示选择。
+ */
+export function resolveModelChipLabel(
+  meta: Pick<SessionMeta, 'profileId' | 'channelId' | 'modelId'> | undefined,
+  channels: Channel[],
+  profiles: Profile[],
+): string {
+  if (meta?.profileId) {
+    const profile = profiles.find((item) => item.id === meta.profileId)
+    if (profile) return profile.name
+  }
+  if (meta?.modelId) {
+    const modelName = channels
+      .flatMap((channel) => channel.models)
+      .find((model) => model.id === meta.modelId)?.name
+    if (modelName) return modelName
+  }
+  const firstModel = channels[0]?.models[0]
+  return firstModel?.name ?? '选择模型'
+}
 
 export function replaceSession(
   sessions: SessionMeta[],
@@ -155,6 +189,34 @@ export function dequeueQueuedPrompt(
  * 用数组而不是单值，是为了渲染进程重载后能一次性把挂起的全捞回来。
  */
 export const pendingPermissionsAtom = atom<Map<string, PermissionRequest[]>>(new Map())
+
+/** 全会话待授权请求总数 —— 底部「N 个授权请求等待处理」跳转条用 */
+export function pendingPermissionCount(
+  pending: Map<string, PermissionRequest[]>,
+): number {
+  let count = 0
+  for (const list of pending.values()) count += list.length
+  return count
+}
+
+/** 第一个需要模态确认的高危请求（跨会话，按登记顺序） */
+export function firstModalPermissionRequest(
+  pending: Map<string, PermissionRequest[]>,
+): PermissionRequest | undefined {
+  for (const list of pending.values()) {
+    const request = list.find((item) => item.requiresModal)
+    if (request) return request
+  }
+  return undefined
+}
+
+export const pendingPermissionCountAtom = atom((get) =>
+  pendingPermissionCount(get(pendingPermissionsAtom)),
+)
+
+export const modalPermissionRequestAtom = atom((get) =>
+  firstModalPermissionRequest(get(pendingPermissionsAtom)),
+)
 
 /** sessionId → 待审批的计划 */
 export const pendingPlansAtom = atom<Map<string, PlanRequest[]>>(new Map())
@@ -276,7 +338,10 @@ export function settleRunFrame(
  * 渲染进程内部才有的事件，不来自主进程 —— 由 120ms 延迟定时器派发。
  * 见 docs/06-设计决策.md 决定 2。
  */
-export type LocalEvent = { type: 'tool_running'; toolCallId: string }
+export type LocalEvent =
+  | { type: 'tool_running'; toolCallId: string }
+  /** 用户拒绝了授权请求，卡片从「等待授权」落为「已拒绝」 */
+  | { type: 'tool_denied'; toolCallId: string }
 
 export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEvent): StreamState {
   switch (event.type) {
@@ -320,15 +385,34 @@ export function applyAgentEvent(prev: StreamState, event: AgentEvent | LocalEven
         ),
       }
 
+    // 用户点了拒绝：只有还停在「等待授权」的卡片才落为已拒绝。
+    // 已经在执行中的工具不可能收到授权请求，所以不需要处理 running → denied。
+    case 'tool_denied':
+      return {
+        ...prev,
+        toolActivities: prev.toolActivities.map((t) =>
+          t.toolCallId === event.toolCallId && t.status === 'awaiting_permission'
+            ? {
+                ...t,
+                status: 'denied' as const,
+                reason: { kind: 'permission', code: 'denied' as const },
+              }
+            : t,
+        ),
+      }
+
     case 'tool_end':
       return {
         ...prev,
         toolActivities: prev.toolActivities.map((t) =>
-          t.toolCallId === event.toolCallId
+          // 已被用户拒绝的工具保持 denied：pi 对 policy 拦截调用会补发
+          // tool_end(isError)，不能让它把「已拒绝」覆盖成「失败」。
+          t.toolCallId === event.toolCallId && t.status !== 'denied'
             ? {
                 ...t,
                 status: event.isError ? ('error' as const) : ('success' as const),
                 elapsedMs: Date.now() - t.startedAt,
+                ...(event.reason ? { reason: event.reason } : {}),
                 ...(event.output
                   ? {
                       result: {

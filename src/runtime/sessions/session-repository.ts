@@ -8,6 +8,7 @@ import type { SessionMeta } from '../../shared/contracts/session.ts'
  */
 export interface SessionRepository {
   list(workspaceId?: string): SessionMeta[]
+  listTopLevel?(workspaceId?: string): SessionMeta[]
   get(sessionId: string): SessionMeta | undefined
   create(session: SessionMeta): SessionMeta
   update(session: SessionMeta): SessionMeta

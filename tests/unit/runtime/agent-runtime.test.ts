@@ -83,13 +83,72 @@ function createDependencies(calls: string[]): AgentRuntimeDependencies {
       saveChannel: () => calls.push('settings.save'),
       deleteChannel: () => calls.push('settings.delete'),
       async testChannel() {
-        return { success: false, message: '未实现' }
+        return { ok: false, code: 'unknown', message: '未实现' }
       },
+      listProfiles: () => [],
+      saveProfile: () => calls.push('settings.profile-save'),
+      deleteProfile: () => calls.push('settings.profile-delete'),
+      listTools: () => [],
+      listSkills: () => [],
+      setSkillEnabled: () => calls.push('settings.skill-set'),
+      listMcpServers: () => [],
+      saveMcpServer: () => calls.push('settings.mcp-save'),
+      deleteMcpServer: () => calls.push('settings.mcp-delete'),
+      async connectMcp() {
+        return { serverId: 'mcp-1', state: 'off' }
+      },
+      async disconnectMcp() {
+        calls.push('settings.mcp-disconnect')
+      },
+      mcpStatuses: () => [],
     },
   }
 }
 
 describe('AgentRuntime 门面', () => {
+  test('只为 root Run 请求标题，child Run 不触发', async () => {
+    const calls: string[] = []
+    const dependencies = createDependencies(calls)
+    dependencies.sessionTitles = {
+      async request(input) {
+        calls.push(`title:${input.sessionId}:${input.userMessage}`)
+      },
+    }
+    const runtime = createAgentRuntime(dependencies)
+
+    runtime.runs.start({ sessionId: 'session-1', text: '第一条' })
+    runtime.runs.start({
+      sessionId: 'session-child',
+      text: '子任务',
+      lineage: {
+        workspaceId: 'workspace-1',
+        sessionId: 'session-child',
+        rootRunId: 'root-1',
+        agentRunId: 'agent-1',
+      },
+    })
+    await Promise.resolve()
+
+    expect(calls.filter((call) => call.startsWith('title:'))).toEqual([
+      'title:session-1:第一条',
+    ])
+  })
+
+  test('手动更新标题时自动标记 titleSource=user', () => {
+    const calls: string[] = []
+    const dependencies = createDependencies(calls)
+    let received: Parameters<AgentRuntimeDependencies['sessions']['updateMeta']>[1] | undefined
+    dependencies.sessions.updateMeta = (_sessionId, patch) => {
+      received = patch
+      return undefined
+    }
+    const runtime = createAgentRuntime(dependencies)
+
+    runtime.sessions.updateMeta('session-1', { title: '用户标题' })
+
+    expect(received).toEqual({ title: '用户标题', titleSource: 'user' })
+  })
+
   test('Run 方法通过原 owner 调用，保留 Coordinator 的实例接收者', () => {
     const calls: string[] = []
     const dependencies = createDependencies(calls)
@@ -186,5 +245,46 @@ describe('AgentRuntime 门面', () => {
     })).rejects.toThrow('任务运行中')
     await expect(runtime.sessions.delete('session-1')).rejects.toThrow('任务运行中')
     expect(calls).toEqual([])
+  })
+
+  test('计划模式切换持久化到 Session 元数据并发布 mode_changed', () => {
+    const calls: string[] = []
+    const runtime = createAgentRuntime(createDependencies(calls))
+    const events: AgentRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
+
+    runtime.plans.setMode('session-1', 'plan')
+
+    expect(calls).toEqual(['plan.setMode', 'session.updateMeta'])
+    expect(events).toContainEqual({
+      sessionId: 'session-1',
+      runId: 0,
+      payload: {
+        channel: 'host',
+        event: { type: 'mode_changed', mode: 'plan', source: 'user' },
+      },
+    })
+  })
+
+  test('ask_user 响应只通过统一订阅契约发布', async () => {
+    const calls: string[] = []
+    const events: AgentRuntimeEvent[] = []
+    const runtime = createAgentRuntime(createDependencies(calls))
+    runtime.subscribe((event) => events.push(event))
+
+    runtime.questions.respond({
+      requestId: 'question-1',
+      answers: [{ questionId: 'q1', value: '后端' }],
+    })
+
+    expect(calls).toEqual(['question.respond'])
+    expect(events).toContainEqual({
+      sessionId: '',
+      runId: 0,
+      payload: {
+        channel: 'host',
+        event: { type: 'ask_user_resolved', requestId: 'question-1' },
+      },
+    })
   })
 })

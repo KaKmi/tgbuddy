@@ -13,6 +13,16 @@ import { IPC, type TgBuddyAPI } from '../shared/contracts/ipc.ts'
 import type { StreamFrame } from '../shared/contracts/events.ts'
 
 const api = {
+  workspace: {
+    list: () => ipcRenderer.invoke(IPC.WORKSPACE_LIST),
+    create: (input) => ipcRenderer.invoke(IPC.WORKSPACE_CREATE, input),
+    select: (workspaceId) =>
+      ipcRenderer.invoke(IPC.WORKSPACE_SELECT, { workspaceId }),
+    current: () => ipcRenderer.invoke(IPC.WORKSPACE_CURRENT),
+    mountStatus: (workspaceId) =>
+      ipcRenderer.invoke(IPC.WORKSPACE_MOUNT_STATUS, { workspaceId }),
+    pick: () => ipcRenderer.invoke(IPC.WORKSPACE_PICK),
+  },
   session: {
     list: () => ipcRenderer.invoke(IPC.SESSION_LIST),
     create: (input) => ipcRenderer.invoke(IPC.SESSION_CREATE, input),
@@ -45,9 +55,23 @@ const api = {
       return () => ipcRenderer.off(IPC.AGENT_STREAM, handler)
     },
   },
+  attachment: {
+    stage: (input) => ipcRenderer.invoke(IPC.ATTACHMENT_STAGE, input),
+    discard: (ref) => ipcRenderer.invoke(IPC.ATTACHMENT_DISCARD, ref),
+  },
+  toolOutput: {
+    read: (ref) => ipcRenderer.invoke(IPC.TOOL_OUTPUT_READ, { ref }),
+  },
+  artifact: {
+    list: (sessionId) => ipcRenderer.invoke(IPC.ARTIFACT_LIST, { sessionId }),
+    preview: (input) => ipcRenderer.invoke(IPC.ARTIFACT_PREVIEW, input),
+    open: (input) => ipcRenderer.invoke(IPC.ARTIFACT_OPEN, input),
+  },
   permission: {
     respond: (res) => ipcRenderer.invoke(IPC.PERMISSION_RESPOND, res),
     pending: () => ipcRenderer.invoke(IPC.PERMISSION_PENDING),
+    rules: () => ipcRenderer.invoke(IPC.PERMISSION_RULES),
+    removeRule: (id) => ipcRenderer.invoke(IPC.PERMISSION_RULE_REMOVE, { id }),
   },
   plan: {
     respond: (res) => ipcRenderer.invoke(IPC.PLAN_RESPOND, res),
@@ -57,6 +81,16 @@ const api = {
   askUser: {
     respond: (res) => ipcRenderer.invoke(IPC.ASK_USER_RESPOND, res),
     pending: () => ipcRenderer.invoke(IPC.ASK_USER_PENDING),
+  },
+  interaction: {
+    pending: (rootRunId) => ipcRenderer.invoke(IPC.INTERACTION_PENDING, { rootRunId }),
+    respond: (input) => ipcRenderer.invoke(IPC.INTERACTION_RESPOND, input),
+  },
+  delegation: {
+    list: (rootRunId) => ipcRenderer.invoke(IPC.DELEGATION_LIST, { rootRunId }),
+    messages: (taskId) => ipcRenderer.invoke(IPC.DELEGATION_MESSAGES, { taskId }),
+    stop: (taskId) => ipcRenderer.invoke(IPC.DELEGATION_STOP, { taskId }),
+    retry: (taskId) => ipcRenderer.invoke(IPC.DELEGATION_RETRY, { taskId }),
   },
   compaction: {
     start: (sessionId) => ipcRenderer.invoke(IPC.COMPACTION_START, sessionId),
@@ -68,6 +102,35 @@ const api = {
     save: (channel) => ipcRenderer.invoke(IPC.CHANNEL_SAVE, channel),
     delete: (id) => ipcRenderer.invoke(IPC.CHANNEL_DELETE, id),
     test: (id) => ipcRenderer.invoke(IPC.CHANNEL_TEST, id),
+  },
+  profile: {
+    list: () => ipcRenderer.invoke(IPC.PROFILE_LIST),
+    save: (profile) => ipcRenderer.invoke(IPC.PROFILE_SAVE, profile),
+    delete: (id) => ipcRenderer.invoke(IPC.PROFILE_DELETE, id),
+  },
+  tool: {
+    list: () => ipcRenderer.invoke(IPC.TOOL_LIST),
+  },
+  skill: {
+    list: (workspaceId) => ipcRenderer.invoke(IPC.SKILL_LIST, { workspaceId }),
+    setEnabled: (skillId, enabled) =>
+      ipcRenderer.invoke(IPC.SKILL_SET_ENABLED, { skillId, enabled }),
+  },
+  mcp: {
+    list: () => ipcRenderer.invoke(IPC.MCP_LIST),
+    save: (config) => ipcRenderer.invoke(IPC.MCP_SAVE, config),
+    delete: (id) => ipcRenderer.invoke(IPC.MCP_DELETE, id),
+    connect: (id) => ipcRenderer.invoke(IPC.MCP_CONNECT, id),
+    disconnect: (id) => ipcRenderer.invoke(IPC.MCP_DISCONNECT, id),
+    status: () => ipcRenderer.invoke(IPC.MCP_STATUS),
+  },
+  runs: {
+    list: (sessionId) => ipcRenderer.invoke(IPC.RUNS_LIST, sessionId),
+  },
+  windowControls: {
+    minimize: () => ipcRenderer.invoke(IPC.WINDOW_MINIMIZE),
+    toggleMaximize: () => ipcRenderer.invoke(IPC.WINDOW_TOGGLE_MAXIMIZE),
+    close: () => ipcRenderer.invoke(IPC.WINDOW_CLOSE),
   },
 } satisfies TgBuddyAPI
 

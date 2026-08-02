@@ -9,10 +9,12 @@
  * ⚠️ 这层 UI 是临时的，等设计稿落地会替换。逻辑别写进组件。
  */
 
+import { TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import type { PermissionRequest, RuleScope } from '../../shared/types/permission.ts'
 
-const SCOPE_LABELS: Record<RuleScope, string> = {
+const LEGACY_SCOPE_OPTIONS = ['session', 'project', 'global'] as const satisfies RuleScope[]
+const SCOPE_LABELS: Record<(typeof LEGACY_SCOPE_OPTIONS)[number], string> = {
   session: '本会话',
   project: '本项目',
   global: '全局',
@@ -20,8 +22,8 @@ const SCOPE_LABELS: Record<RuleScope, string> = {
 
 const RISK_STYLE = {
   low: 'border-border bg-card',
-  medium: 'border-amber-800/60 bg-amber-950/20',
-  high: 'border-red-800/60 bg-red-950/25',
+  medium: 'border-status-pending/30 bg-status-pending/5',
+  high: 'border-status-error/30 bg-status-error/5',
 } as const
 
 export function PermissionBanner({ request }: { request: PermissionRequest }) {
@@ -49,13 +51,13 @@ export function PermissionBanner({ request }: { request: PermissionRequest }) {
   }
 
   return (
-    <div className={`rounded-lg border px-4 py-3 ${RISK_STYLE[request.risk]}`}>
+    <div className={`max-w-[720px] rounded-[11px] border px-3 py-3 ${RISK_STYLE[request.risk]}`}>
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-foreground">
           请求执行 <code className="font-mono">{request.toolName}</code>
         </span>
         {request.risk === 'high' && (
-          <span className="rounded bg-red-900/60 px-1.5 py-0.5 text-[10px] text-red-200">高危</span>
+          <span className="rounded bg-status-error/10 px-1.5 py-0.5 text-[10px] text-status-error">高危</span>
         )}
       </div>
 
@@ -65,14 +67,15 @@ export function PermissionBanner({ request }: { request: PermissionRequest }) {
         </p>
       ) : null}
 
-      <pre className="mt-2 max-h-32 overflow-auto rounded bg-black/30 p-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+      <pre className="mt-2 max-h-32 overflow-auto rounded-lg bg-muted p-2.5 font-mono text-[10.8px] leading-[1.7] text-muted-foreground">
         {JSON.stringify(request.args, null, 2)}
       </pre>
 
       {/* 破坏性命令不给「总是允许」—— 这类操作的价值就在于每次都停一下 */}
       {request.neverPersist ? (
-        <p className="mt-2 text-xs text-amber-300/80">
-          ⚠ 这条命令含破坏性操作（rm / sudo / 重定向），无法保存为规则，只能单次批准。
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-status-pending">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+          <span>这条命令含破坏性操作（rm / sudo / 重定向），无法保存为规则，只能单次批准。</span>
         </p>
       ) : request.suggestedGrants.length > 0 ? (
         <div className="mt-2 space-y-1">
@@ -91,7 +94,7 @@ export function PermissionBanner({ request }: { request: PermissionRequest }) {
           ))}
           {grantIndex !== null && (
             <div className="flex items-center gap-1 pt-1">
-              {(Object.keys(SCOPE_LABELS) as RuleScope[]).map((s) => (
+              {LEGACY_SCOPE_OPTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => setScope(s)}
@@ -107,18 +110,18 @@ export function PermissionBanner({ request }: { request: PermissionRequest }) {
         </div>
       ) : null}
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex justify-end gap-2">
         <button
           disabled={busy}
           onClick={() => void respond(true)}
-          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
+          className="inline-flex min-h-[30px] items-center rounded-lg border border-primary bg-primary px-3 text-[11.5px] font-medium text-primary-foreground hover:brightness-110 disabled:opacity-40"
         >
           允许
         </button>
         <button
           disabled={busy}
           onClick={() => void respond(false)}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs text-foreground/80 hover:bg-accent/70 disabled:opacity-40"
+          className="inline-flex min-h-[30px] items-center rounded-lg border bg-card px-3 text-[11.5px] text-foreground/80 hover:bg-accent disabled:opacity-40"
         >
           拒绝
         </button>

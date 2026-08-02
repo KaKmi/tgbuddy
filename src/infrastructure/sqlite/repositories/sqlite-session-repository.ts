@@ -8,9 +8,13 @@ import type { AppDatabase } from '../app-database.ts'
 interface SessionRow {
   id: string
   title: string
+  visibility: string
+  parent_task_id: string | null
+  title_source: string
   workspace_id: string | null
   channel_id: string | null
   model_id: string | null
+  profile_id: string | null
   expert_id: string | null
   pinned: number | null
   archived: number | null
@@ -29,9 +33,13 @@ interface SessionRow {
 const SELECT_COLUMNS = `
   id,
   title,
+  visibility,
+  parent_task_id,
+  title_source,
   workspace_id,
   channel_id,
   model_id,
+  profile_id,
   expert_id,
   pinned,
   archived,
@@ -105,6 +113,11 @@ function parseStatus(value: string | null, sessionId: string): SessionMeta['stat
   throw new Error(`Session ${sessionId} 的 status 无效: ${value}`)
 }
 
+function parseTitleSource(value: string, sessionId: string): NonNullable<SessionMeta['titleSource']> {
+  if (value === 'default' || value === 'generated' || value === 'user') return value
+  throw new Error(`Session ${sessionId} 的 titleSource 无效: ${value}`)
+}
+
 function rowToSession(row: SessionRow): SessionMeta {
   const contextUsage = parseContextUsage(row.context_usage_json, row.id)
   const permissionMode = parsePermissionMode(row.permission_mode, row.id)
@@ -117,9 +130,13 @@ function rowToSession(row: SessionRow): SessionMeta {
   return {
     id: row.id,
     title: row.title,
+    visibility: row.visibility === 'internal' ? 'internal' : 'top_level',
+    ...(row.parent_task_id !== null ? { parentTaskId: row.parent_task_id } : {}),
+    titleSource: parseTitleSource(row.title_source, row.id),
     ...(row.workspace_id !== null ? { workspaceId: row.workspace_id } : {}),
     ...(row.channel_id !== null ? { channelId: row.channel_id } : {}),
     ...(row.model_id !== null ? { modelId: row.model_id } : {}),
+    ...(row.profile_id !== null && row.profile_id !== '' ? { profileId: row.profile_id } : {}),
     ...(row.expert_id !== null ? { expertId: row.expert_id } : {}),
     ...(row.pinned !== null ? { pinned: row.pinned !== 0 } : {}),
     ...(row.archived !== null ? { archived: row.archived !== 0 } : {}),
@@ -139,9 +156,13 @@ function sessionValues(session: SessionMeta): Array<string | number | null> {
   return [
     session.id,
     session.title,
+    session.visibility ?? 'top_level',
+    session.parentTaskId ?? null,
+    session.titleSource ?? (session.title === '新会话' ? 'default' : 'user'),
     session.workspaceId ?? null,
     session.channelId ?? null,
     session.modelId ?? null,
+    session.profileId ?? '',
     session.expertId ?? null,
     session.pinned === undefined ? null : session.pinned ? 1 : 0,
     session.archived === undefined ? null : session.archived ? 1 : 0,
@@ -192,6 +213,24 @@ export class SqliteSessionRepository implements SessionRepository {
     })
   }
 
+  listTopLevel(workspaceId?: string): SessionMeta[] {
+    return this.#appDatabase.use((database) => {
+      const rows = workspaceId === undefined
+        ? database
+            .prepare(`SELECT ${SELECT_COLUMNS} FROM app_sessions WHERE visibility = 'top_level' ORDER BY updated_at DESC, id ASC`)
+            .all()
+        : database
+            .prepare(
+              `SELECT ${SELECT_COLUMNS}
+               FROM app_sessions
+               WHERE visibility = 'top_level' AND workspace_id = ?
+               ORDER BY updated_at DESC, id ASC`,
+            )
+            .all(workspaceId)
+      return (rows as unknown as SessionRow[]).map(rowToSession)
+    })
+  }
+
   get(sessionId: string): SessionMeta | undefined {
     return this.#appDatabase.use((database) => {
       const row = database
@@ -206,11 +245,11 @@ export class SqliteSessionRepository implements SessionRepository {
       database
         .prepare(
           `INSERT INTO app_sessions (
-             id, title, workspace_id, channel_id, model_id, expert_id,
+             id, title, visibility, parent_task_id, title_source, workspace_id, channel_id, model_id, profile_id, expert_id,
              pinned, archived, permission_mode, status, status_detail,
              last_activity, artifact_count, context_usage_json,
              origin_session_id, origin_message_id, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(...sessionValues(session))
     })
@@ -224,9 +263,13 @@ export class SqliteSessionRepository implements SessionRepository {
           .prepare(
             `UPDATE app_sessions
              SET title = ?,
+                 visibility = ?,
+                 parent_task_id = ?,
+                 title_source = ?,
                  workspace_id = ?,
                  channel_id = ?,
                  model_id = ?,
+                 profile_id = ?,
                  expert_id = ?,
                  pinned = ?,
                  archived = ?,

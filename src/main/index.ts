@@ -2,14 +2,14 @@
  * Electron 主进程入口。
  */
 
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import {
   createApplication,
   type TgBuddyApplication,
 } from './bootstrap/create-application.ts'
-import { DATA_DIR } from './channel-store.ts'
+import { DATA_DIR } from './data-dir.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 // Electron E2E 使用已构建的 Renderer，避免再启动一套 Vite 服务。
@@ -27,8 +27,8 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 600,
     show: false,
-    // 深色底，避免加载时白闪
-    backgroundColor: '#111111',
+    frame: false,
+    backgroundColor: '#efefec',
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -65,6 +65,7 @@ async function loadDevUrlWithRetry(win: BrowserWindow, attempts = 20): Promise<v
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null)
   application = await createApplication({
     getWindow: () => mainWindow,
     databasePath: join(app.getPath('userData'), 'tgbuddy.db'),

@@ -22,6 +22,8 @@ export interface CreateSessionCommandsOptions {
   createId(): string
   now(): number
   resolveCwd(): string
+  /** S01 起注入当前工作区选择器；未提供时保持全量 catalog 语义 */
+  workspaceId?(): string | undefined
   onHistoryDeleteError?(sessionId: string, error: unknown): void
 }
 
@@ -34,15 +36,31 @@ export interface CreateSessionCommandsOptions {
 export function createSessionCommands(
   options: CreateSessionCommandsOptions,
 ): SessionCommands {
+  const currentWorkspaceId = (): string | undefined => options.workspaceId?.()
+
   return {
-    list: () => options.repository.list(),
+    list: () => {
+      const workspaceId = currentWorkspaceId()
+      const listTopLevel = options.repository.listTopLevel?.bind(options.repository)
+      const sessions = listTopLevel
+        ? listTopLevel(workspaceId)
+        : options.repository.list(workspaceId).filter((session) => session.visibility !== 'internal')
+      return sessions
+    },
+    get: (sessionId) => options.repository.get(sessionId),
     async create(input) {
       const now = options.now()
+      const workspaceId = currentWorkspaceId()
       const meta = options.repository.create({
         id: options.createId(),
         title: input.title ?? '新会话',
+        titleSource: input.title ? 'user' : 'default',
+        visibility: input.visibility ?? 'top_level',
+        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        ...(workspaceId ? { workspaceId } : {}),
         ...(input.channelId ? { channelId: input.channelId } : {}),
         ...(input.modelId ? { modelId: input.modelId } : {}),
+        ...(input.profileId ? { profileId: input.profileId } : {}),
         createdAt: now,
         updatedAt: now,
       })
@@ -76,9 +94,11 @@ export function createSessionCommands(
       const target = options.repository.create({
         id: options.createId(),
         title: source.title,
+        titleSource: source.titleSource === 'user' ? 'user' : 'generated',
         ...(source.workspaceId ? { workspaceId: source.workspaceId } : {}),
         ...(source.channelId ? { channelId: source.channelId } : {}),
         ...(source.modelId ? { modelId: source.modelId } : {}),
+        ...(source.profileId ? { profileId: source.profileId } : {}),
         ...(source.expertId ? { expertId: source.expertId } : {}),
         ...(source.permissionMode ? { permissionMode: source.permissionMode } : {}),
         originRef: {

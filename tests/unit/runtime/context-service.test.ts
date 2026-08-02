@@ -174,9 +174,6 @@ function createFixture(): Fixture {
       messages.splice(0, messages.length, marker, messages[2]!)
       return marker
     },
-    async countArtifacts() {
-      return 0
-    },
     async delete() {},
   }
 

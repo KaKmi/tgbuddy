@@ -1,5 +1,14 @@
 import type { Channel } from '../../shared/contracts/channel.ts'
 import type { AgentEvent } from '../../shared/contracts/events.ts'
+import type { SkillManifest } from '../../shared/contracts/skill.ts'
+import type { RunProfileSnapshot } from '../../shared/contracts/run-snapshot.ts'
+import type { PermissionCeilingSnapshot } from '../../shared/contracts/run-snapshot.ts'
+import type { ToolNonSuccessReason } from '../../shared/contracts/permission.ts'
+import type { PermissionRiskLevel } from '../permissions/risk-classifier.ts'
+import type { ResolvedInvocation } from '../permissions/invocation-normalizer.ts'
+import type { ToolDescriptor } from '../../shared/contracts/tool.ts'
+import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
+import type { PermissionSubject, RunLineage } from '../../shared/contracts/run.ts'
 
 /**
  * 一次 Run 交给内核时的不可变快照。
@@ -9,11 +18,27 @@ import type { AgentEvent } from '../../shared/contracts/events.ts'
 export interface AgentInvocation {
   sessionId: string
   text: string
+  subject: PermissionSubject
+  permissionCeiling: PermissionCeilingSnapshot
+  /** 本次 Run 绑定的工作区，S03 起用于创建 per-run ExecutionEnv */
+  workspaceId: string
   /** 本次 Run 绑定的工作目录；工具只能使用这份不可变快照。 */
   cwd: string
+  /** A02：用户消息携带的附件（字节已在 BlobStore，消息只存 ref） */
+  attachments?: AttachmentRef[]
+  /** D02：child run 的 lineage（父工具调用链接，用于区分 child 与工具注入门控） */
+  lineage?: RunLineage
+  /** D03：child run 的策略/授权归属会话（父会话）；root run 不设 */
+  policySessionId?: string
   channel: Channel
   modelId: string
   systemPrompt: string
+  /** C08：Run 启动时冻结的启用技能摘要，正文按需加载 */
+  skills?: SkillManifest[]
+  /** C12：Run 启动时冻结的工具快照（含 MCP），能力账本来源 */
+  tools?: ToolDescriptor[]
+  /** C12：本次 Run 使用的 Profile 摘要（不存敏感配置） */
+  profile?: RunProfileSnapshot
   /**
    * 每次真正请求模型前执行的容量护栏。返回 true 表示历史已压缩，
    * kernel 需要重新读取持久化上下文。
@@ -29,11 +54,27 @@ export interface ToolPolicyInput {
   toolCallId: string
   toolName: string
   args: Record<string, unknown>
+  subject?: PermissionSubject
+  permissionCeiling?: PermissionCeilingSnapshot
 }
 
 export type ToolPolicyDecision =
-  | { action: 'allow' }
-  | { action: 'deny'; reason: string }
+  | { action: 'allow'; risk?: 'R0' | 'R1'; invocation?: ResolvedInvocation }
+  | {
+      action: 'authorize'
+      risk: 'R2' | 'R3'
+      source: 'rule' | 'bypass' | 'plan_effect'
+      invocation: ResolvedInvocation
+    }
+  | {
+      action: 'approval_required'
+      risk: 'R2' | 'R3' | 'R4'
+      allowed: boolean
+      invocation: ResolvedInvocation
+      decisionId?: string
+      reason?: string
+    }
+  | { action: 'deny'; reason: ToolNonSuccessReason | string; risk?: PermissionRiskLevel }
 
 /**
  * 工具执行前的策略端口。

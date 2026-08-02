@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   createRunCoordinator,
+  MemoryRunRepository,
   type AgentEngine,
   type AgentInvocation,
 } from '../../src/runtime/index.ts'
@@ -8,11 +9,34 @@ import type {
   AgentEvent,
   StreamFrame,
 } from '../../src/shared/contracts/events.ts'
+import type { RunIdentity } from '../../src/shared/contracts/run.ts'
+import type { PermissionCeilingSnapshot } from '../../src/shared/contracts/run-snapshot.ts'
 
-function invocation(sessionId: string, text: string): AgentInvocation {
+function permissionCeiling(rootSessionId: string): PermissionCeilingSnapshot {
+  return {
+    schemaVersion: 1,
+    policyVersion: 'permission-v2',
+    mode: 'auto',
+    rootSessionId,
+    workspaceId: 'ws-1',
+    mountRevision: 'mount-1',
+    allowedToolIds: ['read'],
+    maxAutoRisk: 'R3',
+    role: 'root',
+  }
+}
+
+function invocation(
+  sessionId: string,
+  text: string,
+  identity: RunIdentity,
+): AgentInvocation {
   return {
     sessionId,
     text,
+    subject: identity,
+    permissionCeiling: permissionCeiling(identity.rootSessionId),
+    workspaceId: 'ws-1',
     cwd: 'C:\\fixture',
     channel: {
       id: 'test',
@@ -33,6 +57,62 @@ function invocation(sessionId: string, text: string): AgentInvocation {
 }
 
 describe('RunCoordinator + fake AgentEngine', () => {
+  test('root 在 createInvocation 和首次 provider 前已有稳定 identity 与 ceiling', async () => {
+    const runs = new MemoryRunRepository()
+    const seen: string[] = []
+    const engine: AgentEngine = {
+      async *run(value) {
+        expect(runs.get('run-root')?.rootRunId).toBe('run-root')
+        expect(value.subject).toMatchObject({ rootRunId: 'run-root', agentRunId: 'run-root' })
+        expect(runs.get('run-root')?.snapshot?.permission.rootSessionId).toBe('session-1')
+        seen.push('provider')
+        yield { type: 'run_end', stopReason: 'stop' }
+      },
+      async dispose() {},
+    }
+    const coordinator = createRunCoordinator({
+      now: () => 1,
+      engine,
+      runs,
+      createRunId: () => 'run-root',
+      createInvocation: async (input) => {
+        expect(input.identity).toMatchObject({
+          rootRunId: 'run-root',
+          agentRunId: 'run-root',
+          role: 'root',
+        })
+        seen.push('invocation')
+        return invocation(input.sessionId, input.text, input.identity!)
+      },
+      lifecycle: {
+        started: (sessionId) => Promise.resolve({
+          id: sessionId,
+          title: '测试',
+          status: 'running',
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+        settled: ({ sessionId, status }) => Promise.resolve({
+          id: sessionId,
+          title: '测试',
+          status,
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+      },
+    })
+
+    await coordinator.start({ sessionId: 'session-1', text: '分析' }, () => {})
+
+    expect(seen).toEqual(['invocation', 'provider'])
+    expect(runs.get('run-root')).toMatchObject({
+      id: 'run-root',
+      rootRunId: 'run-root',
+      agentRunId: 'run-root',
+      snapshot: { permission: { rootSessionId: 'session-1' } },
+    })
+  })
+
   test('保持文本流事件顺序并补齐 sessionId/runId/agent channel', async () => {
     const emitted: AgentEvent[] = [
       { type: 'run_start' },
@@ -84,7 +164,7 @@ describe('RunCoordinator + fake AgentEngine', () => {
       now: () => 1,
       engine,
       createInvocation: (input) =>
-        Promise.resolve(invocation(input.sessionId, input.text)),
+        Promise.resolve(invocation(input.sessionId, input.text, input.identity!)),
       lifecycle: {
         started: (sessionId) => Promise.resolve({
           id: sessionId,
@@ -128,5 +208,189 @@ describe('RunCoordinator + fake AgentEngine', () => {
           ? frame.payload.event.type
           : frame.payload.event.type),
     ).toEqual(emitted.map((event) => event.type))
+  })
+
+  test('createInvocation 抛出工作区 mount 错误时 settled failed 并发出可见 host_error', async () => {
+    const frames: StreamFrame[] = []
+    const settlements: string[] = []
+    let engineCalls = 0
+    const engine: AgentEngine = {
+      async *run() {
+        engineCalls += 1
+        yield { type: 'run_end', stopReason: 'stop' }
+      },
+      async dispose() {},
+    }
+    const coordinator = createRunCoordinator({
+      now: () => 1,
+      engine,
+      createInvocation: async () => {
+        throw new Error('工作区目录不存在：C:\\gone。请恢复目录或重新选择文件夹')
+      },
+      lifecycle: {
+        started: (sessionId) => Promise.resolve({
+          id: sessionId,
+          title: '测试',
+          status: 'running',
+          createdAt: 1,
+          updatedAt: 2,
+        }),
+        settled: ({ sessionId, status, detail }) => {
+          settlements.push(`${sessionId}:${status}:${detail ?? ''}`)
+          return Promise.resolve({
+            id: sessionId,
+            title: '测试',
+            status,
+            ...(detail ? { statusDetail: detail } : {}),
+            createdAt: 1,
+            updatedAt: 3,
+          })
+        },
+      },
+    })
+
+    await coordinator.start(
+      { sessionId: 'session-1', text: '开始' },
+      (frame) => frames.push(frame),
+    )
+
+    expect(settlements).toEqual([
+      'session-1:failed:工作区目录不存在：C:\\gone。请恢复目录或重新选择文件夹',
+    ])
+    expect(
+      frames.some(
+        (frame) =>
+          frame.payload.channel === 'host'
+          && frame.payload.event.type === 'host_error'
+          && frame.payload.event.message.includes('工作区目录不存在'),
+      ),
+    ).toBe(true)
+    expect(engineCalls).toBe(0)
+  })
+
+  test('C12：settled 时一次提交能力快照与分类 token 账本', async () => {
+    const runs = new MemoryRunRepository()
+    const engine: AgentEngine = {
+      async *run() {
+        yield {
+          type: 'turn_end',
+          usage: {
+            input: 10,
+            output: 5,
+            cacheRead: 2,
+            cacheWrite: 0,
+            totalTokens: 17,
+            cost: { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 0, total: 3.5 },
+          },
+        }
+        yield {
+          type: 'turn_end',
+          usage: {
+            input: 3,
+            output: 2,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 5,
+            cost: { input: 0.3, output: 0.8, cacheRead: 0, cacheWrite: 0, total: 1.1 },
+          },
+        }
+        yield { type: 'run_end', stopReason: 'stop' }
+      },
+      async dispose() {},
+    }
+    const coordinator = createRunCoordinator({
+      now: () => 100,
+      engine,
+      runs,
+      createRunId: () => 'run-1',
+      createInvocation: (input) =>
+        Promise.resolve({
+          ...invocation(input.sessionId, input.text, input.identity!),
+          tools: [
+            {
+              id: 'read',
+              name: 'read',
+              label: '读取文件',
+              description: '读',
+              category: 'builtin',
+              source: '内置',
+              defaultPermission: 'allow',
+              enabled: true,
+            },
+            {
+              id: 'pg.query',
+              name: 'pg.query',
+              label: 'query',
+              description: '查询',
+              category: 'mcp',
+              source: 'postgres',
+              owner: 'mcp-1',
+              defaultPermission: 'allow',
+              enabled: true,
+            },
+          ],
+        }),
+      lifecycle: {
+        started: (sessionId) =>
+          Promise.resolve({ id: sessionId, title: 't', createdAt: 1, updatedAt: 2 }),
+        settled: ({ sessionId, status }) =>
+          Promise.resolve({ id: sessionId, title: 't', status, createdAt: 1, updatedAt: 3 }),
+      },
+    })
+
+    await coordinator.start({ sessionId: 'session-1', text: 'go' }, () => {})
+
+    const record = runs.get('run-1')
+    expect(record?.status).toBe('done')
+    expect(record?.settledAt).toBe(100)
+    expect(record?.snapshot?.usage).toEqual({
+      inputTokens: 13,
+      outputTokens: 7,
+      cacheReadTokens: 2,
+      cacheWriteTokens: 0,
+      totalTokens: 22,
+      costUsd: 4.6,
+    })
+    expect(record?.snapshot?.tools.map((tool) => tool.id)).toEqual([
+      'read',
+      'pg.query',
+    ])
+    expect(record?.snapshot?.mcp).toEqual([
+      { serverId: 'mcp-1', name: 'postgres', tools: ['pg.query'] },
+    ])
+    expect(coordinator.list('session-1').map((item) => item.id)).toEqual(['run-1'])
+  })
+
+  test('C12：失败 Run 也提交已知账本（usage 归零，error 记录原因）', async () => {
+    const runs = new MemoryRunRepository()
+    const engine: AgentEngine = {
+      async *run() {
+        yield { type: 'error', reason: 'error', message: '模型调用失败' }
+        yield { type: 'run_end', stopReason: 'error' }
+      },
+      async dispose() {},
+    }
+    const coordinator = createRunCoordinator({
+      now: () => 200,
+      engine,
+      runs,
+      createRunId: () => 'run-2',
+      createInvocation: (input) =>
+        Promise.resolve(invocation(input.sessionId, input.text, input.identity!)),
+      lifecycle: {
+        started: (sessionId) =>
+          Promise.resolve({ id: sessionId, title: 't', createdAt: 1, updatedAt: 2 }),
+        settled: ({ sessionId, status }) =>
+          Promise.resolve({ id: sessionId, title: 't', status, createdAt: 1, updatedAt: 3 }),
+      },
+    })
+
+    await coordinator.start({ sessionId: 'session-1', text: 'go' }, () => {})
+
+    const record = runs.get('run-2')
+    expect(record?.status).toBe('failed')
+    expect(record?.error).toContain('模型调用失败')
+    expect(record?.snapshot?.usage.totalTokens).toBe(0)
+    expect(record?.snapshot?.channel.modelId).toBe('test-model')
   })
 })

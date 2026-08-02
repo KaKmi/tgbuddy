@@ -3,6 +3,7 @@ import {
   type AgentHarnessEvent,
   type AgentMessage,
   type AgentTool,
+  type ExecutionEnv,
   type Session,
 } from '@earendil-works/pi-agent-core'
 import type {
@@ -19,12 +20,37 @@ import type {
   AgentInvocation,
   ToolPolicy,
 } from '../../runtime/runs/agent-engine.ts'
+import type { AttachmentRef } from '../../shared/contracts/attachment.ts'
+import type { BlobRef } from '../../shared/contracts/blob.ts'
+import type { ToolNonSuccessReason } from '../../shared/contracts/permission.ts'
+import { preparePromptWithAttachments } from './pi-attachment-content.ts'
+import { prepareToolOutputPreview } from './pi-tool-output.ts'
+import type {
+  RunExecutionEnv,
+  RunExecutionEnvFactory,
+} from '../../runtime/execution-env/run-execution-env.ts'
+import { PiRunExecutionEnv } from './pi-execution-env.ts'
 import { estimateModelCallContextTokens } from './pi-compaction.ts'
 import {
   estimateTextTokens,
   estimateToolTokens,
 } from './pi-context-usage.ts'
 import { buildModels } from './pi-models.ts'
+import {
+  authorizationCeilingHash,
+  type AuthorizationTicket,
+  type AuthorizedInvocation,
+  type RunAuthorizationGate,
+} from '../../runtime/ports/run-authorization-gate.ts'
+import {
+  PiFileIdentityBinder,
+  type FileIdentityBinding,
+} from './pi-file-identity-binder.ts'
+import {
+  PiProcessIdentityBinder,
+  type ProcessIdentityInvocation,
+  type ProcessResourceIdentity,
+} from './pi-process-identity-binder.ts'
 
 export interface PiAgentSessionProvider {
   openHarnessSession(
@@ -35,14 +61,51 @@ export interface PiAgentSessionProvider {
 
 export interface CreatePiAgentEngineOptions {
   sessions: PiAgentSessionProvider
-  tools(invocation: AgentInvocation): AgentTool[]
+  /** 每个 Run 创建独立沙箱环境，run settled 后释放 */
+  envFactory: RunExecutionEnvFactory
+  tools(invocation: AgentInvocation, env: ExecutionEnv): AgentTool[]
   toolPolicy: ToolPolicy
+  authorizationGate: RunAuthorizationGate
+  /**
+   * A02：用户消息持久化后把附件 ref 写入 app_attachments（按 entry_id）。
+   * 附件是应用元数据，不进 pi 消息本体；失败时只记诊断，不阻断 Run。
+   */
+  persistAttachments?(
+    sessionId: string,
+    entryId: string,
+    refs: AttachmentRef[],
+  ): void
+  /**
+   * A03：按 BlobRef 读回附件字节（Composition Root 注入 BlobStore.get）。
+   * 缺失/读取失败时只记诊断，不阻断 Run。
+   */
+  loadAttachment?(ref: AttachmentRef['blob']): Promise<Uint8Array>
+  /**
+   * A04：工具输出超过 256KB 时把完整内容落 BlobStore（Composition Root 注入）。
+   * 失败时只记诊断，模型/消息仍收到截断预览。
+   */
+  storeToolOutput?(
+    sessionId: string,
+    toolCallId: string,
+    text: string,
+  ): Promise<BlobRef>
+  /**
+   * A05：成功的产出型工具（write/edit）从 args 投影 Artifact。
+   * Runtime 侧决定是否产出并写索引；失败/纯读工具不触发。
+   */
+  projectArtifact?(
+    sessionId: string,
+    workspaceId: string | undefined,
+    input: { toolName: string; args: Record<string, unknown>; isError: boolean },
+  ): void
 }
 
 export interface PersistedPiMessage {
   id: string
   createdAt: number
   message: PiMessage
+  /** A02：用户消息携带的附件 ref（渲染层消息信封用） */
+  attachments?: AttachmentRef[]
 }
 
 export interface CompactedContextCursor {
@@ -105,14 +168,26 @@ class AsyncEventQueue<T> implements AsyncIterableIterator<T> {
 class PiAgentEngine implements AgentEngine {
   readonly #sessions: PiAgentSessionProvider
   readonly #tools: CreatePiAgentEngineOptions['tools']
+  readonly #envFactory: RunExecutionEnvFactory
   readonly #toolPolicy: ToolPolicy
+  readonly #authorizationGate: RunAuthorizationGate
+  readonly #persistAttachments: CreatePiAgentEngineOptions['persistAttachments']
+  readonly #loadAttachment: CreatePiAgentEngineOptions['loadAttachment']
+  readonly #storeToolOutput: CreatePiAgentEngineOptions['storeToolOutput']
+  readonly #projectArtifact: CreatePiAgentEngineOptions['projectArtifact']
   readonly #active = new Map<string, AgentHarness>()
   #disposed = false
 
   constructor(options: CreatePiAgentEngineOptions) {
     this.#sessions = options.sessions
     this.#tools = options.tools
+    this.#envFactory = options.envFactory
     this.#toolPolicy = options.toolPolicy
+    this.#authorizationGate = options.authorizationGate
+    this.#persistAttachments = options.persistAttachments
+    this.#loadAttachment = options.loadAttachment
+    this.#storeToolOutput = options.storeToolOutput
+    this.#projectArtifact = options.projectArtifact
   }
 
   async *run(
@@ -143,112 +218,274 @@ class PiAgentEngine implements AgentEngine {
     }
     if (signal.aborted) return
 
-    const tools = this.#tools(invocation)
-    const harness = new AgentHarness({
-      session,
-      models,
-      model,
-      systemPrompt: invocation.systemPrompt,
-      tools,
+    const runEnv = this.#envFactory.create({
+      workspaceId: invocation.workspaceId,
+      mountPath: invocation.cwd,
     })
-    const events = new AsyncEventQueue<AgentEvent>()
-    let promptSettled = false
-    let promptFailed = false
-    let promptError: unknown
-    let sawErrorEvent = false
-    let abortPromise: Promise<void> | undefined
-
-    const unsubscribeToolPolicy = harness.on('tool_call', async (event) => {
-      const decision = await this.#toolPolicy.evaluate({
-        sessionId: invocation.sessionId,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        args: event.input,
-      }, signal)
-      return decision.action === 'deny'
-        ? { block: true, reason: decision.reason }
-        : undefined
-    })
-    const fixedContextTokens =
-      estimateTextTokens(invocation.systemPrompt)
-      + estimateToolTokens(tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-      })))
-    let compactedContext: CompactedContextCursor | undefined
-    const unsubscribeContextGuard = harness.on('context', async (event) => {
-      if (!invocation.beforeModelCall) return undefined
-      const current = mergeCompactedContext(event.messages, compactedContext)
-      const compacted = await invocation.beforeModelCall(
-        estimateModelCallContextTokens(current, fixedContextTokens),
-        model.contextWindow,
-      )
-      if (!compacted) {
-        return compactedContext ? { messages: current } : undefined
-      }
-      const base = (await session.buildContext()).messages
-      compactedContext = {
-        base,
-        sourceMessageCount: event.messages.length,
-      }
-      return { messages: base }
-    })
-    const unsubscribe = harness.subscribe(async (event) => {
-      const persisted = event.type === 'message_end'
-        ? await persistedMessage(session, event.message)
-        : undefined
-      const runtimeEvent = piEventToAgentEvent(event, persisted)
-      if (runtimeEvent?.type === 'error') sawErrorEvent = true
-      if (event.type === 'message_end' && !sawErrorEvent) {
-        const failure = piMessageFailureEvent(event.message)
-        if (failure) {
-          sawErrorEvent = true
-          events.push(failure)
-        }
-      }
-      if (runtimeEvent) events.push(runtimeEvent)
-    })
-
-    this.#active.set(invocation.sessionId, harness)
-    const abortHarness = (): void => {
-      abortPromise ??= harness.abort().then(
-        () => undefined,
-        () => undefined,
-      )
-    }
-    signal.addEventListener('abort', abortHarness, { once: true })
-    const prompt = (signal.aborted
-      ? Promise.resolve()
-      : harness.prompt(invocation.text))
-      .then(() => undefined, (error: unknown) => {
-        promptFailed = true
-        promptError = error
-      })
-      .finally(() => {
-        promptSettled = true
-        events.close()
-      })
-    if (signal.aborted) abortHarness()
-
     try {
-      for await (const event of events) yield event
-      await prompt
-      if (promptFailed) throw promptError
-    } finally {
-      signal.removeEventListener('abort', abortHarness)
-      unsubscribeContextGuard()
-      unsubscribeToolPolicy()
-      unsubscribe()
-      if (this.#active.get(invocation.sessionId) === harness) {
-        this.#active.delete(invocation.sessionId)
+      const fileIdentityBinder = await PiFileIdentityBinder.create(
+        invocation.cwd,
+        invocation.permissionCeiling.mountRevision,
+      )
+      const processIdentityBinder = new PiProcessIdentityBinder()
+      const authorizations = new Map<
+        string,
+        | {
+            direct: true
+            fileBinding?: FileIdentityBinding
+            processInvocation?: ProcessIdentityInvocation
+            processBinding?: ProcessResourceIdentity
+          }
+        | {
+            ticket: AuthorizationTicket
+            invocation: AuthorizedInvocation
+            fileBinding?: FileIdentityBinding
+            processInvocation?: ProcessIdentityInvocation
+            processBinding?: ProcessResourceIdentity
+          }
+      >()
+      const tools = this.#tools(invocation, this.#piEnv(runEnv)).map((tool): AgentTool => ({
+        ...tool,
+        execute: async (toolCallId, params, toolSignal, onUpdate) => {
+          const authorization = authorizations.get(toolCallId)
+          await fileIdentityBinder.verify(authorization?.fileBinding)
+          await processIdentityBinder.verify(
+            authorization?.processInvocation,
+            authorization?.processBinding,
+          )
+          if (!authorization || 'direct' in authorization) {
+            return tool.execute(toolCallId, params, toolSignal, onUpdate)
+          }
+          const handle = await this.#authorizationGate.tryBeginExecution(
+            authorization.ticket,
+            authorization.invocation,
+            () => ({
+              status: 'running',
+              result: Promise.resolve(tool.execute(toolCallId, params, toolSignal, onUpdate)),
+            }),
+          )
+          return handle.result
+        },
+      }))
+      const harness = new AgentHarness({
+        session,
+        models,
+        model,
+        systemPrompt: invocation.systemPrompt,
+        tools,
+      })
+      const events = new AsyncEventQueue<AgentEvent>()
+      let promptSettled = false
+      let promptFailed = false
+      let promptError: unknown
+      let sawErrorEvent = false
+      let abortPromise: Promise<void> | undefined
+      const pendingAttachments =
+        invocation.attachments && invocation.attachments.length > 0
+          ? [...invocation.attachments]
+          : undefined
+
+      const unsubscribeToolPolicy = harness.on('tool_call', async (event) => {
+        const decision = await this.#toolPolicy.evaluate({
+          // D03：child run 的授权/模式归属父会话（权限请求进父队列，策略继承父模式）
+          sessionId: invocation.policySessionId ?? invocation.sessionId,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          args: event.input,
+          subject: invocation.subject,
+          permissionCeiling: invocation.permissionCeiling,
+        }, signal)
+        if (decision.action === 'deny') {
+          return { block: true, reason: toolPolicyReasonText(decision.reason) }
+        }
+        if (decision.action === 'approval_required' && !decision.allowed) {
+          return { block: true, reason: decision.reason ?? '用户拒绝了授权' }
+        }
+        if (decision.action === 'allow') {
+          const processInvocation = decision.invocation as ProcessIdentityInvocation | undefined
+          authorizations.set(event.toolCallId, {
+            direct: true,
+            fileBinding: decision.invocation
+              ? await fileIdentityBinder.bind(decision.invocation)
+              : undefined,
+            processInvocation,
+            processBinding: processInvocation
+              ? await processIdentityBinder.bind(processInvocation)
+              : undefined,
+          })
+        } else if (decision.action === 'authorize' || decision.action === 'approval_required') {
+          const current = authorizedInvocation(invocation, decision.invocation)
+          const processInvocation = decision.invocation as ProcessIdentityInvocation
+          authorizations.set(event.toolCallId, {
+            invocation: current,
+            fileBinding: await fileIdentityBinder.bind(decision.invocation),
+            processInvocation,
+            processBinding: await processIdentityBinder.bind(processInvocation),
+            ticket: authorizationTicket(
+              event.toolCallId,
+              decision.action === 'approval_required' ? decision.decisionId : undefined,
+              current,
+            ),
+          })
+        }
+        return undefined
+      })
+      // A04：超长工具输出落 Blob，消息/模型只收 8 行尾部预览 + ref
+      const unsubscribeToolOutput = harness.on('tool_result', async (event) => {
+        if (!event.isError) {
+          // A05：成功结果投影产物（write/edit 等），失败不投影
+          try {
+            this.#projectArtifact?.(
+              invocation.sessionId,
+              invocation.workspaceId,
+              {
+                toolName: event.toolName,
+                args: event.input,
+                isError: event.isError,
+              },
+            )
+          } catch (error) {
+            console.error('[PiAgentEngine] Artifact 投影失败：', error)
+          }
+        }
+        const preview = await prepareToolOutputPreview({
+          content: event.content,
+          sessionId: invocation.sessionId,
+          toolCallId: event.toolCallId,
+          store: (sessionId, toolCallId, text) => {
+            if (!this.#storeToolOutput) throw new Error('长输出存储未配置')
+            return this.#storeToolOutput(sessionId, toolCallId, text)
+          },
+        })
+        if (!preview) return undefined
+        return {
+          content: [{ type: 'text', text: preview.text }],
+          details: {
+            ...(isRecord(event.details) ? event.details : {}),
+            ...(preview.outputRef ? { outputRef: preview.outputRef } : {}),
+          },
+        }
+      })
+      const fixedContextTokens =
+        estimateTextTokens(invocation.systemPrompt)
+        + estimateToolTokens(tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        })))
+      let compactedContext: CompactedContextCursor | undefined
+      const unsubscribeContextGuard = harness.on('context', async (event) => {
+        if (!invocation.beforeModelCall) return undefined
+        const current = mergeCompactedContext(event.messages, compactedContext)
+        const compacted = await invocation.beforeModelCall(
+          estimateModelCallContextTokens(current, fixedContextTokens),
+          model.contextWindow,
+        )
+        if (!compacted) {
+          return compactedContext ? { messages: current } : undefined
+        }
+        const base = (await session.buildContext()).messages
+        compactedContext = {
+          base,
+          sourceMessageCount: event.messages.length,
+        }
+        return { messages: base }
+      })
+      const unsubscribe = harness.subscribe(async (event) => {
+        const persisted = event.type === 'message_end'
+          ? await persistedMessage(session, event.message)
+          : undefined
+        if (
+          persisted
+          && persisted.message.role === 'user'
+          && pendingAttachments
+        ) {
+          // 用户消息落库后挂附件：写 app_attachments 供历史回放；失败不阻断 Run
+          persisted.attachments = pendingAttachments
+          try {
+            this.#persistAttachments?.(
+              invocation.sessionId,
+              persisted.id,
+              pendingAttachments,
+            )
+          } catch (error) {
+            console.error('[PiAgentEngine] 附件元数据写入失败：', error)
+          }
+        }
+        const runtimeEvent = piEventToAgentEvent(event, persisted)
+        if (runtimeEvent?.type === 'error') sawErrorEvent = true
+        if (event.type === 'message_end' && !sawErrorEvent) {
+          const failure = piMessageFailureEvent(event.message)
+          if (failure) {
+            sawErrorEvent = true
+            events.push(failure)
+          }
+        }
+        if (runtimeEvent) events.push(runtimeEvent)
+      })
+
+      this.#active.set(invocation.sessionId, harness)
+      const abortHarness = (): void => {
+        abortPromise ??= harness.abort().then(
+          () => undefined,
+          () => undefined,
+        )
       }
-      if (!promptSettled) {
-        await harness.abort()
+      signal.addEventListener('abort', abortHarness, { once: true })
+      // A03：附件转模型内容。图片走 pi 原生 prompt(text, {images})，
+      // 文本附件前置到正文；缺失/不支持/模型不支持图片时只注入诊断文本。
+      const { text: promptText, images } = await preparePromptWithAttachments({
+        text: invocation.text,
+        attachments: pendingAttachments,
+        load: this.#loadAttachment,
+        modelSupportsImages: model.input.includes('image'),
+      })
+      const prompt = (signal.aborted
+        ? Promise.resolve()
+        : harness.prompt(promptText, { ...(images.length > 0 ? { images } : {}) }))
+        .then(() => undefined, (error: unknown) => {
+          promptFailed = true
+          promptError = error
+        })
+        .finally(() => {
+          promptSettled = true
+          events.close()
+        })
+      if (signal.aborted) abortHarness()
+
+      try {
+        for await (const event of events) yield event
         await prompt
+        if (promptFailed) throw promptError
+      } finally {
+        signal.removeEventListener('abort', abortHarness)
+        unsubscribeContextGuard()
+        unsubscribeToolPolicy()
+        unsubscribeToolOutput()
+        unsubscribe()
+        if (this.#active.get(invocation.sessionId) === harness) {
+          this.#active.delete(invocation.sessionId)
+        }
+        if (!promptSettled) {
+          await harness.abort()
+          await prompt
+        }
+        await abortPromise
       }
-      await abortPromise
+    } finally {
+      await runEnv.dispose()
     }
+  }
+
+  /**
+   * 把 pi-free 端口收窄到 kernel 具体类型：PiRunExecutionEnv 是
+   * RunExecutionEnvFactory 的唯一实现，pi 类型只出现在 kernel 层。
+   */
+  #piEnv(runEnv: RunExecutionEnv): ExecutionEnv {
+    if (!(runEnv instanceof PiRunExecutionEnv)) {
+      throw new Error('不支持的 RunExecutionEnv 实现')
+    }
+    return runEnv.env
   }
 
   async dispose(): Promise<void> {
@@ -303,6 +540,9 @@ export function piEventToAgentEvent(
           id: persisted.id,
           createdAt: persisted.createdAt,
           message: persisted.message,
+          ...(persisted.attachments && persisted.attachments.length > 0
+            ? { attachments: persisted.attachments }
+            : {}),
         },
       }
 
@@ -324,12 +564,16 @@ export function piEventToAgentEvent(
     case 'tool_execution_end': {
       const details = extractDetails(event.result)
       const output = extractToolOutput(event.result)
+      const reason = event.isError
+        ? classifyToolNonSuccess(output)
+        : undefined
       return {
         type: 'tool_end',
         toolCallId: event.toolCallId,
         isError: event.isError,
         ...(output ? { output } : {}),
         ...(details ? { details } : {}),
+        ...(reason ? { reason } : {}),
       }
     }
 
@@ -351,6 +595,22 @@ export function piEventToAgentEvent(
 
     default:
       return null
+  }
+}
+
+/** pi 只兼容映射明确可识别的目录读取误用，其它失败保持执行失败。 */
+function classifyToolNonSuccess(output: string | undefined): ToolNonSuccessReason {
+  if (output && /EISDIR|illegal operation on a directory/i.test(output)) {
+    return {
+      kind: 'invalid_invocation',
+      code: 'directory_requires_list',
+      repairHint: '请改用 glob 或 list',
+    }
+  }
+  return {
+    kind: 'execution',
+    code: 'tool_execution_failed',
+    retryable: false,
   }
 }
 
@@ -414,6 +674,7 @@ function lastAssistantStopReason(messages: AgentMessage[]): StopReason {
   return 'stop'
 }
 
+
 function isPiMessage(message: AgentMessage): message is PiMessage {
   return (
     message.role === 'user'
@@ -442,6 +703,56 @@ function extractToolOutput(result: unknown): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function toolPolicyReasonText(reason: ToolNonSuccessReason | string): string {
+  if (typeof reason === 'string') return reason
+  if (reason.kind === 'plan_gate') return '计划模式下不允许执行该操作'
+  if (reason.kind === 'invalid_invocation') {
+    return reason.repairHint ?? `工具参数无效：${reason.code}`
+  }
+  if (reason.kind === 'execution') return `工具执行失败：${reason.code}`
+  return reason.code === 'forbidden' ? '系统策略禁止该操作' : '用户拒绝了授权'
+}
+
+function authorizedInvocation(
+  run: AgentInvocation,
+  invocation: { fingerprint: string; resourceIdentityHash: string },
+): AuthorizedInvocation {
+  return {
+    invocationFingerprint: invocation.fingerprint,
+    resourceIdentityHash: invocation.resourceIdentityHash,
+    rootRunId: run.subject.rootRunId,
+    agentRunId: run.subject.agentRunId,
+    runGeneration: 1,
+    authorizationEpoch: 1,
+    ceilingHash: authorizationCeilingHash(run.permissionCeiling),
+    mountRevision: run.permissionCeiling.mountRevision,
+    policyRevision: run.permissionCeiling.policyVersion,
+    ruleRevision: 1,
+  }
+}
+
+function authorizationTicket(
+  toolCallId: string,
+  decisionId: string | undefined,
+  current: AuthorizedInvocation,
+): AuthorizationTicket {
+  return {
+    ticketId: `${current.agentRunId}:${toolCallId}:${current.invocationFingerprint}`,
+    decisionId: decisionId ?? `automatic:${current.agentRunId}:${toolCallId}`,
+    rootRunId: current.rootRunId,
+    agentRunId: current.agentRunId,
+    runGeneration: current.runGeneration,
+    authorizationEpoch: current.authorizationEpoch,
+    invocationFingerprint: current.invocationFingerprint,
+    resourceIdentityHash: current.resourceIdentityHash,
+    ceilingHash: current.ceilingHash,
+    mountRevision: current.mountRevision,
+    policyRevision: current.policyRevision,
+    ruleRevision: current.ruleRevision,
+    expiresAt: Date.now() + 5 * 60_000,
+  }
 }
 
 export function createPiAgentEngine(

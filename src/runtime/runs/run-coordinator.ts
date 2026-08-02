@@ -3,6 +3,7 @@ import type {
   StreamFrame,
 } from '../../shared/contracts/events.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
+import type { RunIdentity } from '../../shared/contracts/run.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
 import type {
   AgentEngine,
@@ -13,6 +14,13 @@ import {
   RunRegistry,
   type ActiveRun,
 } from './run-registry.ts'
+import type { RunRepository } from './run-repository.ts'
+import {
+  buildCapabilitySnapshot,
+  EMPTY_USAGE_LEDGER,
+  mergeUsageLedger,
+  type RunUsageLedger,
+} from './run-snapshot.ts'
 
 export interface CreateRunCoordinatorOptions {
   now(): number
@@ -23,6 +31,11 @@ export interface CreateRunCoordinatorOptions {
     ContextService,
     'observeTurn' | 'beforeModelCall' | 'runSettled'
   >
+  /** C12：Run 记录持久化（能力快照 + token 账本），缺省不落盘 */
+  runs?: RunRepository
+  /** D03：stop 时级联回调（root stop → child runs 一并停） */
+  onStop?(sessionId: string): void
+  createRunId?(): string
 }
 
 export interface RunSettlement {
@@ -40,6 +53,8 @@ export interface RunCoordinator {
   start(input: StartRunInput, emit: (frame: StreamFrame) => void): Promise<void>
   stop(sessionId: string): void
   isRunning(sessionId: string): boolean
+  /** C12：会话的 Run 账本（能力快照 + token/cost） */
+  list(sessionId: string): ReturnType<RunRepository['listBySession']>
   dispose(): Promise<void>
 }
 
@@ -51,6 +66,10 @@ class DefaultRunCoordinator implements RunCoordinator {
   ) => Promise<AgentInvocation>
   readonly #lifecycle: RunSessionLifecycle
   readonly #context: CreateRunCoordinatorOptions['context']
+  readonly #runs: CreateRunCoordinatorOptions['runs']
+  readonly #createRunId: (() => string) | undefined
+  readonly #now: () => number
+  readonly #onStop: CreateRunCoordinatorOptions['onStop']
   readonly #inFlight = new Set<Promise<void>>()
   #disposePromise: Promise<void> | undefined
 
@@ -60,6 +79,10 @@ class DefaultRunCoordinator implements RunCoordinator {
     this.#createInvocation = options.createInvocation
     this.#lifecycle = options.lifecycle
     this.#context = options.context
+    this.#runs = options.runs
+    this.#createRunId = options.createRunId
+    this.#now = options.now
+    this.#onStop = options.onStop
   }
 
   start(
@@ -94,10 +117,15 @@ class DefaultRunCoordinator implements RunCoordinator {
 
   stop(sessionId: string): void {
     this.#registry.cancel(sessionId)
+    this.#onStop?.(sessionId)
   }
 
   isRunning(sessionId: string): boolean {
     return this.#registry.isRunning(sessionId)
+  }
+
+  list(sessionId: string): ReturnType<RunRepository['listBySession']> {
+    return this.#runs?.listBySession(sessionId) ?? []
   }
 
   dispose(): Promise<void> {
@@ -118,6 +146,8 @@ class DefaultRunCoordinator implements RunCoordinator {
     let failureMessage: string | undefined
     let agentErrorVisible = false
     let settlementFailure: string | undefined
+    let runRecordId: string | undefined
+    let ledger: RunUsageLedger = { ...EMPTY_USAGE_LEDGER }
 
     try {
       const runningSession = await this.#lifecycle.started(run.sessionId)
@@ -130,7 +160,23 @@ class DefaultRunCoordinator implements RunCoordinator {
         { type: 'session_updated', session: runningSession },
         emit,
       )
-      const sourceInvocation = await this.#createInvocation(input)
+      const identity = this.#resolveIdentity(input, run)
+      runRecordId = identity.agentRunId
+      if (this.#runs) {
+        this.#runs.create({
+          id: runRecordId,
+          sessionId: run.sessionId,
+          workspaceId: input.lineage?.workspaceId,
+          rootRunId: identity.rootRunId,
+          agentRunId: identity.agentRunId,
+          ...(identity.parentToolCallId
+            ? { parentToolCallId: identity.parentToolCallId }
+            : {}),
+          createdAt: this.#now(),
+          status: 'running',
+        })
+      }
+      const sourceInvocation = await this.#createInvocation({ ...input, identity })
       const invocation: AgentInvocation = this.#context
         ? {
             ...sourceInvocation,
@@ -143,6 +189,16 @@ class DefaultRunCoordinator implements RunCoordinator {
               }),
           }
         : sourceInvocation
+      if (this.#runs) {
+        const record = this.#runs.get(runRecordId)
+        if (record) {
+          this.#runs.update({
+            ...record,
+            workspaceId: invocation.workspaceId,
+            snapshot: buildCapabilitySnapshot(invocation),
+          })
+        }
+      }
       if (run.signal.aborted) {
         terminalEvent = { type: 'run_end', stopReason: 'aborted' }
         return
@@ -158,6 +214,7 @@ class DefaultRunCoordinator implements RunCoordinator {
           continue
         }
         if (event.type === 'turn_end' && event.usage) {
+          ledger = mergeUsageLedger(ledger, event.usage)
           this.#context?.observeTurn({
             sessionId: run.sessionId,
             usage: event.usage,
@@ -189,14 +246,15 @@ class DefaultRunCoordinator implements RunCoordinator {
         failureMessage ??= errorMessage(error)
       }
     } finally {
+      const settledStatus = run.signal.aborted
+        ? 'interrupted'
+        : failureMessage
+          ? 'failed'
+          : 'done'
       try {
         const settledSession = await this.#lifecycle.settled({
           sessionId: run.sessionId,
-          status: run.signal.aborted
-            ? 'interrupted'
-            : failureMessage
-              ? 'failed'
-              : 'done',
+          status: settledStatus,
           ...(
             run.signal.aborted
               ? { detail: '用户已停止' }
@@ -237,8 +295,35 @@ class DefaultRunCoordinator implements RunCoordinator {
         )
       }
       this.#registry.settle(run)
+      // C12：账本先落盘再发 run_end，UI 收到终态时 runs:list 已是 settled。
+      if (runRecordId && this.#runs) {
+        const record = this.#runs.get(runRecordId)
+        if (record) {
+          this.#runs.update({
+            ...record,
+            settledAt: this.#now(),
+            status: settledStatus,
+            ...(failureMessage ? { error: failureMessage } : {}),
+            snapshot: record.snapshot
+              ? { ...record.snapshot, usage: ledger }
+              : record.snapshot,
+          })
+        }
+      }
       if (terminalEvent) this.#emitAgentEvent(run, terminalEvent, emit)
       this.#context?.runSettled(run.sessionId)
+    }
+  }
+
+  #resolveIdentity(input: StartRunInput, run: ActiveRun): RunIdentity {
+    if (input.identity) return input.identity
+    const runId = this.#createRunId?.() ?? `${run.sessionId}:${run.runId}`
+    return {
+      rootSessionId: run.sessionId,
+      executionSessionId: run.sessionId,
+      rootRunId: runId,
+      agentRunId: runId,
+      role: 'root',
     }
   }
 

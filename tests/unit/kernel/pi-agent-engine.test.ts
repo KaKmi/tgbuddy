@@ -161,6 +161,48 @@ describe('PiAgentEngine 事件适配', () => {
     ])
   })
 
+  test('目录读取错误映射为可修复调用错误，其它错误保持执行失败', () => {
+    expect(piEventToAgentEvent({
+      type: 'tool_execution_end',
+      toolCallId: 'call-directory',
+      toolName: 'read',
+      result: {
+        content: [{ type: 'text', text: 'EISDIR: illegal operation on a directory, read' }],
+        details: {},
+      },
+      isError: true,
+    })).toEqual({
+      type: 'tool_end',
+      toolCallId: 'call-directory',
+      isError: true,
+      output: 'EISDIR: illegal operation on a directory, read',
+      details: {},
+      reason: {
+        kind: 'invalid_invocation',
+        code: 'directory_requires_list',
+        repairHint: '请改用 glob 或 list',
+      },
+    })
+
+    expect(piEventToAgentEvent({
+      type: 'tool_execution_end',
+      toolCallId: 'call-failed',
+      toolName: 'bash',
+      result: {
+        content: [{ type: 'text', text: 'Command exited with code 2' }],
+        details: {},
+      },
+      isError: true,
+    })).toMatchObject({
+      type: 'tool_end',
+      reason: {
+        kind: 'execution',
+        code: 'tool_execution_failed',
+        retryable: false,
+      },
+    })
+  })
+
   test('provider 只在最终 assistant 写错误时补发 error 事件', () => {
     expect(piMessageFailureEvent({
       ...assistant('error'),

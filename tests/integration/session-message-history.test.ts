@@ -351,12 +351,9 @@ describe('SessionMessageHistory', () => {
       'compaction-1',
       'kept-message',
     ])
-    expect(await history.countArtifacts('session-1')).toBe(1)
-
     await history.truncate('session-1', 'kept-message')
     expect((await history.messages('session-1')).map((message) => message.id))
       .toEqual(['compaction-2'])
-    expect(await history.countArtifacts('session-1')).toBe(1)
   })
 
   test('编辑并重发追加审计截断，重启后只恢复前缀与新消息', async () => {

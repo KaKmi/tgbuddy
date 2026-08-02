@@ -4,6 +4,25 @@ import type { DatabaseSync } from 'node:sqlite'
 import appBootstrapSql from './migrations/001_app_bootstrap.sql'
 import appSessionsSql from './migrations/002_app_sessions.sql'
 import appSessionsInterruptedSql from './migrations/003_app_sessions_interrupted.sql'
+import appWorkspacesSql from './migrations/004_app_workspaces.sql'
+import appPermissionRulesSql from './migrations/005_app_permission_rules.sql'
+import appChannelsSql from './migrations/006_app_channels.sql'
+import appProfilesSql from './migrations/007_app_profiles.sql'
+import appMcpServersSql from './migrations/009_app_mcp_servers.sql'
+import appMcpServersKeySql from './migrations/010_app_mcp_servers_key.sql'
+import appRunsSql from './migrations/011_app_runs.sql'
+import appSessionsProfileIdSql from './migrations/012_app_sessions_profile_id.sql'
+import appAttachmentsSql from './migrations/013_app_attachments.sql'
+import appArtifactsSql from './migrations/014_app_artifacts.sql'
+import appBlobRefsSql from './migrations/015_app_blob_refs.sql'
+import appRunsLineageSql from './migrations/016_app_runs_lineage.sql'
+import appSessionsTitleSourceSql from './migrations/017_app_sessions_title_source.sql'
+import appProfilesSkillIdsSql from './migrations/018_app_profiles_skill_ids.sql'
+import appPermissionV2Sql from './migrations/019_app_permission_v2.sql'
+import appInteractionJournalSql from './migrations/020_app_interaction_journal.sql'
+import appAuthorizationClaimsSql from './migrations/021_app_authorization_claims.sql'
+import appSessionVisibilitySql from './migrations/022_app_session_visibility.sql'
+import appDelegationTasksSql from './migrations/023_app_delegation_tasks.sql'
 
 interface SqliteModule {
   DatabaseSync: typeof import('node:sqlite').DatabaseSync
@@ -35,6 +54,82 @@ const APP_MIGRATIONS: readonly AppMigration[] = [
   {
     id: '003_app_sessions_interrupted.sql',
     sql: appSessionsInterruptedSql,
+  },
+  {
+    id: '004_app_workspaces.sql',
+    sql: appWorkspacesSql,
+  },
+  {
+    id: '005_app_permission_rules.sql',
+    sql: appPermissionRulesSql,
+  },
+  {
+    id: '006_app_channels.sql',
+    sql: appChannelsSql,
+  },
+  {
+    id: '007_app_profiles.sql',
+    sql: appProfilesSql,
+  },
+  {
+    id: '009_app_mcp_servers.sql',
+    sql: appMcpServersSql,
+  },
+  {
+    id: '010_app_mcp_servers_key.sql',
+    sql: appMcpServersKeySql,
+  },
+  {
+    id: '011_app_runs.sql',
+    sql: appRunsSql,
+  },
+  {
+    id: '012_app_sessions_profile_id.sql',
+    sql: appSessionsProfileIdSql,
+  },
+  {
+    id: '013_app_attachments.sql',
+    sql: appAttachmentsSql,
+  },
+  {
+    id: '014_app_artifacts.sql',
+    sql: appArtifactsSql,
+  },
+  {
+    id: '015_app_blob_refs.sql',
+    sql: appBlobRefsSql,
+  },
+  {
+    id: '016_app_runs_lineage.sql',
+    sql: appRunsLineageSql,
+  },
+  {
+    id: '017_app_sessions_title_source.sql',
+    sql: appSessionsTitleSourceSql,
+  },
+  {
+    id: '018_app_profiles_skill_ids.sql',
+    sql: appProfilesSkillIdsSql,
+  },
+  {
+    id: '019_app_permission_v2.sql',
+    sql: appPermissionV2Sql,
+  },
+  {
+    id: '020_app_interaction_journal.sql',
+    sql: appInteractionJournalSql,
+  },
+  {
+    id: '021_app_authorization_claims.sql',
+    sql: appAuthorizationClaimsSql,
+  },
+  {
+    id: '022_app_session_visibility.sql',
+    sql: appSessionVisibilitySql,
+  },
+  {
+    id: '023_app_delegation_tasks.sql',
+    sql: appDelegationTasksSql,
   },
 ]
 

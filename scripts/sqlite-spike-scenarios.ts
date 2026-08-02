@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { AppDatabase } from '../src/infrastructure/sqlite/app-database.ts'
+import { SqlitePermissionRuleRepository } from '../src/infrastructure/sqlite/repositories/sqlite-permission-rule-repository.ts'
 import { SqliteSessionRepository } from '../src/infrastructure/sqlite/repositories/sqlite-session-repository.ts'
 import { createPiSessionStore } from '../src/kernel/pi/pi-session-store.ts'
 import { createPiLegacySessionImporter } from '../src/kernel/pi/pi-legacy-importer.ts'
@@ -158,8 +159,27 @@ export async function runAppDatabaseScenario(
           '001_app_bootstrap.sql',
           '002_app_sessions.sql',
           '003_app_sessions_interrupted.sql',
+          '004_app_workspaces.sql',
+          '005_app_permission_rules.sql',
+          '006_app_channels.sql',
+          '007_app_profiles.sql',
+          '009_app_mcp_servers.sql',
+          '010_app_mcp_servers_key.sql',
+          '011_app_runs.sql',
+          '012_app_sessions_profile_id.sql',
+          '013_app_attachments.sql',
+          '014_app_artifacts.sql',
+          '015_app_blob_refs.sql',
+          '016_app_runs_lineage.sql',
+          '017_app_sessions_title_source.sql',
+          '018_app_profiles_skill_ids.sql',
+          '019_app_permission_v2.sql',
+          '020_app_interaction_journal.sql',
+          '021_app_authorization_claims.sql',
+          '022_app_session_visibility.sql',
+          '023_app_delegation_tasks.sql',
         ]),
-      'app migration 必须按顺序包含 001、002 和 003',
+      'app migration 必须按顺序包含当前 001–021（已删除的 008 除外）',
     )
     assertions++
 
@@ -168,7 +188,24 @@ export async function runAppDatabaseScenario(
       .all() as unknown as NamedRow[]
     assertCondition(
       JSON.stringify(tables.map((row) => row.name)) ===
-        JSON.stringify(['app_schema_migrations', 'app_sessions']),
+        JSON.stringify([
+          'app_artifacts',
+          'app_attachments',
+          'app_authorization_claims',
+          'app_blob_refs',
+          'app_channels',
+          'app_delegation_tasks',
+          'app_interaction_decisions',
+          'app_mcp_servers',
+          'app_permission_audit',
+          'app_permission_rules',
+          'app_plan_effects',
+          'app_profiles',
+          'app_runs',
+          'app_schema_migrations',
+          'app_sessions',
+          'app_workspaces',
+        ]),
       `AppDatabase 不得创建未登记的表或 pi 私有表: ${tables.map((row) => row.name).join(',')}`,
     )
     assertions++
@@ -201,6 +238,8 @@ export async function runSessionCatalogScenario(
   const sessionAOld: SessionMeta = {
     id: 'workspace-a-old',
     title: 'Workspace A 旧会话',
+    titleSource: 'user',
+    visibility: 'top_level',
     workspaceId: 'workspace-a',
     pinned: false,
     archived: false,
@@ -210,6 +249,8 @@ export async function runSessionCatalogScenario(
   const sessionANew: SessionMeta = {
     id: 'workspace-a-new',
     title: 'Workspace A 新会话',
+    titleSource: 'user',
+    visibility: 'top_level',
     workspaceId: 'workspace-a',
     channelId: 'channel-a',
     modelId: 'model-a',
@@ -243,6 +284,8 @@ export async function runSessionCatalogScenario(
   const sessionB: SessionMeta = {
     id: 'workspace-b',
     title: 'Workspace B 会话',
+    titleSource: 'user',
+    visibility: 'top_level',
     workspaceId: 'workspace-b',
     createdAt: 150,
     updatedAt: 150,
@@ -294,6 +337,8 @@ export async function runSessionCatalogScenario(
     isDeepStrictEqual(await firstCommands.create({ title: 'Runtime 新会话' }), {
       id: 'runtime-created',
       title: 'Runtime 新会话',
+      titleSource: 'user',
+      visibility: 'top_level',
       createdAt: 250,
       updatedAt: 250,
     }),
@@ -390,6 +435,103 @@ export async function runSessionCatalogScenario(
     startedAt,
     assertions,
     2,
+    await fileBytes(databasePath),
+    await fileBytes(`${databasePath}-wal`),
+  )
+}
+
+export async function runPermissionRulesScenario(
+  context: ScenarioContext,
+): Promise<ScenarioResult> {
+  const startedAt = Date.now()
+  const databasePath = join(context.rootDir, 'permission-rules', 'tgbuddy.db')
+  const renamedPath = join(context.rootDir, 'permission-rules', 'tgbuddy-renamed.db')
+  let assertions = 0
+
+  const firstDatabase = AppDatabase.open(databasePath)
+  const firstRepository = new SqlitePermissionRuleRepository(firstDatabase)
+  firstRepository.add({
+    id: 'rule-path',
+    tool: 'write',
+    match: 'path',
+    pattern: 'C:/work/docs/**',
+    scope: 'project',
+    neverPersist: false,
+    ownerId: 'ws-1',
+    reason: '授权卡「总是允许」',
+    source: 'user',
+  })
+  firstRepository.add({
+    id: 'rule-global',
+    tool: 'bash',
+    match: 'prefix',
+    pattern: 'git status',
+    scope: 'global',
+    neverPersist: false,
+  })
+  assertCondition(
+    firstRepository.list().length === 2,
+    '规则仓库必须能写入 path 与 prefix 两类规则',
+  )
+  assertions++
+
+  // 相同工具×范围×owner 重复 grant 必须幂等（ON CONFLICT 只刷新，不新增行）
+  firstRepository.add({
+    id: 'rule-dup',
+    tool: 'write',
+    match: 'path',
+    pattern: 'C:/work/docs/**',
+    scope: 'project',
+    neverPersist: false,
+    ownerId: 'ws-1',
+  })
+  assertCondition(
+    firstRepository.list().length === 2
+      && firstRepository.list().find((rule) => rule.pattern === 'C:/work/docs/**')?.id === 'rule-path',
+    '重复 grant 不得产生第二条同键规则',
+  )
+  assertions++
+
+  firstRepository.remove('rule-global')
+  assertCondition(
+    firstRepository.list().map((rule) => rule.id).join(',') === 'rule-path',
+    'remove 必须按 id 删除且不影响其它规则',
+  )
+  assertions++
+  firstDatabase.close()
+
+  const reopenedDatabase = AppDatabase.open(databasePath)
+  const reopenedRepository = new SqlitePermissionRuleRepository(reopenedDatabase)
+  const reopenedRule = reopenedRepository.list()[0]
+  assertCondition(
+    reopenedRule !== undefined
+      && reopenedRule.id === 'rule-path'
+      && reopenedRule.tool === 'write'
+      && reopenedRule.scope === 'project'
+      && reopenedRule.ownerId === 'ws-1'
+      && reopenedRule.source === 'user'
+      && reopenedRule.reason === '授权卡「总是允许」',
+    `跨 reopen 必须完整保留规则字段（含 ownerId/source/reason）: ${
+      JSON.stringify(reopenedRule ?? null)
+    }`,
+  )
+  assertions++
+  assertCondition(
+    reopenedRepository.list().length === 1,
+    '跨 reopen 后规则数量必须一致',
+  )
+  assertions++
+  reopenedDatabase.close()
+
+  await rename(databasePath, renamedPath)
+  await rename(renamedPath, databasePath)
+  assertions++
+
+  return passedScenario(
+    'permission-rules',
+    startedAt,
+    assertions,
+    1,
     await fileBytes(databasePath),
     await fileBytes(`${databasePath}-wal`),
   )

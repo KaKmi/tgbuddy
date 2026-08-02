@@ -28,15 +28,24 @@ import type { SessionMessage } from './message.ts'
 import type { ContextUsage } from './context.ts'
 import type { PermissionMode } from './permission.ts'
 
+export type SessionVisibility = 'top_level' | 'internal'
+
 /**
  * 会话元数据只服务于 catalog 和侧边栏查询，不要求读取完整消息历史。
  */
 export interface SessionMeta {
   id: string
   title: string
+  /** internal 会话只承载子 Agent 消息，不进入主会话列表。 */
+  visibility?: SessionVisibility
+  parentTaskId?: string
+  /** default 可被首次 root Run 异步生成覆盖；user 永远优先于迟到结果。 */
+  titleSource?: 'default' | 'generated' | 'user'
   workspaceId?: string
   channelId?: string
   modelId?: string
+  /** C04：会话选中的 Profile（命名模型配置），下一 Run 固化其快照 */
+  profileId?: string
   expertId?: string
   pinned?: boolean
   archived?: boolean

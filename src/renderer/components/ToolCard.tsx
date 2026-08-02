@@ -20,50 +20,66 @@
 import { Check, ChevronRight, CircleSlash, Loader2, TriangleAlert, X } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../lib/utils.ts'
+import type { ToolNonSuccessReason } from '../../shared/contracts/permission.ts'
 
-export type ToolStatus = 'awaiting_permission' | 'running' | 'success' | 'error' | 'unknown'
+export type ToolStatus =
+  | 'awaiting_permission'
+  | 'running'
+  | 'success'
+  | 'error'
+  | 'denied'
+  | 'unknown'
 
 /** 逐项取自原型的 ST 表 */
 const ST = {
   awaiting_permission: {
-    color: '#e0a33e',
-    bar: '#e0a33e',
-    ring: 'rgba(224,163,62,.22)',
-    bg: 'rgba(224,163,62,.05)',
+    color: 'hsl(var(--status-pending))',
+    bar: 'hsl(var(--status-pending))',
+    ring: 'color-mix(in srgb, hsl(var(--status-pending)) 24%, transparent)',
+    bg: 'color-mix(in srgb, hsl(var(--status-pending)) 9%, hsl(var(--card)))',
     badge: '等待授权',
     badgeBg: 'rgba(224,163,62,.14)',
   },
   running: {
-    color: '#7fa7d4',
-    bar: '#7fa7d4',
-    ring: 'rgba(127,167,212,.20)',
-    bg: 'rgba(127,167,212,.045)',
+    color: 'hsl(var(--status-running))',
+    bar: 'hsl(var(--status-running))',
+    ring: 'color-mix(in srgb, hsl(var(--status-running)) 20%, transparent)',
+    bg: 'color-mix(in srgb, hsl(var(--status-running)) 7%, hsl(var(--card)))',
     badge: null,
     badgeBg: '',
   },
   success: {
-    color: '#7f8b98', // ★ 灰蓝，不是绿 —— 成功是常态，不该抢注意力
+    color: 'hsl(var(--muted-foreground))', // ★ 成功是常态，不使用强调色
     bar: 'transparent',
-    ring: 'rgba(255,255,255,.05)',
-    bg: '#17171a',
+    ring: 'var(--tool-card-ring)',
+    bg: 'hsl(var(--card))',
     badge: null,
     badgeBg: '',
   },
   error: {
-    color: '#c9635b',
-    bar: '#c9635b',
-    ring: 'rgba(201,99,91,.22)',
-    bg: 'rgba(201,99,91,.045)',
+    color: 'hsl(var(--status-error))',
+    bar: 'hsl(var(--status-error))',
+    ring: 'color-mix(in srgb, hsl(var(--status-error)) 22%, transparent)',
+    bg: 'color-mix(in srgb, hsl(var(--status-error)) 7%, hsl(var(--card)))',
     badge: '失败',
     badgeBg: 'rgba(201,99,91,.14)',
   },
+  // 原型 denied 与 unknown 同款低饱和灰 —— 拒绝是“没有发生”的结果，不抢红叉的注意力
+  denied: {
+    color: 'hsl(var(--muted-foreground))',
+    bar: 'hsl(var(--muted-foreground) / .45)',
+    ring: 'var(--tool-card-ring)',
+    bg: 'hsl(var(--card))',
+    badge: '已拒绝',
+    badgeBg: 'hsl(var(--muted))',
+  },
   unknown: {
-    color: '#8a8a92',
-    bar: '#55555c',
-    ring: 'rgba(255,255,255,.05)',
-    bg: '#17171a',
+    color: 'hsl(var(--muted-foreground))',
+    bar: 'hsl(var(--muted-foreground) / .45)',
+    ring: 'var(--tool-card-ring)',
+    bg: 'hsl(var(--card))',
     badge: '未完成',
-    badgeBg: 'rgba(255,255,255,.05)',
+    badgeBg: 'hsl(var(--muted))',
   },
 } as const satisfies Record<ToolStatus, unknown>
 
@@ -71,33 +87,49 @@ export interface ToolCardProps {
   name: string
   args: Record<string, unknown>
   status: ToolStatus
-  result?: { isError: boolean; text: string }
+  result?: {
+    isError: boolean
+    text: string
+    /** A04：超长输出完整内容 ref（BlobStore），点击「查看完整输出」读取 */
+    outputRef?: { hash: string; size: number; mime?: string }
+    /** D04：delegate_to_agent 结果，折叠组展示 child 摘要 */
+    delegated?: boolean
+  }
   elapsedMs?: number
+  reason?: ToolNonSuccessReason
 }
 
-export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProps) {
+export function ToolCard({ name, args, status, result, elapsedMs, reason }: ToolCardProps) {
   // 失败默认展开 —— 用户需要立刻看到原因（docs/06 决定 2）
   const [open, setOpen] = useState(status === 'error')
+  const [fullOutput, setFullOutput] = useState<string>()
+  const [loadingOutput, setLoadingOutput] = useState(false)
   const s = ST[status]
+  const reasonDescription = reason ? describeToolNonSuccess(reason) : undefined
+  const isDelegation = name === 'delegate_to_agent'
+  const delegationName = typeof args.name === 'string' && args.name.trim()
+    ? args.name.trim()
+    : args.role === 'worker' ? '执行子智能体' : '探索子智能体'
 
   return (
     <div
-      className="mb-0.5 max-w-[720px] overflow-hidden"
+      data-testid={isDelegation ? 'delegation-tool-card' : 'tool-card'}
+      className="mb-[3px] max-w-[720px] overflow-hidden border shadow-[0_1px_2px_rgba(30,28,24,.04)]"
       style={{
         borderRadius: 11,
         background: s.bg,
-        boxShadow: `inset 0 0 0 1px ${s.ring}`,
+        borderColor: s.ring,
       }}
     >
       <div className="flex">
         {/* 左侧 2px 状态条。成功态是 transparent —— 常态不画条 */}
-        <div className="w-0.5 flex-none" style={{ background: s.bar }} />
+        <div className="w-[3px] flex-none" style={{ background: s.bar }} />
 
         <div className="min-w-0 flex-1">
           <button
             type="button"
             onClick={() => setOpen(!open)}
-            className="flex w-full cursor-pointer items-center gap-[9px] px-3 py-[9px] text-left transition-colors hover:bg-white/[.025]"
+            className="flex min-h-[42px] w-full cursor-pointer items-center gap-[9px] px-[11px] py-2 text-left transition-colors hover:bg-accent/55"
           >
             <span
               className="flex h-[18px] w-[18px] flex-none items-center justify-center"
@@ -107,26 +139,33 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
             </span>
 
             <span
-              className="flex-none rounded-[5px] px-[7px] py-0.5 font-mono text-[11.5px]"
-              style={{ background: 'rgba(255,255,255,.055)', color: '#c3c3ca' }}
+              className="flex-none rounded-[5px] bg-muted px-[7px] py-0.5 font-mono text-[10.5px] leading-[1.4] text-foreground/70"
             >
               {name}
             </span>
+            {isDelegation && (
+              <span
+                className="max-w-[140px] flex-none truncate rounded px-1.5 py-0.5 text-[10.5px]"
+                style={{ background: 'rgba(176,162,224,.16)', color: '#b0a2e0' }}
+              >
+                {delegationName}
+              </span>
+            )}
 
-            <span className="min-w-0 flex-1 truncate text-[13px]" style={{ color: '#dbdbe0' }}>
+            <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/85">
               {describe(name, args)}
             </span>
 
-            {s.badge && (
+            {(reasonDescription?.title ?? s.badge) && (
               <span
                 className="flex-none rounded px-1.5 py-0.5 text-[11px]"
                 style={{ background: s.badgeBg, color: s.color }}
               >
-                {s.badge}
+                {reasonDescription?.title ?? s.badge}
               </span>
             )}
 
-            <span className="flex-none text-[11.5px] text-muted-foreground/70">
+            <span className="flex-none text-[10.5px] text-muted-foreground">
               {meta(elapsedMs, result)}
             </span>
             <ChevronRight
@@ -138,17 +177,33 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
           </button>
 
           {open && (
-            <div className="space-y-2 px-3 pb-2.5 pl-[39px]">
-              <Field label="参数">
-                <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-muted-foreground">
-                  {JSON.stringify(args, null, 2)}
-                </pre>
-              </Field>
+            <div className="space-y-[9px] px-3 pb-3 pl-[39px]">
+              {isDelegation ? (
+                <Field label="任务">
+                  <div className="rounded-lg bg-muted px-3 py-2.5 text-[11px] leading-[1.7] text-muted-foreground">
+                    <div className="mb-1.5 flex items-center gap-1.5">
+                      <span className="font-medium text-foreground/80">{delegationName}</span>
+                      <span className="rounded bg-background/70 px-1.5 py-0.5 text-[9.5px]">
+                        {args.role === 'worker' ? '执行 Agent' : '探索 Agent'}
+                      </span>
+                    </div>
+                    <div className="max-h-28 overflow-auto whitespace-pre-wrap">
+                      {typeof args.task === 'string' ? args.task : '未提供任务描述'}
+                    </div>
+                  </div>
+                </Field>
+              ) : (
+                <Field label="参数">
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 font-mono text-[10.8px] leading-[1.7] text-muted-foreground">
+                    {JSON.stringify(args, null, 2)}
+                  </pre>
+                </Field>
+              )}
               {result && (
-                <Field label={result.isError ? '错误' : '输出'}>
+                <Field label={result.isError ? '错误' : isDelegation ? '结果' : '输出'}>
                   <pre
                     className={cn(
-                      'max-h-52 overflow-auto whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed',
+                      'max-h-52 overflow-auto whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 font-mono text-[10.8px] leading-[1.7]',
                       result.isError ? 'text-status-error/90' : 'text-muted-foreground',
                     )}
                   >
@@ -156,12 +211,78 @@ export function ToolCard({ name, args, status, result, elapsedMs }: ToolCardProp
                   </pre>
                 </Field>
               )}
+              {reasonDescription && (
+                <Field label="原因">
+                  <div className="rounded-lg bg-muted px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    <div className="font-medium text-foreground/80">{reasonDescription.title}</div>
+                    {reasonDescription.hint && <div className="mt-1">{reasonDescription.hint}</div>}
+                  </div>
+                </Field>
+              )}
+              {result?.outputRef && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    data-testid="tool-output-open"
+                    disabled={loadingOutput}
+                    onClick={() => {
+                      if (fullOutput) {
+                        setFullOutput(undefined)
+                        return
+                      }
+                      setLoadingOutput(true)
+                      void window.tgbuddy.toolOutput
+                        .read(result.outputRef!)
+                        .then((text) => {
+                          setFullOutput(text)
+                          setLoadingOutput(false)
+                        })
+                        .catch((error: unknown) => {
+                          console.error('[ToolCard] 读取完整输出失败：', error)
+                          setLoadingOutput(false)
+                        })
+                    }}
+                    className="rounded-md bg-muted px-2 py-1 text-[11px] text-status-running hover:bg-accent disabled:opacity-40"
+                  >
+                    {loadingOutput ? '读取中…' : fullOutput ? '收起完整输出' : '查看完整输出'}
+                  </button>
+                </div>
+              )}
+              {fullOutput && (
+                <pre className="max-h-96 overflow-auto whitespace-pre-wrap font-mono text-[11.5px] leading-relaxed text-muted-foreground">
+                  {fullOutput}
+                </pre>
+              )}
             </div>
           )}
         </div>
       </div>
     </div>
   )
+}
+
+export interface ToolNonSuccessDescription {
+  title: '等待计划批准' | '权限已拒绝' | '调用参数错误' | '执行失败'
+  hint?: string
+}
+
+/** 将结构化原因翻译成 UI 文案；这里绝不解析原始错误文本。 */
+export function describeToolNonSuccess(
+  reason: ToolNonSuccessReason,
+): ToolNonSuccessDescription {
+  switch (reason.kind) {
+    case 'plan_gate':
+      return { title: '等待计划批准' }
+    case 'permission':
+      return { title: '权限已拒绝' }
+    case 'invalid_invocation':
+      return {
+        title: '调用参数错误',
+        ...(reason.repairHint ? { hint: reason.repairHint } : {}),
+      }
+    case 'execution':
+      return { title: '执行失败' }
+  }
 }
 
 /** K11 只展示八行预览；完整输出在 A04 接入 Blob 后提供打开入口。 */
@@ -187,6 +308,8 @@ function StatusIcon({ status }: { status: ToolStatus }) {
       return <Check size={14} strokeWidth={2.4} />
     case 'error':
       return <X size={14} strokeWidth={2.3} />
+    case 'denied':
+      return <CircleSlash size={14} strokeWidth={2} />
     case 'running':
       return <Loader2 size={13} className="animate-spin" />
     case 'awaiting_permission':
@@ -232,6 +355,12 @@ function describe(name: string, args: Record<string, unknown>): string {
     }
     case 'bash':
       return typeof args.command === 'string' ? args.command : '执行命令'
+    case 'delegate_to_agent': {
+      const role = args.role === 'worker' ? '执行' : '探索'
+      const task = typeof args.task === 'string' ? args.task.trim() : ''
+      const summary = task.split(/[。！？\n]/)[0]?.slice(0, 42)
+      return `${role} · ${summary || '等待任务描述'}`
+    }
     default:
       return path ?? (typeof args.command === 'string' ? args.command : name)
   }

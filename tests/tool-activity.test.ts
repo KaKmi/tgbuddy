@@ -5,7 +5,10 @@ import {
   emptyStreamState,
   type LocalEvent,
 } from '../src/renderer/atoms/agent.ts'
-import { previewToolText } from '../src/renderer/components/ToolCard.tsx'
+import {
+  describeToolNonSuccess,
+  previewToolText,
+} from '../src/renderer/components/ToolCard.tsx'
 import {
   createToolRunningTimers,
 } from '../src/renderer/hooks/useGlobalAgentListeners.ts'
@@ -16,6 +19,40 @@ function wait(milliseconds: number): Promise<void> {
 }
 
 describe('工具调用四态', () => {
+  test('计划门禁、权限拒绝、目录参数错误和执行失败不会被合并为同一 error', () => {
+    const started = applyAgentEvent(emptyStreamState(), {
+      type: 'tool_start',
+      toolCallId: 'call-reason',
+      toolName: 'read',
+      args: { path: 'docs' },
+    })
+    const ended = applyAgentEvent(started, {
+      type: 'tool_end',
+      toolCallId: 'call-reason',
+      isError: true,
+      reason: {
+        kind: 'invalid_invocation',
+        code: 'directory_requires_list',
+        repairHint: '请改用 glob/list',
+      },
+    })
+
+    expect(ended.toolActivities[0]?.reason).toEqual({
+      kind: 'invalid_invocation',
+      code: 'directory_requires_list',
+      repairHint: '请改用 glob/list',
+    })
+    expect(ended.toolActivities[0]?.status).toBe('error')
+    expect(describeToolNonSuccess({ kind: 'plan_gate', code: 'plan_required' }).title)
+      .toBe('等待计划批准')
+    expect(describeToolNonSuccess({ kind: 'permission', code: 'denied' }).title)
+      .toBe('权限已拒绝')
+    expect(describeToolNonSuccess({ kind: 'invalid_invocation', code: 'bad_args' }).title)
+      .toBe('调用参数错误')
+    expect(describeToolNonSuccess({ kind: 'execution', code: 'failed', retryable: false }).title)
+      .toBe('执行失败')
+  })
+
   test('tool start、running、success/error 和停止后交回历史状态', () => {
     const started = applyAgentEvent(emptyStreamState(), {
       type: 'tool_start',
@@ -129,5 +166,27 @@ describe('工具调用四态', () => {
     expect(preview).toContain('第 8 行')
     expect(preview).not.toContain('第 9 行')
     expect(preview).toContain('其余 2 行暂不展示')
+  })
+
+  test('用户拒绝后 pi 补发的 tool_end 不覆盖 denied 状态', () => {
+    const started = applyAgentEvent(emptyStreamState(), {
+      type: 'tool_start',
+      toolCallId: 'call-1',
+      toolName: 'write',
+      args: { path: 'm2-write.txt' },
+    })
+    const denied = applyAgentEvent(started, {
+      type: 'tool_denied',
+      toolCallId: 'call-1',
+    })
+    expect(denied.toolActivities[0]?.status).toBe('denied')
+
+    const lateEnd = applyAgentEvent(denied, {
+      type: 'tool_end',
+      toolCallId: 'call-1',
+      isError: true,
+      output: '用户拒绝了授权',
+    })
+    expect(lateEnd.toolActivities[0]?.status).toBe('denied')
   })
 })

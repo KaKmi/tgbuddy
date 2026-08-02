@@ -14,6 +14,7 @@ import type { StopReason, Usage } from '@earendil-works/pi-ai'
 import type { SessionMessage, ToolDetails } from './message.ts'
 import type { ContextUsage } from './context.ts'
 import type { SessionMeta } from './session.ts'
+import type { ToolNonSuccessReason } from './permission.ts'
 
 // ── 内核事件 ──────────────────────────────────────────────────────
 
@@ -43,6 +44,8 @@ export type AgentEvent =
       /** 只用于实时卡片预览；完整结果仍以 toolResult 消息持久化。 */
       output?: string
       details?: ToolDetails
+      /** 仅在非成功时解释原因，不参与权限判定。 */
+      reason?: ToolNonSuccessReason
     }
   /** 一轮结束，带本轮用量 */
   | { type: 'turn_end'; usage?: Usage }

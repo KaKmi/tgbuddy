@@ -7,54 +7,83 @@
  */
 
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { AttachmentDraft, AttachmentRef } from '../shared/contracts/attachment.ts'
+import { AttachmentChipList } from './components/AttachmentChips.tsx'
+import { ResultsPanel } from './features/results/ResultsPanel.tsx'
+import { SessionSamples } from './features/session/SessionSamples.tsx'
 import {
   currentMessagesAtom,
   currentSessionIdAtom,
   currentStreamAtom,
-  currentPermissionsAtom,
-  currentPlansAtom,
-  currentAskUserAtom,
   currentMarkersAtom,
   type ToolActivity,
   messagesBySessionAtom,
   queuedPromptsAtom,
   sessionsAtom,
+  workspacesAtom,
+  currentWorkspaceIdAtom,
+  channelsAtom,
+  profilesAtom,
 } from './atoms/agent.ts'
 import { roleOf, type SessionMessage } from '../shared/types/message.ts'
 import type { SessionMeta } from '../shared/ipc.ts'
-import { PermissionBanner } from './components/PermissionBanner.tsx'
+import type { WorkspaceMountResolution } from '../shared/ipc.ts'
 import { ToolCard } from './components/ToolCard.tsx'
-import { PlanApproval } from './components/PlanApproval.tsx'
-import { AskUserCard } from './components/AskUserCard.tsx'
-import { ContextUsagePanel } from './components/ContextUsagePanel.tsx'
+import { ActionDock } from './features/interactions/ActionDock.tsx'
 import { CompactionDivider } from './components/CompactionDivider.tsx'
 import { CompactionStatus } from './components/CompactionStatus.tsx'
+import { ChannelSettingsPanel } from './features/settings/ChannelSettingsPanel.tsx'
+import {
+  parseModelPreference,
+  readSettingsPreferences,
+} from './features/settings/settings-preferences.ts'
 import { MARKER_STYLE, SystemMarker } from './components/SystemMarker.tsx'
 import type { PermissionMode } from '../shared/types/permission.ts'
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from './components/ai-elements/conversation.tsx'
 import { Response } from './components/ai-elements/response.tsx'
+import { useTheme } from './features/theme/ThemeToggle.tsx'
+import { AppShell } from './features/shell/AppShell.tsx'
+import { ConversationHeader } from './features/conversation/ConversationHeader.tsx'
+import { SessionSidebar } from './features/session/SessionSidebar.tsx'
+import { SessionActionDialog } from './features/session/SessionActionDialog.tsx'
+import { AgentComposer } from './features/composer/AgentComposer.tsx'
+import {
+  hasUnsavedDraft,
+  type NavigationIntent,
+} from './features/session/session-view.ts'
 
 export function App() {
+  const { theme, toggle: toggleTheme } = useTheme()
   const [sessions, setSessions] = useAtom(sessionsAtom)
   const [currentId, setCurrentId] = useAtom(currentSessionIdAtom)
+  const [workspaces, setWorkspaces] = useAtom(workspacesAtom)
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useAtom(currentWorkspaceIdAtom)
+  const [channels, setChannels] = useAtom(channelsAtom)
+  const [profiles, setProfiles] = useAtom(profilesAtom)
   const setMessagesMap = useSetAtom(messagesBySessionAtom)
   const [queuedPrompts, setQueuedPrompts] = useAtom(queuedPromptsAtom)
   const messages = useAtomValue(currentMessagesAtom)
   const stream = useAtomValue(currentStreamAtom)
-  const permissions = useAtomValue(currentPermissionsAtom)
-  const plans = useAtomValue(currentPlansAtom)
-  const questions = useAtomValue(currentAskUserAtom)
   const markers = useAtomValue(currentMarkersAtom)
   const currentSession = sessions.find((x) => x.id === currentId)
   const mode: PermissionMode = currentSession?.permissionMode ?? 'auto'
   const [input, setInput] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [resultsOpen, setResultsOpen] = useState(true)
+  const [mountStatus, setMountStatus] = useState<WorkspaceMountResolution>()
+  // A02：输入区附件草稿（已 stage 到 BlobStore，发送前可移除）
+  const [attachmentDrafts, setAttachmentDrafts] = useState<AttachmentDraft[]>([])
+  const [pendingNavigation, setPendingNavigation] = useState<NavigationIntent>()
+  const [navigationBusy, setNavigationBusy] = useState(false)
+  const attachmentInputRef = useRef<HTMLInputElement>(null)
+  const resultsToggleRef = useRef<HTMLButtonElement>(null)
   const queuedPrompt = currentId ? queuedPrompts.get(currentId) : undefined
+  const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId)
 
   // 工具调用 ↔ 结果的配对索引，整段历史只建一次
   const toolResults = useMemo(() => buildToolResultMap(messages), [messages])
@@ -67,8 +96,55 @@ export function App() {
   )
 
   useEffect(() => {
-    void window.tgbuddy.session.list().then(setSessions)
-  }, [setSessions])
+    void window.tgbuddy.session.list().then(async (sessionList) => {
+      setSessions(sessionList)
+      const preferences = readSettingsPreferences(window.localStorage)
+      const lastSessionId = window.localStorage.getItem('tgbuddy-last-session')
+      if (
+        !preferences.restoreOnLaunch
+        || !lastSessionId
+        || !sessionList.some((session) => session.id === lastSessionId)
+      ) return
+      setCurrentId(lastSessionId)
+      const restoredMessages = await window.tgbuddy.session.messages(lastSessionId)
+      setMessagesMap((current) => new Map(current).set(lastSessionId, restoredMessages))
+    })
+  }, [setCurrentId, setMessagesMap, setSessions])
+
+  useEffect(() => {
+    if (currentId) window.localStorage.setItem('tgbuddy-last-session', currentId)
+  }, [currentId])
+
+  // C02/C04：渠道与 Profile 设置镜像，输入区模型 chip 和设置页共用。
+  useEffect(() => {
+    void Promise.all([
+      window.tgbuddy.channel.list(),
+      window.tgbuddy.profile.list(),
+    ]).then(([channelList, profileList]) => {
+      setChannels(channelList)
+      setProfiles(profileList)
+    })
+  }, [setChannels, setProfiles])
+
+  // 工作区 catalog 与 Runtime 选择状态（权威状态在主进程，这里只镜像）。
+  useEffect(() => {
+    void Promise.all([
+      window.tgbuddy.workspace.list(),
+      window.tgbuddy.workspace.current(),
+    ]).then(([list, current]) => {
+      setWorkspaces(list)
+      setCurrentWorkspaceId(current?.id ?? list[0]?.id ?? null)
+    })
+  }, [setWorkspaces, setCurrentWorkspaceId])
+
+  // 当前工作区磁盘可用性：不可用时选择器给出恢复提示，run 也会被阻止并显示 host error。
+  useEffect(() => {
+    if (!currentWorkspaceId) {
+      setMountStatus(undefined)
+      return
+    }
+    void window.tgbuddy.workspace.mountStatus(currentWorkspaceId).then(setMountStatus)
+  }, [currentWorkspaceId])
 
   // 会话元数据（状态、活动摘要）在主进程更新，流式状态一变就重新拉一次列表。
   // TODO: 主进程直接推 meta 变更事件，省掉这次轮询式的重取
@@ -77,9 +153,21 @@ export function App() {
   }, [stream.running, stream.toolActivities.length, setSessions])
 
   async function newSession() {
-    const meta = await window.tgbuddy.session.create({})
+    const preferences = readSettingsPreferences(window.localStorage)
+    const primaryModel = parseModelPreference(preferences.primaryModel)
+    const meta = await window.tgbuddy.session.create(primaryModel ?? {})
+    if (preferences.defaultPermissionMode !== 'auto') {
+      await window.tgbuddy.plan.setMode(meta.id, preferences.defaultPermissionMode)
+    }
     setSessions(await window.tgbuddy.session.list())
     setCurrentId(meta.id)
+    return meta
+  }
+
+  /** U01：空状态样例 → 新建会话并预填草稿（不自动发送） */
+  async function startFromSample(prompt: string) {
+    await newSession()
+    setInput(prompt)
   }
 
   async function selectSession(id: string) {
@@ -88,15 +176,127 @@ export function App() {
     setMessagesMap((prev) => new Map(prev).set(id, msgs))
   }
 
-  async function send() {
-    const text = input.trim()
-    if (!text || !currentId || stream.running || queuedPrompt) return
-    setInput('')
-    if (stream.compaction) {
-      setQueuedPrompts((current) => new Map(current).set(currentId, text))
+  async function selectWorkspace(id: string) {
+    const workspace = await window.tgbuddy.workspace.select(id)
+    setCurrentWorkspaceId(workspace.id)
+    const nextSessions = await window.tgbuddy.session.list()
+    setSessions(nextSessions)
+    if (currentId && !nextSessions.some((session) => session.id === currentId)) {
+      setCurrentId(null)
+    }
+  }
+
+  async function executeNavigation(intent: NavigationIntent) {
+    if (intent.kind === 'new-session') return newSession()
+    if (intent.kind === 'switch-session') return selectSession(intent.sessionId)
+    return selectWorkspace(intent.workspaceId)
+  }
+
+  async function requestNavigation(intent: NavigationIntent) {
+    if (hasUnsavedDraft(input, attachmentDrafts)) {
+      setPendingNavigation(intent)
       return
     }
-    await window.tgbuddy.agent.send({ sessionId: currentId, text })
+    await executeNavigation(intent)
+  }
+
+  async function discardDraftAndContinue() {
+    if (!pendingNavigation || navigationBusy) return
+    const intent = pendingNavigation
+    const drafts = attachmentDrafts
+    setNavigationBusy(true)
+    setInput('')
+    setAttachmentDrafts([])
+    try {
+      await Promise.all(drafts.map(async (draft) => {
+        try {
+          await window.tgbuddy.attachment.discard(draft.ref)
+        } catch (error) {
+          console.error('[草稿保护] 清理未发送附件失败：', error)
+        }
+      }))
+      await executeNavigation(intent)
+      setPendingNavigation(undefined)
+    } finally {
+      setNavigationBusy(false)
+    }
+  }
+
+  async function addWorkspace() {
+    const path = await window.tgbuddy.workspace.pick()
+    if (!path) return
+    const created = await window.tgbuddy.workspace.create({ path })
+    await selectWorkspace(created.id)
+    setWorkspaces(await window.tgbuddy.workspace.list())
+  }
+
+  async function send() {
+    const text = input.trim()
+    if ((!text && attachmentDrafts.length === 0) || stream.running || queuedPrompt) return
+    const sessionId = currentId ?? (await newSession()).id
+    const attachments = attachmentDrafts.map((draft) => draft.ref)
+    setInput('')
+    setAttachmentDrafts([])
+    if (stream.compaction) {
+      setQueuedPrompts((current) => new Map(current).set(sessionId, text))
+      return
+    }
+    await window.tgbuddy.agent.send({
+      sessionId,
+      text,
+      ...(attachments.length > 0 ? { attachments } : {}),
+    })
+  }
+
+  async function updateCurrentSessionMeta(patch: {
+    profileId?: string
+    channelId?: string
+    modelId?: string
+  }): Promise<void> {
+    if (!currentId) return
+    await window.tgbuddy.session.updateMeta(currentId, patch)
+    setSessions(await window.tgbuddy.session.list())
+  }
+
+  function refreshComposerCapabilities(): void {
+    void Promise.all([
+      window.tgbuddy.channel.list(),
+      window.tgbuddy.profile.list(),
+    ]).then(([channelList, profileList]) => {
+      setChannels(channelList)
+      setProfiles(profileList)
+    })
+  }
+
+  /** A02：选择文件 → 逐文件 stage 到 BlobStore → 输入区 chips */
+  async function onPickAttachments(files: FileList | null) {
+    if (!files) return
+    for (const file of Array.from(files)) {
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const ref = await window.tgbuddy.attachment.stage({
+          name: file.name,
+          ...(file.type ? { mime: file.type } : {}),
+          bytes,
+        })
+        setAttachmentDrafts((current) => [...current, { ref, committed: false }])
+      } catch (error) {
+        console.error('[附件] stage 失败：', error)
+      }
+    }
+    if (attachmentInputRef.current) attachmentInputRef.current.value = ''
+  }
+
+  /** A02：移除未发送草稿 → 物理删除 blob（已发送的由历史回放，不在此删） */
+  async function discardAttachment(ref: AttachmentRef) {
+    setAttachmentDrafts((current) =>
+      current.filter((draft) => draft.ref.id !== ref.id),
+    )
+    try {
+      await window.tgbuddy.attachment.discard(ref)
+    } catch (error) {
+      console.error('[附件] discard 失败（交给 A09 引用计数清理）：', error)
+    }
   }
 
   async function editAndResend(messageId: string, text: string) {
@@ -129,75 +329,79 @@ export function App() {
     setCurrentId(created.id)
   }
 
-  return (
-    <div className="flex h-screen bg-background text-foreground">
-      {/* ── 侧边栏 ────────────────────────────────────────── */}
-      <aside className="flex w-60 shrink-0 flex-col border-r bg-background">
-        <div className="p-3">
-          <button
-            onClick={newSession}
-            className="w-full rounded-lg border border-dashed border-muted-foreground/25 px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
-          >
-            + 新会话
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-2 pb-2">
-          {groupSessions(sessions).map((group) => (
-            <div key={group.title} className="mb-3">
-              <div className="px-3 pb-1 pt-2 text-[11px] text-muted-foreground">{group.title}</div>
-              {group.items.map((s) => (
-                <button
-                  key={s.id}
-                  data-testid="session-item"
-                  onClick={() => selectSession(s.id)}
-                  className={`mb-0.5 block w-full rounded-md px-3 py-2 text-left transition-colors ${
-                    s.id === currentId ? 'bg-accent' : 'hover:bg-accent/60'
-                  }`}
-                >
-                  <div className="flex items-baseline gap-2">
-                    <span
-                      className={`min-w-0 flex-1 truncate text-sm ${
-                        s.id === currentId ? 'text-foreground' : 'text-foreground/80'
-                      }`}
-                    >
-                      {s.title}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
-                      {relativeTime(s.updatedAt)}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-1.5">
-                    {s.status === 'running' && (
-                      <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
-                    )}
-                    <span
-                      className={`truncate text-[11px] ${
-                        s.status === 'failed' ? 'text-red-400/80' : 'text-muted-foreground'
-                      }`}
-                    >
-                      {sessionSubtitle(s)}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ))}
-          {sessions.length === 0 && (
-            <p className="px-3 py-8 text-center text-xs text-muted-foreground">还没有会话</p>
-          )}
-        </div>
-      </aside>
+  function closeResults() {
+    setResultsOpen(false)
+    requestAnimationFrame(() => resultsToggleRef.current?.focus())
+  }
 
+  useEffect(() => {
+    const createOnShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'n') return
+      event.preventDefault()
+      void requestNavigation({ kind: 'new-session' })
+    }
+    window.addEventListener('keydown', createOnShortcut)
+    return () => window.removeEventListener('keydown', createOnShortcut)
+  }, [input, attachmentDrafts])
+
+  return (
+    <AppShell resultsOpen={resultsOpen} onCloseResults={closeResults}>
+      {settingsOpen && (
+        <ChannelSettingsPanel
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {pendingNavigation && (
+        <SessionActionDialog
+          title="保留未发送内容"
+          description="当前输入或附件还没有发送。你可以留下继续编辑，或丢弃后完成刚才的导航。"
+          confirmLabel="丢弃并继续"
+          cancelLabel="留下"
+          danger
+          busy={navigationBusy}
+          onCancel={() => setPendingNavigation(undefined)}
+          onConfirm={() => void discardDraftAndContinue()}
+        />
+      )}
+
+      {/* ── 侧边栏 ────────────────────────────────────────── */}
+      <SessionSidebar
+        sessions={sessions}
+        currentSessionId={currentId}
+        workspaces={workspaces}
+        currentWorkspace={currentWorkspace}
+        mountStatus={mountStatus}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onNewSession={() => requestNavigation({ kind: 'new-session' })}
+        onSelectSession={(sessionId) => requestNavigation({ kind: 'switch-session', sessionId })}
+        onSelectWorkspace={(workspaceId) => requestNavigation({ kind: 'switch-workspace', workspaceId })}
+        onAddWorkspace={addWorkspace}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onSessionsChanged={async () => {
+          const nextSessions = await window.tgbuddy.session.list()
+          setSessions(nextSessions)
+          if (currentId && !nextSessions.some((session) => session.id === currentId)) {
+            setCurrentId(null)
+          }
+        }}
+      />
       {/* ── 对话区 ────────────────────────────────────────── */}
-      <main className="flex min-w-0 flex-1 flex-col bg-content-area">
+      <main className="flex min-w-[430px] flex-1 flex-col bg-content-area max-[640px]:min-w-0">
+        <ConversationHeader
+          title={currentSession?.title?.trim() || '新任务'}
+          running={stream.running}
+          resultsOpen={resultsOpen}
+          onToggleResults={() => setResultsOpen((open) => !open)}
+          resultsToggleRef={resultsToggleRef}
+        />
         <Conversation className="flex-1">
           {!currentId ? (
-            <ConversationEmptyState
-              title="还没有选中会话"
-              description="新建一个会话开始"
-            />
+            <SessionSamples onPick={startFromSample} />
           ) : (
-            <ConversationContent className="mx-auto w-full max-w-3xl gap-4 px-6 py-6">
+            <ConversationContent className="mx-auto w-full max-w-[720px] gap-0.5 px-6 pb-2.5 pt-6">
               {messages.map((m) => (
                 <MessageView
                   key={m.id}
@@ -213,11 +417,11 @@ export function App() {
 
               {/* 流式中的内容 */}
               {stream.thinking && (
-                <pre className="whitespace-pre-wrap rounded-lg bg-card p-3 text-xs text-muted-foreground">
+                <pre className="mb-1 max-w-[700px] whitespace-pre-wrap rounded-lg bg-muted px-3 py-2.5 font-mono text-[10.8px] leading-[1.7] text-muted-foreground">
                   {stream.thinking}
                 </pre>
               )}
-              {stream.text && <Response streaming>{stream.text}</Response>}
+              {stream.text && <AssistantResponse streaming>{stream.text}</AssistantResponse>}
 
               {currentId && stream.compaction && (
                 <CompactionStatus sessionId={currentId} state={stream.compaction} />
@@ -230,6 +434,7 @@ export function App() {
                   args={t.args}
                   status={t.status}
                   {...(t.result ? { result: t.result } : {})}
+                  {...(t.reason ? { reason: t.reason } : {})}
                   {...(t.elapsedMs !== undefined ? { elapsedMs: t.elapsedMs } : {})}
                 />
               ))}
@@ -245,23 +450,9 @@ export function App() {
                 />
               ))}
 
-              {/* 授权请求 —— inline 卡片，不打断心流 */}
-              {permissions.map((p) => (
-                <PermissionBanner key={p.requestId} request={p} />
-              ))}
-
-              {/* 计划待审批 */}
-              {plans.map((p) => (
-                <PlanApproval key={p.requestId} request={p} />
-              ))}
-
-              {questions.map((request) => (
-                <AskUserCard key={request.requestId} request={request} />
-              ))}
-
               {/* ★ 内核错误必须显示。不显示的话认证失败看起来就是"模型不说话" */}
               {stream.error && (
-                <div className="rounded-md border border-red-900 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+                <div className="rounded-[9px] border border-status-error/30 bg-status-error/10 px-3 py-2 text-[12.5px] text-status-error">
                   {stream.error}
                 </div>
               )}
@@ -271,182 +462,88 @@ export function App() {
           <ConversationScrollButton />
         </Conversation>
 
-        {/* ── 输入框 ──────────────────────────────────────── */}
-        <div className="border-t p-4">
-          {currentId && (
-            <div className="mx-auto mb-2 flex max-w-3xl items-center gap-1.5">
-              <ModeChip sessionId={currentId} mode={mode} />
-              {currentSession?.contextUsage && (
-                <ContextUsagePanel
-                  sessionId={currentId}
-                  usage={currentSession.contextUsage}
-                  disabled={stream.running || Boolean(stream.compaction)}
-                />
-              )}
-            </div>
-          )}
-          <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border bg-card p-1.5">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  void send()
-                }
-              }}
-              rows={2}
-              placeholder={currentId ? '说点什么…（Enter 发送，Shift+Enter 换行）' : '先新建会话'}
-              disabled={!currentId}
-              className="flex-1 resize-none border-0 bg-transparent px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 disabled:opacity-50"
-            />
-            {stream.running ? (
-              <button
-                onClick={() => currentId && window.tgbuddy.agent.stop(currentId)}
-                className="shrink-0 rounded-xl bg-status-error/20 px-4 py-2 text-sm text-status-error transition-colors hover:bg-status-error/30"
-              >
-                停止
-              </button>
-            ) : (
-              <button
-                onClick={() => void send()}
-                disabled={!currentId || !input.trim() || Boolean(queuedPrompt)}
-                className="shrink-0 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
-              >
-                {stream.compaction ? '排队' : '发送'}
-              </button>
-            )}
-          </div>
-          {queuedPrompt && (
-            <p className="mx-auto mt-2 max-w-3xl text-right text-[11px] text-muted-foreground">
-              已排队，压缩完成后自动发送
-            </p>
-          )}
-        </div>
+        {/* ── 输入区：结构与交互以 V3 原型为准 ───────────────────── */}
+        <input
+          ref={attachmentInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          data-testid="attachment-input"
+          onChange={(event) => void onPickAttachments(event.target.files)}
+        />
+        <ActionDock sessionId={currentId ?? undefined} />
+        <AgentComposer
+          sessionId={currentId ?? undefined}
+          mode={mode}
+          profileId={currentSession?.profileId}
+          channelId={currentSession?.channelId}
+          modelId={currentSession?.modelId}
+          channels={channels}
+          profiles={profiles}
+          contextUsage={currentSession?.contextUsage}
+          value={input}
+          attachments={attachmentDrafts.map((draft) => draft.ref)}
+          running={stream.running}
+          compacting={Boolean(stream.compaction)}
+          queued={Boolean(queuedPrompt)}
+          onValueChange={setInput}
+          onPickAttachments={() => attachmentInputRef.current?.click()}
+          onRemoveAttachment={(ref) => void discardAttachment(ref)}
+          onModeChange={(nextMode) => {
+            if (!currentId) return
+            void window.tgbuddy.plan.setMode(currentId, nextMode).then(() =>
+              window.tgbuddy.session.list().then(setSessions),
+            )
+          }}
+          onProfileChange={(profile) => {
+            if (profile) {
+              void updateCurrentSessionMeta({
+                profileId: profile.id,
+                channelId: profile.channelId,
+                modelId: profile.modelId,
+              })
+              return
+            }
+            const selected = profiles.find((item) => item.id === currentSession?.profileId)
+            void updateCurrentSessionMeta({
+              profileId: undefined,
+              channelId: selected?.channelId ?? currentSession?.channelId,
+              modelId: selected?.modelId ?? currentSession?.modelId,
+            })
+          }}
+          onModelChange={(channel, model) => void updateCurrentSessionMeta({
+            profileId: undefined,
+            channelId: channel.id,
+            modelId: model.id,
+          })}
+          onRefreshCapabilities={refreshComposerCapabilities}
+          onSend={() => void send()}
+          onStop={() => currentId && window.tgbuddy.agent.stop(currentId)}
+        />
       </main>
 
-      {/* ── 结果区（阶段 4 之后才有内容）──────────────────── */}
-      <aside className="hidden w-72 shrink-0 border-l bg-background xl:block">
-        <div className="border-b px-4 py-3 text-sm font-medium">结果</div>
-        <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-          本次会话的产出会出现在这里
-        </p>
-      </aside>
-    </div>
+      {/* ── 结果区（A06：产物列表，时间倒序 + 分组 + 类型筛选）────────── */}
+      <ResultsPanel
+        sessionId={currentId ?? undefined}
+        active={stream.running}
+        open={resultsOpen}
+        onClose={closeResults}
+      />
+    </AppShell>
   )
-}
-
-/**
- * 权限模式切换 —— 对应原型输入框上方那排入口的第一个。
- *
- * 每项都带一句人话说明。这比一个写着 `auto / plan / bypass` 的下拉好懂得多，
- * 而且「完全访问」那条明确写出风险，不给人误点的机会。
- */
-const MODES: { id: PermissionMode; label: string; desc: string }[] = [
-  { id: 'auto', label: '默认权限', desc: '只读工具直接执行，写和命令逐次授权' },
-  { id: 'plan', label: '计划模式', desc: '先出计划，你批准后才动手' },
-  { id: 'bypass', label: '完全访问', desc: '不再询问。仅建议在沙箱或一次性容器里用' },
-]
-
-function ModeChip({ sessionId, mode }: { sessionId: string; mode: PermissionMode }) {
-  const [open, setOpen] = useState(false)
-  const current = MODES.find((m) => m.id === mode) ?? MODES[0]!
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 rounded-lg bg-card px-2.5 py-1 text-xs text-foreground/80 transition-colors hover:bg-accent"
-      >
-        <span
-          className="h-1.5 w-1.5 rounded-full"
-          style={{
-            background:
-              mode === 'plan' ? '#9dbfe0' : mode === 'bypass' ? '#c9635b' : '#7f8b98',
-          }}
-        />
-        {current.label}
-      </button>
-
-      {open && (
-        <>
-          {/* 点外面关掉。用一层透明遮罩比全局监听简单，也不会漏掉 */}
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute bottom-full z-20 mb-1.5 w-72 overflow-hidden rounded-xl bg-popover shadow-lg ring-1 ring-border">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => {
-                  void window.tgbuddy.plan.setMode(sessionId, m.id)
-                  setOpen(false)
-                }}
-                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition-colors hover:bg-accent"
-              >
-                <span className="flex items-center gap-1.5 text-xs text-foreground">
-                  {m.label}
-                  {m.id === mode && <span className="text-muted-foreground">✓</span>}
-                </span>
-                <span className="text-[11px] text-muted-foreground">{m.desc}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-// ── 侧边栏元数据的展示逻辑 ──────────────────────────────────────
-// 注意这些全部只依赖 SessionMeta，不读 JSONL —— 列 200 个会话不能读 200 个文件。
-
-/** 侧边栏第二行：运行中显示实时活动，失败显示原因，完成显示产物数 */
-function sessionSubtitle(s: SessionMeta): string {
-  if (s.status === 'running') return s.lastActivity ?? '进行中…'
-  if (s.status === 'interrupted') {
-    return `已中断 · ${s.statusDetail ?? '可继续发送'}`
-  }
-  if (s.status === 'failed') return `失败 · ${s.statusDetail ?? '未知原因'}`
-  if (s.artifactCount) return `已完成 · ${s.artifactCount} 个产物`
-  if (s.status === 'done') return '已完成'
-  return '未开始'
-}
-
-function relativeTime(ts: number): string {
-  const diff = Date.now() - ts
-  if (diff < 60_000) return '刚刚'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
-  const d = new Date(ts)
-  const today = new Date()
-  const sameDay = d.toDateString() === today.toDateString()
-  if (sameDay) return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
-  if (diff < 7 * 86_400_000) return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]!
-  return `${d.getMonth() + 1}-${d.getDate()}`
-}
-
-/** 置顶 / 今天 / 更早 · 7 天内 / 更早 */
-function groupSessions(sessions: SessionMeta[]): { title: string; items: SessionMeta[] }[] {
-  const now = Date.now()
-  const buckets: Record<string, SessionMeta[]> = { 置顶: [], 今天: [], '更早 · 7 天内': [], 更早: [] }
-
-  for (const s of sessions) {
-    if (s.archived) continue
-    if (s.pinned) {
-      buckets['置顶']!.push(s)
-      continue
-    }
-    const sameDay = new Date(s.updatedAt).toDateString() === new Date(now).toDateString()
-    if (sameDay) buckets['今天']!.push(s)
-    else if (now - s.updatedAt < 7 * 86_400_000) buckets['更早 · 7 天内']!.push(s)
-    else buckets['更早']!.push(s)
-  }
-
-  return Object.entries(buckets)
-    .filter(([, items]) => items.length > 0)
-    .map(([title, items]) => ({ title, items }))
 }
 
 /** toolCallId → 该次调用的结果。历史回放时用来给工具卡片定状态 */
-export type ToolResultMap = Map<string, { isError: boolean; text: string }>
+export type ToolResultMap = Map<
+  string,
+  {
+    isError: boolean
+    text: string
+    outputRef?: { hash: string; size: number; mime?: string }
+    /** D04：delegate_to_agent 的 child 摘要，UI 收进「子智能体」折叠组 */
+    delegated?: boolean
+  }
+>
 
 /**
  * 从整段历史里建一次配对索引。
@@ -463,9 +560,29 @@ export function buildToolResultMap(messages: SessionMessage[]): ToolResultMap {
       .map((c) => (c.type === 'text' ? c.text : ''))
       .join('')
       .trim()
-    map.set(m.message.toolCallId, { isError: m.message.isError, text })
+    const details =
+      typeof m.message.details === 'object' && m.message.details !== null
+        ? (m.message.details as Record<string, unknown>)
+        : undefined
+    const outputRef = details?.outputRef
+    const delegated = details?.delegated === true
+    map.set(m.message.toolCallId, {
+      isError: m.message.isError,
+      text,
+      ...(isBlobRef(outputRef) ? { outputRef } : {}),
+      ...(delegated ? { delegated: true } : {}),
+    })
   }
   return map
+}
+
+function isBlobRef(value: unknown): value is { hash: string; size: number; mime?: string } {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && typeof (value as { hash?: unknown }).hash === 'string'
+    && typeof (value as { size?: unknown }).size === 'number'
+  )
 }
 
 function MessageView({
@@ -521,6 +638,9 @@ function MessageView({
       typeof inner.content === 'string'
         ? inner.content
         : inner.content.map((c) => (c.type === 'text' ? c.text : '')).join('')
+    // A03 的文本附件块由 chips 展示，气泡里剥掉避免重复显示
+    const displayText =
+      text.replace(/\[附件 [^\]]+\][\s\S]*?\[\/附件\]/g, '').trim() || text
     if (editing) {
       const submit = async (): Promise<void> => {
         const next = draft.trim()
@@ -539,14 +659,14 @@ function MessageView({
 
       return (
         <div className="flex justify-end">
-          <div className="flex w-full max-w-[80%] flex-col gap-2 rounded-2xl bg-card p-3">
+          <div className="flex w-full max-w-[560px] flex-col gap-2 rounded-[15px_15px_4px_15px] bg-primary p-3 text-primary-foreground shadow-[0_2px_8px_rgba(20,20,18,.09)]">
             <textarea
               aria-label="编辑消息"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               rows={Math.max(2, Math.min(8, draft.split('\n').length))}
               autoFocus
-              className="min-h-[64px] resize-y bg-transparent text-sm leading-relaxed text-foreground outline-none"
+              className="min-h-[64px] resize-y bg-transparent text-[13px] leading-[1.7] text-primary-foreground outline-none"
             />
             {editError && (
               <div className="text-[11px] text-[#dfa39d]">{editError}</div>
@@ -559,7 +679,7 @@ function MessageView({
                   setEditError(undefined)
                 }}
                 disabled={submitting}
-                className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#9a9aa2] hover:bg-white/[.06] disabled:opacity-40"
+                className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-primary-foreground/65 hover:bg-primary-foreground/10 disabled:opacity-40"
               >
                 取消
               </button>
@@ -567,7 +687,7 @@ function MessageView({
                 type="button"
                 onClick={() => void submit()}
                 disabled={!draft.trim() || submitting}
-                className="rounded-[6px] bg-white/[.06] px-[9px] py-1 text-[11px] text-[#b6b6be] hover:bg-white/[.12] disabled:opacity-40"
+                className="rounded-[6px] bg-primary-foreground/10 px-[9px] py-1 text-[11px] text-primary-foreground/85 hover:bg-primary-foreground/15 disabled:opacity-40"
               >
                 {submitting ? '重发中…' : '重发'}
               </button>
@@ -579,8 +699,11 @@ function MessageView({
 
     return (
       <div className="group flex flex-col items-end gap-1">
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-card px-4 py-2.5 text-sm leading-relaxed">
-          {text}
+        {message.attachments && message.attachments.length > 0 && (
+          <AttachmentChipList attachments={message.attachments} />
+        )}
+        <div className="mb-[13px] mt-[3px] max-w-[560px] whitespace-pre-wrap rounded-[15px_15px_4px_15px] bg-primary px-3.5 py-[11px] text-[13px] leading-[1.7] text-primary-foreground shadow-[0_2px_8px_rgba(20,20,18,.09)]">
+          {displayText}
         </div>
         {canEdit && (
           <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -592,7 +715,7 @@ function MessageView({
                 setEditing(true)
               }}
               disabled={cloning}
-              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#777780] hover:bg-white/[.06] hover:text-[#b6b6be] disabled:opacity-40"
+              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
               编辑并重发
             </button>
@@ -607,7 +730,7 @@ function MessageView({
                 })
               }}
               disabled={cloning}
-              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-[#777780] hover:bg-white/[.06] hover:text-[#b6b6be] disabled:opacity-40"
+              className="rounded-[6px] bg-transparent px-[9px] py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
             >
               {cloning ? '创建中…' : '从此新建会话'}
             </button>
@@ -626,7 +749,7 @@ function MessageView({
       <div className="space-y-2">
         {inner.content.map((block, i) => {
           if (block.type === 'text' && block.text.trim()) {
-            return <Response key={i}>{block.text}</Response>
+            return <AssistantResponse key={i}>{block.text}</AssistantResponse>
           }
           if (block.type === 'toolCall') {
             if (liveToolIds.has(block.id)) return null // 实时卡片正在显示它
@@ -650,4 +773,26 @@ function MessageView({
 
   // toolResult 消息本身不单独渲染 —— 它的内容显示在对应的工具卡片里
   return null
+}
+
+function AssistantResponse({
+  children,
+  streaming = false,
+}: {
+  children: string
+  streaming?: boolean
+}) {
+  return (
+    <div className="flex max-w-[700px] gap-2.5 pb-3 pt-[7px]">
+      <span className="mt-px grid h-[23px] w-[23px] shrink-0 place-items-center rounded-[7px] bg-accent text-[10px] font-bold text-foreground/65 shadow-[inset_0_0_0_1px_hsl(var(--border))]">
+        T
+      </span>
+      <Response
+        streaming={streaming}
+        className="min-w-0 flex-1 text-[13px] leading-[1.8] text-foreground/75 prose-p:my-0 prose-p:text-foreground/75 prose-li:text-foreground/75"
+      >
+        {children}
+      </Response>
+    </div>
+  )
 }

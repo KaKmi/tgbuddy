@@ -76,6 +76,7 @@ describe('SessionCommands', () => {
     })).toEqual({
       id: 'session-1',
       title: '第一条',
+      titleSource: 'user',
       channelId: 'channel-1',
       modelId: 'model-1',
       createdAt: 100,
@@ -102,6 +103,7 @@ describe('SessionCommands', () => {
     expect(repository.get('session-1')).toEqual({
       id: 'session-1',
       title: '已更新',
+      titleSource: 'user',
       channelId: 'channel-1',
       modelId: 'model-1',
       createdAt: 999,
@@ -276,5 +278,68 @@ describe('SessionCommands', () => {
     expect(cleanupErrors).toHaveLength(1)
     expect(cleanupErrors[0]?.sessionId).toBe('session-1')
     expect(cleanupErrors[0]?.error).toBeInstanceOf(Error)
+  })
+
+  test('提供 workspaceId 后 list 只返回当前工作区 Session，create 绑定当前工作区', async () => {
+    const repository = new MemorySessionRepository()
+    repository.create({
+      id: 'other-ws',
+      title: '其它工作区',
+      workspaceId: 'ws-2',
+      createdAt: 1,
+      updatedAt: 2,
+    })
+    const commands = createSessionCommands({
+      repository,
+      history: {
+        create: async () => undefined,
+        messages: async () => [],
+        compactedMessages: async () => [],
+        truncate: async () => [],
+        clonePrefix: async () => [],
+        delete: async () => undefined,
+      },
+      createId: () => 'session-1',
+      now: () => 100,
+      resolveCwd: () => 'C:\\workspace',
+      workspaceId: () => 'ws-1',
+    })
+
+    const created = await commands.create({ title: '当前工作区' })
+
+    expect(created.workspaceId).toBe('ws-1')
+    expect(commands.list().map((session) => session.id)).toEqual(['session-1'])
+  })
+
+  test('clonePrefix 保留源 Session 的 workspaceId', async () => {
+    const repository = new MemorySessionRepository()
+    repository.create({
+      id: 'session-source',
+      title: '源会话',
+      workspaceId: 'ws-1',
+      createdAt: 1,
+      updatedAt: 2,
+    })
+    const commands = createSessionCommands({
+      repository,
+      history: {
+        create: async () => undefined,
+        messages: async () => [],
+        compactedMessages: async () => [],
+        truncate: async () => [],
+        clonePrefix: async () => [],
+        delete: async () => undefined,
+      },
+      createId: () => 'session-clone',
+      now: () => 200,
+      resolveCwd: () => 'C:\\workspace',
+    })
+
+    const clone = await commands.clonePrefix({
+      sourceSessionId: 'session-source',
+      throughMessageId: 'message-1',
+    })
+
+    expect(clone.workspaceId).toBe('ws-1')
   })
 })

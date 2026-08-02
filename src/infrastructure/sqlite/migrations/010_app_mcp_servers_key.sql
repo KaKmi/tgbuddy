@@ -1,0 +1,1 @@
+ALTER TABLE app_mcp_servers ADD COLUMN key TEXT NOT NULL DEFAULT '';

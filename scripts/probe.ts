@@ -23,7 +23,9 @@ import { Type } from '@earendil-works/pi-ai'
 import {
   createPiAgentEngine,
 } from '../src/kernel/pi/pi-agent-engine.ts'
+import { PiRunExecutionEnvFactory } from '../src/kernel/pi/pi-execution-env.ts'
 import type { AgentInvocation } from '../src/runtime/index.ts'
+import { createRunAuthorizationGate } from '../src/runtime/index.ts'
 import { deepseekChannel } from '../src/shared/channel-presets.ts'
 
 const API_KEY = process.env.DEEPSEEK_API_KEY ?? process.env.TGBUDDY_API_KEY
@@ -48,6 +50,25 @@ const sessionRepository = new InMemorySessionRepo()
 const harnessSession = await sessionRepository.create({ id: probeSessionId })
 const engineInvocation: Omit<AgentInvocation, 'text'> = {
   sessionId: probeSessionId,
+  subject: {
+    rootSessionId: probeSessionId,
+    executionSessionId: probeSessionId,
+    rootRunId: 'probe-run',
+    agentRunId: 'probe-run',
+    role: 'root',
+  },
+  permissionCeiling: {
+    schemaVersion: 1,
+    policyVersion: 'permission-v2',
+    mode: 'auto',
+    rootSessionId: probeSessionId,
+    workspaceId: 'probe-workspace',
+    mountRevision: 'probe',
+    allowedToolIds: ['get_current_time'],
+    maxAutoRisk: 'R3',
+    role: 'root',
+  },
+  workspaceId: 'probe-workspace',
   cwd: process.cwd(),
   channel,
   modelId: MODEL_ID,
@@ -73,11 +94,13 @@ const getTimeTool: AgentTool = {
 }
 
 const agentEngine = createPiAgentEngine({
+  authorizationGate: createRunAuthorizationGate(),
   sessions: {
     async openHarnessSession(sessionId) {
       return sessionId === probeSessionId ? harnessSession : undefined
     },
   },
+  envFactory: new PiRunExecutionEnvFactory(),
   tools: () => [getTimeTool],
   toolPolicy: {
     async evaluate(input, signal) {

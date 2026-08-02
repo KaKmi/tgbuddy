@@ -61,6 +61,11 @@ async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
+  if (request.method === 'GET' && request.url === '/v1/models') {
+    response.writeHead(200, { 'Content-Type': 'application/json' })
+    response.end(JSON.stringify({ data: [{ id: MODEL_ID, object: 'model' }] }))
+    return
+  }
   if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
     response.writeHead(404).end()
     return
@@ -75,14 +80,22 @@ async function handleRequest(
       .reverse()
       .find((message) => message.role === 'user')
     const prompt = latestUserText ? messageText(latestUserText) : ''
+    // 只有「pi 生成的压缩请求」system 消息才算摘要场景；
+    // 应用自己的 system prompt（含「## 技能」清单）即使描述里出现
+    // summar 等词也不能误判成压缩请求。
     const isSummary = messages.some(
       (message) =>
         message.role === 'system'
-        && /summar|summary|摘要/i.test(messageText(message)),
+        && /summar|summary|摘要/i.test(messageText(message))
+        && !messageText(message).includes('## 技能'),
     )
     const lastMessage = messages.at(-1)
 
     beginEventStream(response)
+    if (prompt.includes('[TGBUDDY_SESSION_TITLE]')) {
+      await streamText(response, 'Q2 交易异常分析')
+      return
+    }
     if (isSummary) {
       await streamText(response, 'E2E 压缩摘要：保留已完成任务、关键决定和后续上下文。')
       return
@@ -95,11 +108,56 @@ async function handleRequest(
       }, 8_000)
       return
     }
+    if (prompt.includes('E2E 子任务：检查架构')) {
+      await streamText(response, '架构证据：Runtime、IPC、Renderer 三层职责已经确认。')
+      return
+    }
+    if (prompt.includes('E2E 子任务：检查测试')) {
+      await streamText(response, '测试证据：Playwright Electron 覆盖主流程，测试文件位于 tests/e2e。')
+      return
+    }
+    if (prompt.includes('E2E 双委托')) {
+      const toolResults = messages.filter((message) => message.role === 'tool').length
+      if (toolResults === 0) {
+        streamToolCall(
+          response,
+          'delegate_to_agent',
+          {
+            name: '架构侦察员',
+            task: 'E2E 子任务：检查架构。返回具体模块分层和一句可引用的架构结论。',
+            role: 'explorer',
+          },
+          'call_e2e_delegate_architecture',
+        )
+      } else if (toolResults === 1) {
+        streamToolCall(
+          response,
+          'delegate_to_agent',
+          {
+            name: '测试侦察员',
+            task: 'E2E 子任务：检查测试。返回测试框架、目录和一句可引用的覆盖结论。',
+            role: 'explorer',
+          },
+          'call_e2e_delegate_tests',
+        )
+      } else {
+        await streamText(
+          response,
+          '主 Agent 综合完成：项目采用 Runtime、IPC、Renderer 分层，并由 Playwright Electron 覆盖 tests/e2e 主流程。',
+        )
+      }
+      return
+    }
     if (prompt.includes('工具读取')) {
       if (lastMessage?.role === 'tool') {
         await streamText(response, '工具读取完成')
       } else {
-        streamToolCall(response, 'README.md')
+        streamToolCall(
+          response,
+          'read',
+          { path: 'README.md' },
+          'call_e2e_read',
+        )
       }
       return
     }
@@ -107,7 +165,98 @@ async function handleRequest(
       if (lastMessage?.role === 'tool') {
         await streamText(response, `压缩素材完成：${prompt}`)
       } else {
-        streamToolCall(response, 'LARGE.txt')
+        streamToolCall(
+          response,
+          'read',
+          { path: 'LARGE.txt' },
+          'call_e2e_read',
+        )
+      }
+      return
+    }
+    if (prompt.includes('M2 写入')) {
+      if (lastMessage?.role === 'tool') {
+        await streamText(response, 'M2 写入完成')
+      } else {
+        streamToolCall(
+          response,
+          'write',
+          { path: 'm2-write.txt', content: 'M2 写入内容' },
+          'call_e2e_write',
+        )
+      }
+      return
+    }
+    if (prompt.includes('M2 删除')) {
+      if (lastMessage?.role === 'tool') {
+        await streamText(response, 'M2 删除完成')
+      } else {
+        streamToolCall(
+          response,
+          'delete',
+          { paths: ['m2-delete.txt'] },
+          'call_e2e_delete',
+        )
+      }
+      return
+    }
+    if (prompt.includes('M2 计划')) {
+      const toolResults = messages.filter((message) => message.role === 'tool').length
+      if (toolResults === 0) {
+        // 计划模式由用户模式 chip 显式进入，模型只负责提交计划等待审批
+        streamToolCall(
+          response,
+          'exit_plan_mode',
+          { plan: '1. 修改 m2-write.txt\n2. 验证内容' },
+          'call_e2e_plan',
+        )
+      } else {
+        await streamText(response, 'M2 计划完成')
+      }
+      return
+    }
+    if (prompt.includes('M2 提问')) {
+      if (lastMessage?.role === 'tool') {
+        await streamText(response, 'M2 提问完成')
+      } else {
+        streamToolCall(
+          response,
+          'ask_user',
+          {
+            questions: [
+              {
+                header: '目标',
+                question: '这次修改的目标是什么？',
+                options: [
+                  { label: '修 bug', description: '修复现有问题' },
+                  { label: '加功能（推荐）', description: '新增能力' },
+                ],
+              },
+              {
+                header: '范围',
+                question: '影响范围？',
+                options: [
+                  { label: '单文件', description: '只动一个文件' },
+                  { label: '多文件', description: '涉及多个文件' },
+                ],
+              },
+            ],
+          },
+          'call_e2e_ask',
+        )
+      }
+      return
+    }
+    if (prompt.includes('M3 MCP')) {
+      if (lastMessage?.role === 'tool') {
+        await streamText(response, 'M3 MCP 完成')
+      } else {
+        streamToolCall(
+          response,
+          'echo.echo',
+          { text: 'hello-mcp' },
+          'call_e2e_mcp',
+        )
       }
       return
     }
@@ -172,7 +321,12 @@ async function streamText(
   writeUsageAndEnd(response, options.highUsage ? 900_000 : 1_000)
 }
 
-function streamToolCall(response: ServerResponse, path: string): void {
+function streamToolCall(
+  response: ServerResponse,
+  toolName: string,
+  args: Record<string, unknown>,
+  idPrefix: string,
+): void {
   toolCallSequence += 1
   writeChunk(response, {
     choices: [{
@@ -181,11 +335,11 @@ function streamToolCall(response: ServerResponse, path: string): void {
         role: 'assistant',
         tool_calls: [{
           index: 0,
-          id: `call_e2e_read_${toolCallSequence}`,
+          id: `${idPrefix}_${toolCallSequence}`,
           type: 'function',
           function: {
-            name: 'read',
-            arguments: JSON.stringify({ path }),
+            name: toolName,
+            arguments: JSON.stringify(args),
           },
         }],
       },

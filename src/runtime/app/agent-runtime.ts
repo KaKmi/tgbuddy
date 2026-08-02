@@ -1,6 +1,19 @@
 import type { ArtifactRef } from '../../shared/contracts/artifact.ts'
 import type { CapabilityDescriptor } from '../../shared/contracts/capability.ts'
-import type { Channel } from '../../shared/contracts/channel.ts'
+import type {
+  Channel,
+  ChannelTestResult,
+  ChannelSaveInput,
+} from '../../shared/contracts/channel.ts'
+import type { Profile, ProfileSaveInput } from '../../shared/contracts/profile.ts'
+import type { ToolSettingView } from '../../shared/contracts/tool.ts'
+import type { SkillGroupView } from '../../shared/contracts/skill.ts'
+import type {
+  McpSaveInput,
+  McpServerConfig,
+  McpServerStatus,
+} from '../../shared/contracts/mcp.ts'
+import type { RunRecord } from '../runs/run-repository.ts'
 import type { HostEvent, StreamFrame } from '../../shared/contracts/events.ts'
 import type {
   AskUserRequest,
@@ -8,13 +21,20 @@ import type {
   PermissionMode,
   PermissionRequest,
   PermissionResponse,
+  PermissionRule,
   PlanRequest,
   PlanResponse,
 } from '../../shared/contracts/permission.ts'
 import type { SessionMessage } from '../../shared/contracts/message.ts'
 import type { StartRunInput } from '../../shared/contracts/run.ts'
 import type { SessionMeta } from '../../shared/contracts/session.ts'
-import type { Workspace } from '../../shared/contracts/workspace.ts'
+import type { HumanInteractionRequest } from '../../shared/contracts/interaction.ts'
+import type { DelegationTask } from '../../shared/contracts/delegation.ts'
+import type { SessionTitleService } from '../sessions/session-title-service.ts'
+import type {
+  Workspace,
+  WorkspaceMountResolution,
+} from '../../shared/contracts/workspace.ts'
 import {
   createAgentRuntimeEventPublisher,
   type AgentRuntimeEventListener,
@@ -22,14 +42,22 @@ import {
 
 export interface WorkspaceCommands {
   list(): Workspace[]
+  create(input: { path: string }): Workspace
+  select(workspaceId: string): Workspace
+  current(): Workspace | undefined
+  mountStatus(workspaceId: string): WorkspaceMountResolution
 }
 
 export interface SessionCommands {
   list(): SessionMeta[]
+  get(sessionId: string): SessionMeta | undefined
   create(input: {
     title?: string
     channelId?: string
     modelId?: string
+    profileId?: string
+    visibility?: SessionMeta['visibility']
+    parentTaskId?: string
   }): Promise<SessionMeta>
   delete(sessionId: string): Promise<void>
   messages(sessionId: string): Promise<SessionMessage[]>
@@ -55,11 +83,15 @@ export interface RunCommands {
   start(input: StartRunInput): void
   stop(sessionId: string): void
   isRunning(sessionId: string): boolean
+  /** C12：会话的 Run 账本（能力快照 + token/cost） */
+  list(sessionId: string): RunRecord[]
 }
 
 export interface PermissionCommands {
-  respond(response: PermissionResponse): void
+  respond(response: PermissionResponse): Promise<void>
   pending(): PermissionRequest[]
+  listRules(): PermissionRule[]
+  removeRule(id: string): void
 }
 
 export interface PlanCommands {
@@ -71,6 +103,18 @@ export interface PlanCommands {
 export interface AskUserCommands {
   respond(response: AskUserResponse): void
   pending(): AskUserRequest[]
+}
+
+export interface InteractionCommands {
+  pending(rootRunId?: string): HumanInteractionRequest[]
+  respond(input: { requestId: string; response: unknown; expectedRevision: number }): Promise<void>
+}
+
+export interface DelegationCommands {
+  list(rootRunId: string): DelegationTask[]
+  messages(taskId: string): Promise<SessionMessage[]>
+  stop(taskId: string): Promise<void>
+  retry(taskId: string): Promise<DelegationTask>
 }
 
 export interface ContextCommands {
@@ -89,9 +133,24 @@ export interface CapabilityCommands {
 
 export interface SettingsCommands {
   listChannels(): Channel[]
-  saveChannel(channel: Channel): void
+  saveChannel(channel: ChannelSaveInput): void
   deleteChannel(channelId: string): void
-  testChannel(channelId: string): Promise<{ success: boolean; message: string }>
+  testChannel(channelId: string): Promise<ChannelTestResult>
+  listProfiles(): Profile[]
+  saveProfile(profile: ProfileSaveInput): void
+  deleteProfile(profileId: string): void
+  /** 工具只读展示（权限由内置分类派生，配置入口在权限模式与「总是允许」规则） */
+  listTools(): ToolSettingView[]
+  /** C07：技能目录（按来源分组），workspaceId 切换即刷新 */
+  listSkills(workspaceId?: string): SkillGroupView[]
+  setSkillEnabled(skillId: string, enabled: boolean): void
+  /** C09：MCP 服务配置、连接状态与错误 */
+  listMcpServers(): McpServerConfig[]
+  saveMcpServer(config: McpSaveInput): void
+  deleteMcpServer(serverId: string): void
+  connectMcp(serverId: string): Promise<McpServerStatus>
+  disconnectMcp(serverId: string): Promise<void>
+  mcpStatuses(): McpServerStatus[]
 }
 
 export interface AgentRuntime {
@@ -101,6 +160,8 @@ export interface AgentRuntime {
   permissions: PermissionCommands
   plans: PlanCommands
   questions: AskUserCommands
+  interactions: InteractionCommands
+  delegations: DelegationCommands
   context: ContextCommands
   artifacts: ArtifactQueries
   capabilities: CapabilityCommands
@@ -112,16 +173,20 @@ export interface AgentRuntime {
 export interface AgentRuntimeDependencies {
   workspaces: WorkspaceCommands
   sessions: SessionCommands
+  sessionTitles?: SessionTitleService
   runs: {
     start(input: StartRunInput, emit: (frame: StreamFrame) => void): Promise<void>
     stop(sessionId: string): void
     isRunning(sessionId: string): boolean
+    list?(sessionId: string): RunRecord[]
   }
   permissions: PermissionCommands & {
     expireSessionRules(sessionId: string): void
   }
   plans: PlanCommands
   questions: AskUserCommands
+  interactions: InteractionCommands
+  delegations: DelegationCommands
   context: {
     start(
       sessionId: string,
@@ -159,6 +224,14 @@ export function createAgentRuntime(
     workspaces: dependencies.workspaces,
     sessions: {
       ...dependencies.sessions,
+      updateMeta(sessionId, patch) {
+        return dependencies.sessions.updateMeta(
+          sessionId,
+          patch.title !== undefined && patch.titleSource === undefined
+            ? { ...patch, titleSource: 'user' }
+            : patch,
+        )
+      },
       async delete(sessionId) {
         if (dependencies.runs.isRunning(sessionId)) {
           throw new Error('任务运行中，暂时不能删除会话')
@@ -183,15 +256,31 @@ export function createAgentRuntime(
     },
     runs: {
       start(input) {
-        void dependencies.runs.start(input, events.emit)
+        let titleRequested = false
+        void dependencies.runs.start(input, (frame) => {
+          events.emit(frame)
+          if (
+            !titleRequested
+            && !input.lineage
+            && frame.payload.channel === 'agent'
+            && frame.payload.event.type === 'run_start'
+          ) {
+            titleRequested = true
+            void dependencies.sessionTitles?.request({
+              sessionId: input.sessionId,
+              userMessage: input.text,
+            })
+          }
+        })
       },
       // Coordinator 使用私有字段维护运行注册表，不能把实例方法裸转交后再换接收者调用。
       stop: (sessionId) => dependencies.runs.stop(sessionId),
       isRunning: (sessionId) => dependencies.runs.isRunning(sessionId),
+      list: (sessionId) => dependencies.runs.list?.(sessionId) ?? [],
     },
     permissions: {
-      respond(response) {
-        dependencies.permissions.respond(response)
+      async respond(response) {
+        await dependencies.permissions.respond(response)
         emitHost({
           type: 'permission_resolved',
           requestId: response.requestId,
@@ -199,6 +288,8 @@ export function createAgentRuntime(
         })
       },
       pending: dependencies.permissions.pending,
+      listRules: dependencies.permissions.listRules,
+      removeRule: dependencies.permissions.removeRule,
     },
     plans: {
       respond(response) {
@@ -223,6 +314,8 @@ export function createAgentRuntime(
       },
       pending: dependencies.questions.pending,
     },
+    interactions: dependencies.interactions,
+    delegations: dependencies.delegations,
     context: {
       start(sessionId) {
         void dependencies.context.start(
