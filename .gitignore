@@ -6,3 +6,8 @@ dist/
 .DS_Store
 /playwright-report/
 /test-results/
+/tgbuddy-mockup/
+/docs/
+/designs/
+/.ship/
+/design-qa.md
