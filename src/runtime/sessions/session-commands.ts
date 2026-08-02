@@ -47,6 +47,7 @@ export function createSessionCommands(
         : options.repository.list(workspaceId).filter((session) => session.visibility !== 'internal')
       return sessions
     },
+    get: (sessionId) => options.repository.get(sessionId),
     async create(input) {
       const now = options.now()
       const workspaceId = currentWorkspaceId()

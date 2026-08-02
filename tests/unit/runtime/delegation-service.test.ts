@@ -40,7 +40,7 @@ function harness(options: {
 }) {
   const created: string[] = []
   const createInputs: Array<{ visibility?: string; parentTaskId?: string }> = []
-  const started: Array<{ sessionId: string; text: string; lineage?: unknown }> = []
+  const started: Array<{ sessionId: string; text: string; lineage?: unknown; identity?: unknown }> = []
   const stopped: string[] = []
   const modeUpdates: Array<{ sessionId: string; mode?: string }> = []
   const metaUpdates: Array<{
@@ -98,7 +98,12 @@ function harness(options: {
   }
   const coordinator: RunCoordinator = {
     start: async (input, emit) => {
-      started.push({ sessionId: input.sessionId, text: input.text, lineage: input.lineage })
+      started.push({
+        sessionId: input.sessionId,
+        text: input.text,
+        lineage: input.lineage,
+        identity: input.identity,
+      })
       for (const frame of options.frames ?? []) emit(frame)
     },
     stop: (sessionId) => stopped.push(sessionId),
@@ -139,6 +144,7 @@ describe('DelegationService（D02）', () => {
     })
     expect(started[0]).toMatchObject({
       text: '探索一下',
+      identity: { role: 'explorer', rootRunId: 'root-1' },
       lineage: {
         rootRunId: 'root-1',
         parentToolCallId: 'tool-1',

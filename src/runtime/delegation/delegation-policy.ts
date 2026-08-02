@@ -15,6 +15,8 @@ export interface DelegationDecision {
 export interface DelegationPolicyContext {
   /** 该 root 已创建的 child 数（失败也计入） */
   childCount: number
+  activeCount?: number
+  depth?: number
   /** 该 root 全部 run（含自身）已用 token 合计 */
   usedTokens: number
 }
@@ -22,6 +24,12 @@ export interface DelegationPolicyContext {
 export function canDelegate(
   context: DelegationPolicyContext,
 ): DelegationDecision {
+  if ((context.depth ?? 0) >= MAX_DEPTH) {
+    return { ok: false, reason: '子智能体不能再次委派' }
+  }
+  if ((context.activeCount ?? 0) >= 1) {
+    return { ok: false, reason: '已有子智能体正在执行，请等待完成后再委派' }
+  }
   if (context.childCount >= MAX_CHILDREN_PER_ROOT) {
     return {
       ok: false,

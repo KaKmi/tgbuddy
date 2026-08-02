@@ -3,6 +3,11 @@ import type { RunRepository } from '../index.ts'
 import type { SessionCommands } from '../index.ts'
 import { canDelegate } from './delegation-policy.ts'
 import type { StreamFrame } from '../../shared/contracts/events.ts'
+import type { PermissionCeilingSnapshot } from '../../shared/contracts/run-snapshot.ts'
+import {
+  MemoryDelegationRepository,
+  type DelegationRepository,
+} from './delegation-repository.ts'
 
 export interface DelegationService {
   /**
@@ -14,6 +19,9 @@ export interface DelegationService {
     workspaceId: string
     task: string
     parentToolCallId: string
+    role?: 'explorer' | 'worker'
+    delegationIntentId?: string
+    parentCeiling?: PermissionCeilingSnapshot
     signal?: AbortSignal
   }): Promise<{ ok: boolean; text: string }>
   /** D03：父会话停止时级联停止其全部 child run。 */
@@ -24,6 +32,7 @@ export interface CreateDelegationServiceOptions {
   sessions: SessionCommands
   coordinator: RunCoordinator
   runs?: RunRepository
+  tasks?: DelegationRepository
   createId(): string
   now(): number
 }
@@ -31,10 +40,12 @@ export interface CreateDelegationServiceOptions {
 export function createDelegationService(
   options: CreateDelegationServiceOptions,
 ): DelegationService {
+  const taskRepository = options.tasks ?? new MemoryDelegationRepository()
   // rootRunId → 已创建 child 会话列表（进程内计数；重启后运行中的 child 本来就中止）
   const childrenByRoot = new Map<string, string[]>()
   // 父会话 → rootRunId（停止父会话时找 child）
   const rootByParentSession = new Map<string, string>()
+  const activeRoots = new Set<string>()
 
   return {
     async delegate(input) {
@@ -45,13 +56,20 @@ export function createDelegationService(
       const rootRunId = running?.rootRunId ?? running?.id ?? input.parentToolCallId
       rootByParentSession.set(input.parentSessionId, rootRunId)
       const children = childrenByRoot.get(rootRunId) ?? []
+      const durable = taskRepository.listByRoot(rootRunId)
       const decision = canDelegate({
-        childCount: children.length,
+        childCount: durable.length,
+        activeCount: durable.filter((task) => ['queued', 'starting', 'running', 'stopping'].includes(task.status)).length,
+        depth: running?.parentToolCallId ? 1 : 0,
         usedTokens: 0,
       })
       if (!decision.ok) {
         return { ok: false, text: decision.reason ?? '委派被拒绝' }
       }
+      if (activeRoots.has(rootRunId)) {
+        return { ok: false, text: '已有子智能体正在执行，请等待完成后再委派' }
+      }
+      activeRoots.add(rootRunId)
 
       let childSessionId: string
       try {
@@ -62,6 +80,7 @@ export function createDelegationService(
       })
       childSessionId = meta.id
       } catch (error) {
+        activeRoots.delete(rootRunId)
         return {
           ok: false,
           text: `子智能体会话创建失败：${error instanceof Error ? error.message : String(error)}`,
@@ -83,6 +102,34 @@ export function createDelegationService(
           console.error('[Delegation] child 权限模式继承失败：', error)
         }
       }
+      const now = options.now()
+      const taskId = `${rootRunId}:${input.parentToolCallId}`
+      const role = input.role ?? 'explorer'
+      const childCeiling = deriveChildCeiling(
+        input.parentCeiling ?? fallbackCeiling(input.parentSessionId, input.workspaceId),
+        role,
+      )
+      let task = taskRepository.create({
+        id: taskId,
+        rootRunId,
+        rootSessionId: input.parentSessionId,
+        childSessionId,
+        ...(input.delegationIntentId ? { parentTaskId: input.delegationIntentId } : {}),
+        role,
+        title: input.task.slice(0, 80),
+        task: input.task,
+        status: 'queued',
+        version: 0,
+        usage: { turns: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 },
+        permissionCeiling: childCeiling,
+        lastActivityAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      task = taskRepository.compareAndSet(task.id, task.version, {
+        status: 'starting',
+        updatedAt: options.now(),
+      })
       childrenByRoot.set(rootRunId, [...children, childSessionId])
 
       const summary: string[] = []
@@ -99,10 +146,23 @@ export function createDelegationService(
         }
       }
       try {
+        task = taskRepository.compareAndSet(task.id, task.version, {
+          status: 'running',
+          updatedAt: options.now(),
+        })
         await options.coordinator.start(
           {
             sessionId: childSessionId,
             text: input.task,
+            identity: {
+              rootSessionId: input.parentSessionId,
+              executionSessionId: childSessionId,
+              rootRunId,
+              agentRunId: options.createId(),
+              delegationId: task.id,
+              role,
+              parentToolCallId: input.parentToolCallId,
+            },
             lineage: {
               workspaceId: input.workspaceId,
               sessionId: childSessionId,
@@ -115,12 +175,23 @@ export function createDelegationService(
           childEmit,
         )
       } catch (error) {
+        taskRepository.compareAndSet(task.id, task.version, {
+          status: 'failed',
+          errorCode: error instanceof Error ? error.name : 'unknown',
+          updatedAt: options.now(),
+        })
+        activeRoots.delete(rootRunId)
         return {
           ok: false,
           text: `子智能体执行失败：${error instanceof Error ? error.message : String(error)}`,
         }
       }
       const last = summary.at(-1)
+      taskRepository.compareAndSet(task.id, task.version, {
+        status: last ? 'completed' : 'failed',
+        updatedAt: options.now(),
+      })
+      activeRoots.delete(rootRunId)
       return last
         ? { ok: true, text: `子智能体结果：\n${last}` }
         : { ok: false, text: '子智能体没有返回结果' }
@@ -132,6 +203,35 @@ export function createDelegationService(
         options.coordinator.stop(childSessionId)
       }
     },
+  }
+}
+
+function deriveChildCeiling(
+  parent: PermissionCeilingSnapshot,
+  role: 'explorer' | 'worker',
+): PermissionCeilingSnapshot {
+  const explorerTools = new Set(['read', 'glob', 'grep', 'skill', 'ask_user'])
+  return {
+    ...parent,
+    role,
+    maxAutoRisk: role === 'explorer' ? 'R1' : parent.maxAutoRisk,
+    allowedToolIds: role === 'explorer'
+      ? parent.allowedToolIds.filter((tool) => explorerTools.has(tool))
+      : [...parent.allowedToolIds],
+  }
+}
+
+function fallbackCeiling(rootSessionId: string, workspaceId: string): PermissionCeilingSnapshot {
+  return {
+    schemaVersion: 1,
+    policyVersion: 'permission-v2',
+    mode: 'auto',
+    rootSessionId,
+    workspaceId,
+    mountRevision: 'legacy',
+    allowedToolIds: ['read', 'glob', 'grep', 'skill', 'ask_user'],
+    maxAutoRisk: 'R1',
+    role: 'root',
   }
 }
 

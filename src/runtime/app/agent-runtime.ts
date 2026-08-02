@@ -48,6 +48,7 @@ export interface WorkspaceCommands {
 
 export interface SessionCommands {
   list(): SessionMeta[]
+  get(sessionId: string): SessionMeta | undefined
   create(input: {
     title?: string
     channelId?: string

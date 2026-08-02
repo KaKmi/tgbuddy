@@ -42,6 +42,7 @@ import {
   SqliteInteractionDecisionWriter,
   SqliteProfileRepository,
   SqliteRunRepository,
+  SqliteDelegationRepository,
   SqliteSessionRepository,
   SqliteAttachmentRepository,
   SqliteArtifactRepository,
@@ -142,6 +143,7 @@ export async function createApplication(
   })
   // C12：每个 Run 持久化能力快照与 token/cost 账本。
   const runs = new SqliteRunRepository(appDatabase)
+  const delegationTasks = new SqliteDelegationRepository(appDatabase)
   // A01/A02：内容寻址 BlobStore（附件/长输出/产物），物理文件在 userData/blobs。
   const blobStore = createNodeFsBlobStore({
     root: join(options.legacyDataDir, 'blobs'),
@@ -473,12 +475,17 @@ export async function createApplication(
           if (!invocation.lineage && delegationRef.service) {
             tools.push(
               buildDelegateTool({
-                delegate: (task, toolCallId, _options, signal) =>
+                delegate: (task, toolCallId, delegateOptions, signal) =>
                   delegationRef.service!.delegate({
                     parentSessionId: invocation.sessionId,
                     workspaceId: invocation.workspaceId,
                     task,
                     parentToolCallId: toolCallId,
+                    role: delegateOptions.role,
+                    ...(delegateOptions.delegationIntentId
+                      ? { delegationIntentId: delegateOptions.delegationIntentId }
+                      : {}),
+                    parentCeiling: invocation.permissionCeiling,
                     signal,
                   }),
               }),
@@ -601,6 +608,7 @@ export async function createApplication(
       skills,
       mcp,
       runs,
+      delegations: delegationTasks,
       delegationRef,
       createRunId: createId,
       toolRegistry,

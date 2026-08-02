@@ -25,6 +25,7 @@ import {
   type ArtifactRepository,
   type BlobCleanup,
   type DelegationService,
+  type DelegationRepository,
   mountFailureMessage,
   resolveModelSelection,
   resolveProfileSkills,
@@ -75,6 +76,7 @@ export interface CreateLegacyRuntimeOptions {
   mcp: McpManager
   /** C12：Run 账本持久化（能力快照 + token/cost） */
   runs?: RunRepository
+  delegations?: DelegationRepository
   /** A05：Artifact 索引（结果区列表数据源） */
   artifacts?: ArtifactRepository
   /** A09：会话删除后清理无引用 Blob */
@@ -150,6 +152,7 @@ export function createLegacyRuntime(
       sessions: options.sessions,
       coordinator: runs,
       runs: options.runs,
+      tasks: options.delegations,
       createId: options.createRunId ?? (() => `child-${Date.now()}`),
       now: Date.now,
     })
@@ -305,7 +308,7 @@ async function createAgentInvocation(
   skills: SkillCatalog,
   toolRegistry: ToolRegistry,
 ): Promise<AgentInvocation> {
-  const meta = sessions.list().find((session) => session.id === input.sessionId)
+  const meta = sessions.get(input.sessionId)
   if (!meta) throw new Error(`会话不存在：${input.sessionId}`)
 
   // C04：Run 启动时固化模型选择快照，禁止中途读全局 mutable settings。
@@ -340,7 +343,10 @@ async function createAgentInvocation(
     .filter((skill) => skill.enabled)
   const enabledSkills = resolveProfileSkills(allEnabledSkills, selection?.skillIds)
   // C12：Run 启动时冻结工具快照（含 MCP 与内置），作为能力账本来源。
-  const frozenTools = toolRegistry.snapshot()
+  const frozenTools = toolRegistry.snapshot().filter((tool) =>
+    input.identity?.role !== 'explorer'
+    || ['read', 'glob', 'grep'].includes(tool.id)
+  )
   if (!input.identity) {
     throw new Error('Run 身份未预留，拒绝启动 Agent')
   }
@@ -373,7 +379,7 @@ async function createAgentInvocation(
         ...frozenTools.map((tool) => tool.id),
         'ask_user',
         'exit_plan_mode',
-        'delegate_to_agent',
+        ...(input.identity.role === 'root' ? ['delegate_to_agent'] : []),
         'skill',
       ],
       maxAutoRisk: mode === 'plan' ? 'R1' : 'R3',
